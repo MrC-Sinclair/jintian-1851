@@ -1,0 +1,38 @@
+# ===== 测试 / 截图产物（根目录兜底，避免误提交） =====
+.e2e-shots/
+game-web/test-results/
+playwright-report/
+test-results/
+
+# ===== 依赖 / 构建产物（子项目各自已忽略，这里兜底） =====
+node_modules/
+dist/
+.output/
+.nuxt/
+.nitro/
+.cache/
+.unpackage/
+
+# ===== 日志 =====
+*.log
+logs/
+
+# ===== 系统 / 编辑器残留 =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ===== 本地环境变量（兜底，避免根目录 .env 误提交；server/.gitignore 已单独覆盖） =====
+.env
+.env.*
+!.env.example
+
+# 含本地密码的编排文件（POSTGRES_PASSWORD 明文，勿提交）
+docker-compose.yml
