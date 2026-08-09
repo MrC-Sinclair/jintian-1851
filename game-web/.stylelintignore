@@ -1,0 +1,13 @@
+# 构建产物与依赖
+node_modules/
+dist/
+unpackage/
+coverage/
+test-results/
+
+# 自动生成的文件
+src/manifest.json
+src/pages.json
+
+# uni-app 自动生成的 SCSS 变量定义文件（含 SCSS 变量语法，需独立 postcss-scss 处理，暂忽略）
+src/uni.scss

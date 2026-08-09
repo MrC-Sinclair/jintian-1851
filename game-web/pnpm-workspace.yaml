@@ -1,0 +1,10 @@
+allowBuilds:
+  '@parcel/watcher': true
+  core-js: true
+  esbuild: true
+  vue-demi: true
+onlyBuiltDependencies:
+  - esbuild
+  - core-js
+  - '@parcel/watcher'
+  - vue-demi

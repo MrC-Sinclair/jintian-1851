@@ -1,0 +1,25 @@
+# 构建产物与依赖
+node_modules/
+dist/
+unpackage/
+coverage/
+test-results/
+
+# 自动生成的文件
+src/manifest.json
+src/pages.json
+
+# AI 工具规则文件（各 IDE/Agent 各自维护，不参与格式化）
+.trae/
+.codebuddy/
+.qoder/
+AGENTS.md
+
+# 配置与锁文件
+pnpm-lock.yaml
+.env
+.env.example
+
+# 日志
+*.log
+debug.log

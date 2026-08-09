@@ -1,0 +1,47 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "金田：1851"
+			}
+		},
+		{
+			"path": "pages/character-create/index",
+			"style": {
+				"navigationBarTitleText": "开局"
+			}
+		},
+		{
+			"path": "pages/game-main/index",
+			"style": {
+				"navigationBarTitleText": "回合"
+			}
+		},
+		{
+			"path": "pages/settings/index",
+			"style": {
+				"navigationBarTitleText": "设置",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/end-game/index",
+			"style": {
+				"navigationBarTitleText": "结局"
+			}
+		},
+		{
+			"path": "pages/help/index",
+			"style": {
+				"navigationBarTitleText": "如何游戏"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "white",
+		"navigationBarTitleText": "金田：1851",
+		"navigationBarBackgroundColor": "#8B1A1A",
+		"backgroundColor": "#F5E6C8"
+	}
+}
