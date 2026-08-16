@@ -32,6 +32,13 @@
         class="status-panel__row"
       >
         <view class="status-panel__label-wrap">
+          <!-- 五维属性图标（像素风格） -->
+          <image
+            class="status-panel__attr-icon"
+            :src="`/static/attr-${attr.key}.png`"
+            mode="aspectFit"
+            aria-hidden="true"
+          />
           <!-- 危机预警图标（属性 < 30 时显示，SVG 避免 Unicode 字符） -->
           <svg
             v-if="props.attributes[attr.key] < 30"
@@ -358,12 +365,19 @@ function flashClass(key: string): string {
     }
   }
 
-  // 属性标签行（含危机图标 + InfoHint）
+  // 属性标签行（含图标 + 危机图标 + InfoHint）
   &__label-wrap {
     display: flex;
     flex-direction: row;
     align-items: center;
-    width: 140rpx;
+    width: 160rpx;
+    flex-shrink: 0;
+  }
+
+  &__attr-icon {
+    width: 36rpx;
+    height: 36rpx;
+    margin-right: 8rpx;
     flex-shrink: 0;
   }
 

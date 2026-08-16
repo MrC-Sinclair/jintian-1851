@@ -165,22 +165,11 @@
           @keydown.enter.prevent="onOpenAdvisor"
           @keydown.space.prevent="onOpenAdvisor"
         >
-          <!-- Lucide Icons: feather — 羽扇纶巾意象（诸葛亮式军师），通用开源标准路径 -->
-          <svg
-            viewBox="0 0 24 24"
-            width="22"
-            height="22"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
-            <line x1="16" y1="8" x2="2" y2="22" />
-            <line x1="17.5" y1="15" x2="9" y2="15" />
-          </svg>
+          <image
+            class="game-main__footer-btn-icon game-main__footer-btn-icon--advisor"
+            src="/static/advisor-icon.png"
+            mode="aspectFill"
+          />
           <text class="game-main__footer-btn-text">军师</text>
         </view>
       </TooltipView>
@@ -1032,6 +1021,20 @@ function onCloseDiplomacy(): void {
       font-size: 28rpx;
       font-weight: 500;
       color: #2c1810;
+    }
+
+    // 圆形裁切的军师图片图标（36×36 容器，aspectFill 居中裁切）
+    &-icon {
+      width: 36rpx;
+      height: 36rpx;
+      border-radius: 50%;
+      overflow: hidden;
+
+      &--advisor {
+        width: 48rpx;
+        height: 48rpx;
+        border: 2rpx solid #8b1a1a;
+      }
     }
   }
 

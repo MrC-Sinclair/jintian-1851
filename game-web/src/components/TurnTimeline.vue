@@ -66,6 +66,7 @@
 import { computed } from 'vue'
 import type { EventType, HistoryEvent } from '@/types/game'
 import { EMPTY_TEXT, EFFECT_LABELS, CHAIN_LABELS } from '@/utils/copywriting'
+import TooltipView from '@/components/TooltipView.vue'
 
 const props = defineProps<{
   /** 历史事件（GameSave.events，按时间正序） */
