@@ -217,9 +217,13 @@ function onHowToPlay(): void {
   display: flex;
   flex-direction: column;
   // 显式 100% 宽度：确保在 uni-app H5 的容器嵌套中铺满视口
+  // border-box 让 padding 计入宽高，避免 100% + padding 造成水平/垂直溢出
+  box-sizing: border-box;
   width: 100%;
   // 允许内容超出视口时滚动，避免小屏（如 iPhone SE）按钮被挤出可视区
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 48rpx 32rpx;
   background: linear-gradient(180deg, #f5e6c8 0%, #fdf6e3 100%);

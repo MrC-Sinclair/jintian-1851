@@ -78,8 +78,8 @@ describe('generateFocusHint - 综合实力计算边界', () => {
     const hint = generateFocusHint(
       makeAttrs({ military: 100, economy: 100, politics: 100, people: 100, diplomacy: 50 })
     )
-    // 加权 = (100*1 + 100*1 + 100*1.3 + 100*1.3 + 50*1) / 5.6 = 510/5.6 ≈ 91.07
-    expect(hint.overallPower).toBeCloseTo(91.07, 1)
+    // 加权 = (100*1 + 100*1 + 100*1.3 + 100*1.3 + 50*1) / 5.6 = 510/5.6 ≈ 91.07，取整后 = 91
+    expect(hint.overallPower).toBe(91)
     expect(hint.isVictory).toBe(true)
   })
 })

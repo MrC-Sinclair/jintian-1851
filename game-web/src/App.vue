@@ -40,9 +40,18 @@ body.scroll-locked {
  */
 html,
 body {
+  box-sizing: border-box;
   width: 100%;
   min-height: 100vh;
+  padding: 0;
+  margin: 0;
   background-color: #fdf6e3;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
 }
 
 #app,
@@ -50,16 +59,22 @@ uni-app,
 uni-page,
 uni-page-wrapper,
 uni-page-body {
+  box-sizing: border-box;
   width: 100% !important;
   max-width: none !important;
   min-height: 100vh;
+  padding: 0;
+  margin: 0;
   background: linear-gradient(180deg, #fdf6e3 0%, #f5e6c8 100%) !important;
 }
 
 /* stylelint-disable-next-line selector-type-no-unknown */
 page {
+  box-sizing: border-box;
   width: 100% !important;
   min-height: 100vh;
+  padding: 0;
+  margin: 0;
   background: linear-gradient(180deg, #fdf6e3 0%, #f5e6c8 100%) !important;
 }
 </style>

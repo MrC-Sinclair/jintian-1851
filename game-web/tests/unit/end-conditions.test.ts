@@ -93,8 +93,10 @@ describe('calcOverallPower - 加权平均（2026-08-07-weighted-overall-power）
     const internalHeavy = { military: 0, economy: 0, politics: 100, people: 100, diplomacy: 0 }
     // 两者总和均为 200，但 internalHeavy 的政治/民心权重 1.3 拉高得分
     expect(calcOverallPower(internalHeavy)).toBeGreaterThan(calcOverallPower(militaryHeavy))
-    // numeric：internalHeavy=(100*1.3*2)/5.6≈46.4；militaryHeavy=(100*2)/5.6≈35.7
-    expect(calcOverallPower(internalHeavy)).toBeCloseTo(46.4, 1)
+    // numeric：internalHeavy=(100*1.3*2)/5.6≈46.4，取整后 = 46；militaryHeavy=(100*2)/5.6≈35.7，取整后 = 36
+    // calcOverallPower 取整返回 0-100 整数（与 5 维属性及 90 胜利阈值对齐）
+    expect(calcOverallPower(internalHeavy)).toBe(46)
+    expect(calcOverallPower(militaryHeavy)).toBe(36)
   })
 })
 
@@ -159,8 +161,9 @@ describe('checkEndConditions - 胜利', () => {
   })
 
   it('综合实力 < 90 不触发胜利', () => {
+    // 全 90 时 = 90 触发胜利；此处 military 降至 87 使加权 ≈ 89.46，取整 = 89 < 90
     const s = makeState({
-      attributes: { military: 89, economy: 90, politics: 90, people: 90, diplomacy: 90 }
+      attributes: { military: 87, economy: 90, politics: 90, people: 90, diplomacy: 90 }
     })
     expect(checkEndConditions(s)).toBe('continue')
   })

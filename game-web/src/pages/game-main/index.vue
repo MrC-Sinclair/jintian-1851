@@ -165,11 +165,21 @@
           @keydown.enter.prevent="onOpenAdvisor"
           @keydown.space.prevent="onOpenAdvisor"
         >
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M12 2C7.58 2 4 5.58 4 10c0 2.46 1.13 4.64 2.88 6.1V19c0 .55.45 1 1 1h1v-2h2v2h2v-2h2v2h1c.55 0 1-.45 1-1v-2.9C19.87 14.64 21 12.46 21 10c0-4.42-3.58-8-9-8zm-3 11c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm6 0c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"
-            />
+          <!-- Lucide Icons: feather — 羽扇纶巾意象（诸葛亮式军师），通用开源标准路径 -->
+          <svg
+            viewBox="0 0 24 24"
+            width="22"
+            height="22"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
+            <line x1="16" y1="8" x2="2" y2="22" />
+            <line x1="17.5" y1="15" x2="9" y2="15" />
           </svg>
           <text class="game-main__footer-btn-text">军师</text>
         </view>

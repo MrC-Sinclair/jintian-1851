@@ -33,7 +33,8 @@ export function calcOverallPower(attrs: Attributes): number {
   const keys = Object.keys(POWER_WEIGHTS) as Array<keyof Attributes>
   const totalW = keys.reduce((s, k) => s + POWER_WEIGHTS[k], 0)
   const weighted = keys.reduce((s, k) => s + (attrs[k] ?? 0) * POWER_WEIGHTS[k], 0)
-  return Math.max(0, Math.min(100, weighted / totalW))
+  // 取整为 0-100 整数，与 5 维属性（整数）及 90 胜利阈值对齐，避免小数显示（如 43.6785）
+  return Math.round(Math.max(0, Math.min(100, weighted / totalW)))
 }
 
 /**
