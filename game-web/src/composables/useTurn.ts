@@ -22,6 +22,7 @@ import { SYSTEM_EVENT } from '@/utils/copywriting'
 import type {
   Attributes,
   EventOption,
+  FreeFactionEffect,
   GameEvent,
   HistoryEvent,
   NpcAction,
@@ -45,6 +46,8 @@ interface GenerateEventResponse {
 /** 后端 resolve-decision 响应数据类型 */
 interface ResolveDecisionResponse {
   effects: Partial<Attributes & Resources>
+  /** 自由行动对势力的软性微调（可选，旧客户端/降级场景为 [] 或缺失） */
+  factionEffects?: FreeFactionEffect[]
 }
 
 /** 后端 npc-actions 响应数据类型 */
@@ -247,9 +250,15 @@ export function useTurn(options: UseTurnOptions = {}) {
           turn: s.state.turn,
           playerDecision: freeInput.trim().slice(0, 200),
           stateSnapshot: s.state,
-          event: evt
+          event: evt,
+          factions: s.factions
         })
+        // 资源/属性代价经 applyEffects 应用（与势力微调叠加）
         store.applyEffects(res.effects)
+        // 自由行动对势力的软性微调（后端已 sanitize factionId ∈ factions）
+        if (res.factionEffects && res.factionEffects.length > 0) {
+          store.applyFreeFactionEffects(res.factionEffects)
+        }
         return res.effects
       } catch (err) {
         const msg = err instanceof ApiError ? err.message : '决策解析失败'

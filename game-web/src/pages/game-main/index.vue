@@ -79,6 +79,31 @@
         </view>
       </view>
 
+      <!-- 决策应用反馈区（T4：自由行动对势力的软性微调提示，复用决策已应用态） -->
+      <view
+        v-if="hasDecided && store.lastFreeFactionEffects.length > 0"
+        class="game-main__section game-main__faction-feedback"
+      >
+        <text class="game-main__faction-feedback-title">{{ PAGE_TEXT.gameMain.factionEffectTitle }}</text>
+        <view
+          v-for="(fe, idx) in store.lastFreeFactionEffects"
+          :key="idx"
+          class="game-main__faction-feedback-item"
+        >
+          <text class="game-main__faction-feedback-name">{{ fe.name }}</text>
+          <text
+            v-if="fe.relationshipDelta !== undefined"
+            class="game-main__faction-feedback-delta"
+            :class="fe.relationshipDelta >= 0 ? 'game-main__faction-feedback--up' : 'game-main__faction-feedback--down'"
+          >关系 {{ fe.relationshipDelta >= 0 ? '+' : '' }}{{ fe.relationshipDelta }}</text>
+          <text
+            v-if="fe.powerDelta !== undefined"
+            class="game-main__faction-feedback-delta"
+            :class="fe.powerDelta >= 0 ? 'game-main__faction-feedback--up' : 'game-main__faction-feedback--down'"
+          >实力 {{ fe.powerDelta >= 0 ? '+' : '' }}{{ fe.powerDelta }}</text>
+        </view>
+      </view>
+
       <!-- 阶段提示（无事件时显示当前阶段建议） -->
       <view v-if="!currentEvent && !isProcessingTurn" class="game-main__section game-main__hint">
         <text class="game-main__hint-text">{{ phaseHint }}</text>
@@ -598,6 +623,9 @@ async function onConfirmDecision(): Promise<void> {
     return
   }
 
+  // 清空上次自由行动的势力变化反馈（避免与上回合残留混淆）
+  store.clearLastFreeFactionEffects()
+
   let effects
   if (store.selectedOptionId) {
     // 选项决策
@@ -838,6 +866,48 @@ function onCloseDiplomacy(): void {
     display: flex;
     gap: 16rpx;
     margin-top: 16rpx;
+  }
+
+  // ====================== 决策应用势力反馈（T4） ======================
+  &__faction-feedback {
+    background: rgba(139, 26, 26, 0.04);
+    border: 1rpx solid rgba(139, 26, 26, 0.12);
+    border-radius: 16rpx;
+    padding: 24rpx;
+  }
+
+  &__faction-feedback-title {
+    display: block;
+    font-size: 26rpx;
+    font-weight: 600;
+    color: #5d4037;
+    margin-bottom: 12rpx;
+  }
+
+  &__faction-feedback-item {
+    display: flex;
+    align-items: center;
+    gap: 16rpx;
+    margin-top: 8rpx;
+  }
+
+  &__faction-feedback-name {
+    font-size: 26rpx;
+    color: #4e342e;
+    font-weight: 500;
+  }
+
+  &__faction-feedback-delta {
+    font-size: 24rpx;
+    font-weight: 600;
+  }
+
+  &__faction-feedback--up {
+    color: #2e7d32;
+  }
+
+  &__faction-feedback--down {
+    color: #c62828;
   }
 
   // ====================== 阶段提示与 spinner ======================

@@ -124,9 +124,20 @@ export interface HistoryEvent {
   chainNodeId?: string
 }
 
-/** NPC 行动（npc-actions 接口返回） */
-export interface NpcAction {
+/**
+ * 自由行动对势力的「软性微调」结果（resolve-decision 出参 factionEffects 元素）
+ *
+ * 来源：/api/game/resolve-decision 的 data.factionEffects
+ * 约束（后端 design.md D2）：仅 relationshipDelta（±20）/powerDelta（±30），禁止改 status
+ */
+export interface FreeFactionEffect {
   factionId: string
+  relationshipDelta?: number
+  powerDelta?: number
+}
+
+/** NPC 行动（npc-actions 接口返回） */
+export interface NpcAction {  factionId: string
   factionName: string
   action: NpcActionType
   /** 行动目标（扩张目标地、结盟对象等，可选） */

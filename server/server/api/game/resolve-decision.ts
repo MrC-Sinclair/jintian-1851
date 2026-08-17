@@ -12,6 +12,19 @@ import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
 import { buildResolveDecisionPrompt } from '../../utils/prompts/resolve-decision'
 import { acquireLock, isLocked } from '../../utils/concurrency-lock'
 
+/**
+ * 前端精简传入的势力信息（自由行动需要势力上下文才能让 AI 关联「资助湘军」指向谁）。
+ * 仅含 id/name/relationship/status/power，不传 summary 以控成本（与 generate-event 一致）。
+ * 可选：旧客户端不传时不报错，仅不出 factionEffects。
+ */
+const inboundFactionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  relationship: z.number(),
+  status: z.enum(['active', 'destroyed', 'allied']),
+  power: z.number()
+})
+
 const bodySchema = z.object({
   saveId: z.string().uuid(),
   turn: z.number().int().positive(),
@@ -47,12 +60,22 @@ const bodySchema = z.object({
       )
       .min(2)
       .max(4)
-  })
+  }),
+  // 自由行动势力上下文（可选，向后兼容旧客户端）
+  factions: z.array(inboundFactionSchema).optional()
 })
 
 // LLM 返回结构
+const factionEffectSchema = z.object({
+  factionId: z.string(),
+  // 软性微调：关系 ±20（最终前端 clamp -100~100），实力 ±30（最终 Math.max(0)）
+  relationshipDelta: z.number().min(-20).max(20).optional(),
+  powerDelta: z.number().min(-30).max(30).optional()
+})
 const effectsSchema = z.object({
-  effects: z.record(z.string(), z.number())
+  effects: z.record(z.string(), z.number()),
+  // 自由行动对势力的软性微调（禁止 setStatus），可选
+  factionEffects: z.array(factionEffectSchema).optional()
 })
 
 /** 降级默认 effects（全属性 -3，模拟决策失误的惩罚） */
@@ -118,7 +141,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { saveId, turn, playerDecision, stateSnapshot, event: gameEvent } = parseResult.data
+  const { saveId, turn, playerDecision, stateSnapshot, event: gameEvent, factions } = parseResult.data
 
   // 2. 并发锁冲突检查
   if (isLocked(saveId)) {
@@ -149,7 +172,8 @@ export default defineEventHandler(async (event) => {
       event: gameEvent,
       playerDecision,
       stateSnapshot,
-      turn
+      turn,
+      factions
     })
 
     // 重试 1 次
@@ -163,21 +187,43 @@ export default defineEventHandler(async (event) => {
           providerOptions: { openai: { structuredOutputs: true } },
           abortSignal: AbortSignal.timeout(30_000)
         })
-        // 诊断日志：记录 LLM 实际返回的 effects，便于排查字段名映射问题
-        console.log('[resolve-decision] LLM 返回 effects:', JSON.stringify(object.effects))
+        // 诊断日志：记录 LLM 实际返回的 effects 与 factionEffects，便于排查字段名映射问题
+        console.log(
+          '[resolve-decision] LLM 返回:',
+          JSON.stringify({ effects: object.effects, factionEffects: object.factionEffects ?? [] })
+        )
+        // 幻觉防护：仅保留 factionId ∈ 传入 factions 的条目（防 AI 编造势力）
+        const validIds = new Set((factions ?? []).map((f) => f.id))
+        const factionEffects = (object.factionEffects ?? []).filter(
+          (fe) => validIds.has(fe.factionId)
+        )
         // E2E 模式：放大为负值，确保 2~3 回合内触发属性崩溃结局
-        return { ok: true, data: { effects: isE2E ? amplifyForE2E(object.effects) : object.effects } }
+        return {
+          ok: true,
+          data: {
+            effects: isE2E ? amplifyForE2E(object.effects) : object.effects,
+            // 旧客户端不传 factions 时 validIds 为空 → factionEffects 恒为 []，天然向后兼容
+            factionEffects
+          }
+        }
       } catch (err) {
         lastErr = err
         console.warn(`[resolve-decision] 第 ${attempt + 1} 次调用失败:`, err)
       }
     }
 
-    // 4. 降级：返回默认 effects
+    // 4. 降级：返回默认 effects + 空 factionEffects（不改动任何势力）
     console.error('[resolve-decision] 2 次重试均失败，降级返回默认 effects:', lastErr)
     setHeader(event, 'X-Fallback', 'true')
     // E2E 模式：使用强力负值兜底，稳定触发崩溃结局
-    return { ok: true, data: { effects: isE2E ? E2E_STRONG_FALLBACK : FALLBACK_EFFECTS }, fallback: true }
+    return {
+      ok: true,
+      data: {
+        effects: isE2E ? E2E_STRONG_FALLBACK : FALLBACK_EFFECTS,
+        factionEffects: []
+      },
+      fallback: true
+    }
   } finally {
     release()
   }

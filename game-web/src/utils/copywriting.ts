@@ -275,7 +275,8 @@ export const PAGE_TEXT = {
     freeActionPlaceholder: '请言明所欲为之事（最多 200 字）',
     freeActionCancel: '取消',
     freeActionSubmit: '提交',
-    decisionApplied: '决策已应用'
+    decisionApplied: '决策已应用',
+    factionEffectTitle: '势力动向'
   },
   /** EventCard 文案 */
   eventCard: {

@@ -280,6 +280,7 @@ x-device-id: {设备指纹}
 | `playerDecision` | string (1-200 字) | 是 | 玩家自由输入的行动描述 |
 | `stateSnapshot` | object | 是 | 同 `generate-event` |
 | `event` | object | 是 | 当前回合事件（含 `title`/`description`/`eventType`/`options`） |
+| `factions` | array | 否 | 全部势力精简列表（`{ id, name, relationship, status, power }`），自由行动需此上下文才能将决策文本关联到具体势力。旧客户端不传时不报错，仅不返回 `factionEffects` |
 
 ### 响应（成功）
 
@@ -291,25 +292,45 @@ x-device-id: {设备指纹}
       "military": -5,
       "diplomacy": -10,
       "people": 8,
-      "reputation": -3
-    }
+      "reputation": -3,
+      "silver": -50
+    },
+    "factionEffects": [
+      { "factionId": "xiang-jun", "relationshipDelta": 15, "powerDelta": 10 }
+    ]
   }
 }
 ```
 
 `effects` 是 `Record<string, number>`，键为属性/资源名（military/economy/politics/people/diplomacy/silver/troops/food/reputation），值为变化量（可正可负）。
 
+`factionEffects`（可选）是自由行动对势力的「软性微调」数组，元素结构：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `factionId` | string | 目标势力 ID，**必须为请求 `factions` 之一**（服务端 sanitize 丢弃列表外 id，防幻觉） |
+| `relationshipDelta` | number (±20) | 关系变化，前端最终 clamp(-100, 100) |
+| `powerDelta` | number (±30) | 实力变化，前端最终 `Math.max(0, ...)` |
+
+> **约束**：自由行动仅做软性微调，**禁止改 `status`**（结盟/宣战/摧毁仍走确定性外交按钮）。决策未指向任何势力时 `factionEffects` 为 `[]` 或省略。
+> **资源代价**：决策的资源代价（如"资助湘军"→ `silver:-50`）经 `effects` 表达，与 `factionEffects` 叠加应用，形成"有代价的自然语言外交"。
+
 ### 降级
 
-LLM 2 次重试均失败后返回默认 effects，响应头 `X-Fallback: true`，响应体多 `fallback: true`：
+LLM 2 次重试均失败后返回默认 effects + 空 `factionEffects`，响应头 `X-Fallback: true`，响应体多 `fallback: true`：
 
 ```json
 {
   "ok": true,
-  "data": { "effects": { "military": -3, "economy": -3, "politics": -3, "people": -3, "diplomacy": -3 } },
+  "data": {
+    "effects": { "military": -3, "economy": -3, "politics": -3, "people": -3, "diplomacy": -3 },
+    "factionEffects": []
+  },
   "fallback": true
 }
 ```
+
+> 旧客户端未传 `factions` 时 `factionEffects` 恒为 `[]`（无上下文则 AI 无从关联势力），完全向后兼容。
 
 ### 错误
 

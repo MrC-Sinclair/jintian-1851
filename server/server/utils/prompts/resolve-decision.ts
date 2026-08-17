@@ -5,7 +5,7 @@
  * 输出：要求 LLM 解析玩家决策为结构化 effects
  */
 
-import type { StateSnapshot, GameEvent } from '@/types/game'
+import type { StateSnapshot, GameEvent, Faction } from '@/types/game'
 
 interface ResolveDecisionArgs {
   /** 当前事件 */
@@ -16,18 +16,30 @@ interface ResolveDecisionArgs {
   stateSnapshot: StateSnapshot
   /** 当前回合数 */
   turn: number
+  /** 当前全部势力精简信息（可选，自由行动需此上下文才能关联势力） */
+  factions?: Pick<Faction, 'id' | 'name' | 'relationship' | 'status' | 'power'>[]
 }
 
 /**
  * 构造 resolve-decision 提示词
  */
 export function buildResolveDecisionPrompt(args: ResolveDecisionArgs): string {
-  const { event, playerDecision, stateSnapshot, turn } = args
+  const { event, playerDecision, stateSnapshot, turn, factions } = args
   const dateStr = `${stateSnapshot.date.year}年${stateSnapshot.date.month}月`
 
   const optionStr = event.options
     .map((o) => `- [${o.id}] ${o.label}：${JSON.stringify(o.effects)}`)
     .join('\n')
+
+  const factionStr =
+    factions && factions.length > 0
+      ? factions
+          .map(
+            (f) =>
+              `- id="${f.id}" 名称=${f.name} 关系=${f.relationship} 状态=${f.status} 实力=${f.power}`
+          )
+          .join('\n')
+      : '（无势力上下文）'
 
   return `你是近代策略游戏的决策解析器。玩家面对一个事件并做出决策，请将决策解析为结构化的属性与资源影响。
 
@@ -45,6 +57,9 @@ ${optionStr}
 - 军务 ${stateSnapshot.attributes.military} / 经济 ${stateSnapshot.attributes.economy} / 政治 ${stateSnapshot.attributes.politics} / 民心 ${stateSnapshot.attributes.people} / 外交 ${stateSnapshot.attributes.diplomacy}
 - 银两 ${stateSnapshot.resources.silver} / 兵力 ${stateSnapshot.resources.troops} / 粮草 ${stateSnapshot.resources.food} / 威望 ${stateSnapshot.resources.reputation}
 
+【势力列表（id / 名称 / 当前关系 / 状态 / 实力）】
+${factionStr}
+
 【解析规则】
 1. 判断玩家决策与哪个预设选项最接近：
    - 若完全匹配某选项，返回该选项的 effects
@@ -60,7 +75,18 @@ ${optionStr}
    - 禁止"只扣不加"或"只加不扣"的不平衡 effects
 6. effects 数值须合理，与决策逻辑一致（如"开仓放粮"应使 people+、silver-、food-）
 7. 不要返回 effects 之外的字段
+8. **势力影响（决策涉及势力时的必做项）**：
+   - 当决策文本涉及与某势力的关系或实力变化——包括但不限于"资助/结善缘/示好/拉拢/结盟/亲近/疏远/敌对/打击/输送银两粮草给对方"——**必须**在 \`factionEffects\` 中返回对该势力的软性微调。这是必做项，不得省略。
+   - 如何确定目标势力 id：
+     - 若决策直接点名（如"资助湘军"），取【势力列表】中名称匹配的 id
+     - 若决策用相对描述（如"关系最友好的势力""实力最强的势力""最忠诚的势力"），请在【势力列表】中比较对应字段（relationship / power），取数值最大者，将其 id 填入 \`factionId\`
+   - \`factionId\`：必须是【势力列表】中存在的 id，禁止编造列表外 id（编造的会被丢弃）
+   - \`relationshipDelta\`：关系变化，范围 -20~20（"资助/示好/结善缘"取正值，"敌对/疏远"取负值）
+   - \`powerDelta\`：实力变化，范围 -30~30（"资助物资/输送粮草"取正值，"打击/削弱"取负值）
+   - **禁止改变势力 \`status\`**（结盟/宣战/摧毁仍是确定性外交按钮的职责，本通道仅做软性微调）
+   - 仅当决策完全不涉及任何势力时，才返回空数组或不返回 \`factionEffects\`
+   - 资源代价（如"资助"→ silver 减少、"输送粮草"→ food 减少）仍须体现在 \`effects\` 中
 
 【输出格式】
-{ "effects": { "military": 3, "people": 5, "silver": -100 } }`
+{ "effects": { "military": 3, "people": 5, "silver": -100 }, "factionEffects": [{ "factionId": "xiang-jun", "relationshipDelta": 15 }] }`
 }

@@ -17,6 +17,8 @@ import type {
   AdvisorMessage,
   Attributes,
   EndedReason,
+  Faction,
+  FreeFactionEffect,
   GameEvent,
   GameSave,
   HistoryEvent,
@@ -71,6 +73,12 @@ export const useGameStore = defineStore('game', () => {
    * 新回合由 useTurn.startTurn 调 resetDiplomacy 解锁。
    */
   const diplomacyUsedThisTurn = ref(false)
+
+  /**
+   * T4（自由行动势力微调）本次自由行动应用的势力变化列表，供决策反馈 UI 展示。
+   * 每回合决策成功后由 applyFreeFactionEffects 填充，UI 读取后由 useTurn 在下一决策前清空。
+   */
+  const lastFreeFactionEffects = ref<{ name: string; relationshipDelta?: number; powerDelta?: number }[]>([])
 
   // ====================== 计算属性 ======================
   /** 当前回合数（无存档时为 0） */
@@ -331,6 +339,60 @@ export const useGameStore = defineStore('game', () => {
     diplomacyUsedThisTurn.value = false
   }
 
+  /**
+   * T4（自由行动打通势力关系与实力）：应用自由行动的势力软性微调
+   *
+   * 与 applyDiplomacyAction 的区别：
+   *   - 不受 diplomacyUsedThisTurn 守卫（自由行动是事件决策的一部分，与"每回合 1 次确定性外交"是不同系统）
+   *   - 仅做 soft 微调（relationshipDelta/powerDelta），禁止改 status（status 变更仍走确定性按钮）
+   *   - 不可变更新范式同 applyDiplomacyAction：建新 factions 数组 + 重赋 currentSave + 刷 updatedAt
+   *
+   * 资源代价由 AI 在 effects.resources 中表达，经 applyEffects 扣减（与本次调用顺序叠加）。
+   *
+   * @param effects 后端返回的 factionEffects（已 sanitize 过 factionId ∈ factions）
+   */
+  function applyFreeFactionEffects(effects: FreeFactionEffect[]): void {
+    const save = currentSave.value
+    if (!save || !effects || effects.length === 0) return
+
+    const applied: { name: string; relationshipDelta?: number; powerDelta?: number }[] = []
+    const newFactions: Faction[] = save.factions.map((f) => {
+      const eff = effects.find((e) => e.factionId === f.id)
+      if (!eff) return f
+
+      // relationship：软性微调 ±20，最终 clamp(-100,100)
+      const relDelta = clamp(eff.relationshipDelta ?? 0, -20, 20)
+      const newRelationship = clamp(f.relationship + relDelta, -100, 100)
+      // power：软性微调 ±30，最终 Math.max(0)
+      const powDelta = clamp(eff.powerDelta ?? 0, -30, 30)
+      const newPower = Math.max(0, f.power + powDelta)
+
+      applied.push({
+        name: f.name,
+        relationshipDelta: relDelta !== 0 ? relDelta : undefined,
+        powerDelta: powDelta !== 0 ? powDelta : undefined
+      })
+
+      return { ...f, relationship: newRelationship, power: newPower }
+    })
+
+    currentSave.value = {
+      ...save,
+      factions: newFactions,
+      updatedAt: Date.now()
+    }
+
+    // 仅记录确有变化的条目，供 UI 反馈
+    lastFreeFactionEffects.value = applied.filter(
+      (a) => a.relationshipDelta !== undefined || a.powerDelta !== undefined
+    )
+  }
+
+  /** 清空上次自由行动势力变化记录（UI 读取展示后调用） */
+  function clearLastFreeFactionEffects(): void {
+    lastFreeFactionEffects.value = []
+  }
+
   // ====================== 回合临时态操作 ======================
   /**
    * 设置当前回合事件
@@ -413,6 +475,9 @@ export const useGameStore = defineStore('game', () => {
     updateChainState,
     applyDiplomacyAction,
     resetDiplomacy,
+    applyFreeFactionEffects,
+    clearLastFreeFactionEffects,
+    lastFreeFactionEffects,
     // 回合临时态操作
     setEvent,
     setNpcActions,
