@@ -1,6 +1,6 @@
 # 金田：1851 — API 接口文档
 
-> 本文档是 `server/server/api/game/` 下 7 个游戏 API 路由的**唯一接口定义来源**，禁止代码与文档脱节。
+> 本文档是 `server/server/api/game/` 下 8 个游戏 API 路由的**唯一接口定义来源**，禁止代码与文档脱节。
 >
 > 所有路由基础地址：开发期 `http://localhost:3000/api/game`，生产期 `https://api.jintian-1851.example.com/api/game`。
 
@@ -13,6 +13,7 @@
 - [POST /api/game/npc-actions](#post-apigamenpc-actions)
 - [POST /api/game/advisor-briefing](#post-apigameadvisor-briefing)
 - [POST /api/game/advisor-chat](#post-apigameadvisor-chat)
+- [POST /api/game/faction-negotiate](#post-apigamefaction-negotiate)
 - [POST /api/game/sync-save](#post-apigamesync-save)
 - [GET /api/game/sync-save](#get-apigamesync-save)
 - [错误码表](#错误码表)
@@ -43,7 +44,7 @@
 ### 频率限制
 
 - 中间件：[server/middleware/rate-limit.ts](file:///d:/code/codeWork/jintian-1851/server/server/middleware/rate-limit.ts)
-- 范围：`init-factions` / `generate-event` / `resolve-decision` / `npc-actions` / `advisor-chat` / `advisor-briefing` 六个 AI 端点
+- 范围：`init-factions` / `generate-event` / `resolve-decision` / `npc-actions` / `advisor-chat` / `advisor-briefing` / `faction-negotiate` 七个 AI 端点
 - 限制：按 `deviceId`（请求头 `x-device-id`）每分钟最多 10 次
 - 超限：HTTP 429 + `{ "ok": false, "error": { "code": "RATE_LIMITED", "message": "请求过于频繁，请稍后再试" } }`
 - **`sync-save` 不受频率限制**（非 AI 调用）
@@ -51,7 +52,7 @@
 ### 并发锁
 
 - 实现：[server/utils/concurrency-lock.ts](file:///d:/code/codeWork/jintian-1851/server/server/utils/concurrency-lock.ts)
-- 粒度：`saveId`（`generate-event` / `resolve-decision` / `npc-actions` / `advisor-chat` 均以 `saveId` 为锁键）
+- 粒度：`saveId`（`generate-event` / `resolve-decision` / `npc-actions` / `advisor-chat` / `faction-negotiate` 均以 `saveId` 为锁键）
 - 行为：同 `saveId` 已有进行中请求时，新请求立即返回 429 + `CONCURRENT_REQUEST`
 - 锁超时：30 秒自动释放（防死锁）
 - **`advisor-briefing` 不占用并发锁**（无副作用，可与上述端点并发，见 [advisor-briefing 章节](#post-apigameadvisor-briefing)）
@@ -251,6 +252,8 @@ X-Tool-Fallback: true   # 仅当 get-recent-events 工具调用失败时存在
 玩家自由输入决策时，AI 解析为结构化 effects。源码：[resolve-decision.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/resolve-decision.ts)。
 
 > 注：玩家选择事件预置选项时**不调用本接口**，前端直接应用对应 `option.effects`。本接口仅用于「自由行动」输入。
+>
+> **疑问句守卫**：`playerDecision` 以疑问/求助词开头（怎么 / 怎样 / 如何 / 为什么 / 为啥 / 帮帮我 / 能不能 / 能否 / 该不该 / 该怎么办 / 请问）时，代码层直接拦截返回犹豫签名，**不调用 LLM**（实测 LLM 对疑问句无法稳定判犹豫且会幻觉 factionEffects）。实现：[hesitation-guard.ts](file:///d:/code/codeWork/jintian-1851/server/server/utils/hesitation-guard.ts)。
 
 ### 请求
 
@@ -316,6 +319,19 @@ x-device-id: {设备指纹}
 > **资源代价**：决策的资源代价（如"资助湘军"→ `silver:-50`）经 `effects` 表达，与 `factionEffects` 叠加应用，形成"有代价的自然语言外交"。
 
 ### 降级
+
+**疑问句守卫命中**时（见顶部说明），不调 LLM 直接返回，响应体多 `hesitation: true`（前端可据此提示玩家去问军师）：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "effects": { "people": -1, "silver": -10 },
+    "factionEffects": []
+  },
+  "hesitation": true
+}
+```
 
 LLM 2 次重试均失败后返回默认 effects + 空 `factionEffects`，响应头 `X-Fallback: true`，响应体多 `fallback: true`：
 
@@ -638,6 +654,115 @@ thinking 控制：`Qwen/Qwen3-8B` + `enable_thinking: false`（军师对话不�
 | 429 | `CONCURRENT_REQUEST` | 同 `saveId` 已有进行中请求 |
 
 > 注：LLM 调用失败时**不返回 createError**，而是先写 `data: {"error":"AI_CALL_FAILED"}` 再 `end()`，避免破坏流式响应体。
+
+---
+
+## POST /api/game/faction-negotiate
+
+玩家与单个 NPC 势力 Agent 的自然语言谈判（写信/游说）。源码：[faction-negotiate.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/faction-negotiate.ts)。
+
+两阶段状态机（单次谈判最多 2 次 AI 调用）：
+- `phase='letter'`：玩家写信（1-200 字）→ Agent 以势力人格回信并表态（`accept` 应允 / `reject` 拒绝 / `counter` 还价附表内条件）。
+- `phase='settle'`：仅 letter 返回 `counter` 后可达，玩家「接受条件」或「还价」→ Agent 最终裁定（accept/reject，**不再提新条件**）。
+
+> **防幻觉边界**：LLM 只产出意图（dealId + 区间内 price）与文案；效果数值由前端按镜像兑换表 `NEGOTIATION_DEALS`（[negotiation-deals.ts](file:///d:/code/codeWork/jintian-1851/server/server/utils/negotiation-deals.ts) ↔ [constants.ts](file:///d:/code/codeWork/jintian-1851/game-web/src/utils/constants.ts)）确定性执行，status 变更仅 `alliance-deal` → `'allied'` 由前端按表映射。
+
+### 请求（letter 阶段）
+
+```http
+POST /api/game/faction-negotiate
+Content-Type: application/json
+x-device-id: {设备指纹}
+
+{
+  "saveId": "550e8400-e29b-41d4-a716-446655440000",
+  "turn": 3,
+  "phase": "letter",
+  "factionId": "huai-jun",
+  "letter": "久闻贵军威名，愿以白银结好。若蒙不弃，还请开个价码。",
+  "character": { "background": "文官", "factionName": "清廷" },
+  "stateSnapshot": { },
+  "faction": { "id": "huai-jun", "name": "淮军", "summary": "...", "power": 60, "relationship": 40, "status": "active" }
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `saveId` | string (uuid) | 是 | 存档 ID |
+| `turn` | number (positive int) | 是 | 当前回合 |
+| `phase` | `'letter'` \| `'settle'` | 是 | 谈判阶段 |
+| `factionId` | string | 是 | 目标势力 ID，**必须与 `faction.id` 一致**（不一致返回 400） |
+| `letter` | string (1-200 字) | 是 | 玩家信件原文 |
+| `character` | object | 是 | `{ background, factionName }`（同 npc-actions） |
+| `stateSnapshot` | object | 是 | 同 `generate-event` |
+| `faction` | object | 是 | 目标势力全量（`{ id, name, summary, power, relationship, status }`） |
+
+### 请求（settle 阶段，额外字段）
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `previousReply` | string (1-200 字) | 是 | letter 阶段的回信（Agent 上下文，前端原样带回） |
+| `deal` | object | 是 | Agent 上轮提出的条件 `{ dealId, price }`（服务端再 sanitize 防篡改） |
+| `playerResponse` | `'accept'` \| `'counter'` | 是 | 玩家响应 |
+| `counterPrice` | number | 条件必填 | `playerResponse='counter'` 时必填；服务端 clamp 回 `[floor(silverMin×0.5), 原价]` |
+
+### 响应（成功）
+
+```json
+{
+  "ok": true,
+  "data": {
+    "stance": "counter",
+    "reply": "结盟非小事，需银两为证，白银一百两为贽，方可通好。",
+    "relationshipDelta": 3,
+    "deal": { "dealId": "gift-deal", "price": 100 }
+  }
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `stance` | `'accept'` \| `'reject'` \| `'counter'` | 表态；settle 阶段仅 accept/reject（LLM 返回 counter 会被降为 reject） |
+| `reply` | string (≤200 字) | 回信（空时兜底「（无回信）」） |
+| `relationshipDelta` | number (±10) | 信件软性关系影响（服务端已 clamp） |
+| `deal` | object（可选） | 仅 letter 阶段 `stance='counter'` 时存在：`{ dealId, price }`（dealId ∈ 兑换表，price 已 clamp 区间） |
+
+### 服务端 sanitize（防幻觉）
+
+| 场景 | 处理 |
+|---|---|
+| LLM 输出表外 `dealId` / 关系门槛不满足 | 丢弃 deal 且 stance 强制降为 `reject`（玩家侧不展示条件卡片） |
+| price 越界 | clamp 回该 deal 的银两区间 |
+| `relationshipDelta` 越界 | clamp ±10 |
+| `reply` 超长 / 非法 stance | 截断 200 字 / 降为 `reject` |
+| settle 阶段 LLM 返回 counter | 降为 `reject`（不再提新条件） |
+
+### 降级
+
+AI 调用异常或 JSON 不可解析时**不重试**，返回 HTTP 200 + 响应头 `X-Fallback: true`：
+
+```json
+{
+  "ok": true,
+  "data": { "stance": "reject", "reply": "", "relationshipDelta": 0 },
+  "fallback": true
+}
+```
+
+> 前端语义：letter 阶段降级**不消耗谈判配额**（`negotiationUsedThisTurn` 不置位，允许同回合重试，提示「信使途中受阻」）；settle 阶段降级仅应用信件 `relationshipDelta`，配额不退。
+
+### E2E 测试模式
+
+请求头 `x-e2e-test-mode: 1` 时：Agent 步数压为 `stepCountIs(1)`、超时 8 秒（与 npc-actions 一致，加速端到端用例）。
+
+### 错误
+
+| HTTP | code | 触发场景 |
+|---|---|---|
+| 400 | `INVALID_PARAMS` | body 解析失败 / zod 校验失败（letter 长度、settle counter 缺 counterPrice 等） |
+| 400 | `INVALID_PARAMS` | `factionId` ≠ `faction.id`，或 settle 携带非法 deal（表外 dealId / 门槛不满足） |
+| 429 | `RATE_LIMITED` | 超 10 次/分钟 |
+| 429 | `CONCURRENT_REQUEST` | 同 `saveId` 已有进行中请求 |
 
 ---
 

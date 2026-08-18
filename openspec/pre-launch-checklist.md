@@ -43,6 +43,14 @@
 
 参考：`openspec/changes/improve-ux-playability/tasks.md` T4.4
 
+## 来源：free-action-faction-effects（自由行动势力影响提案）
+
+### 多端冒烟遗留：微信小程序人工走查
+
+- [ ] 微信开发者工具中走查自由行动含势力变化：输入"暗中资助湘军"类决策 → 反馈区出现"关系 +N"提示、资源扣减正常（H5 端已由 `tests/e2e/free-action-faction-effects.spec.ts` 覆盖；逻辑层三端共用，无浏览器 API 依赖）
+
+参考：`openspec/changes/archive/2026-08-17-free-action-faction-effects/tasks.md` 第 5 节
+
 ## 完成标准
 
 所有项打勾后，两个提案可视为完全交付，可移除本清单文件。

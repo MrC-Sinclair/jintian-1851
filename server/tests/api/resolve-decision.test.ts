@@ -49,6 +49,14 @@ function makeBody(overrides = {}) {
   }
 }
 
+/** 前端精简传入的势力上下文（id/name/relationship/status/power） */
+function makeFactions() {
+  return [
+    { id: 'xiang-jun', name: '湘军', relationship: 10, status: 'active', power: 60 },
+    { id: 'qing-ting', name: '清廷', relationship: 0, status: 'active', power: 80 }
+  ]
+}
+
 describe('POST /api/game/resolve-decision', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -64,6 +72,56 @@ describe('POST /api/game/resolve-decision', () => {
     const res = (await handler(makeEvent())) as any
     expect(res.ok).toBe(true)
     expect(res.data.effects).toEqual(effects)
+    // 未传 factions 时 factionEffects 恒为空数组（向后兼容）
+    expect(res.data.factionEffects).toEqual([])
+  })
+
+  it('自由行动势力变化：携带 factions 时返回有效 factionEffects', async () => {
+    generateObjectMock.mockResolvedValueOnce({
+      object: {
+        effects: { silver: -50 },
+        factionEffects: [{ factionId: 'xiang-jun', relationshipDelta: 15 }]
+      }
+    } as any)
+    readBodyMock.mockResolvedValueOnce(
+      makeBody({ playerDecision: '我想暗中资助湘军', factions: makeFactions() })
+    )
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(res.data.effects).toEqual({ silver: -50 })
+    expect(res.data.factionEffects).toEqual([{ factionId: 'xiang-jun', relationshipDelta: 15 }])
+  })
+
+  it('幻觉防护：无效 factionId 被 sanitize 丢弃，仅保留有效条目', async () => {
+    generateObjectMock.mockResolvedValueOnce({
+      object: {
+        effects: { silver: -30 },
+        factionEffects: [
+          { factionId: 'bu-cun-zai', relationshipDelta: 20 }, // AI 编造的势力 → 丢弃
+          { factionId: 'qing-ting', powerDelta: -10 } // 有效条目 → 保留
+        ]
+      }
+    } as any)
+    readBodyMock.mockResolvedValueOnce(
+      makeBody({ playerDecision: '我想削弱清廷', factions: makeFactions() })
+    )
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(res.data.factionEffects).toEqual([{ factionId: 'qing-ting', powerDelta: -10 }])
+  })
+
+  it('疑问句守卫：犹豫签名 factionEffects 恒为空数组且不调 LLM', async () => {
+    readBodyMock.mockResolvedValueOnce(
+      makeBody({ playerDecision: '怎么能打赢湘军', factions: makeFactions() })
+    )
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(res.hesitation).toBe(true)
+    expect(res.data.factionEffects).toEqual([]) // 提问不得改变势力关系
+    expect(generateObjectMock).not.toHaveBeenCalled()
   })
 
   it('参数错误：playerDecision 为空', async () => {
@@ -85,10 +143,12 @@ describe('POST /api/game/resolve-decision', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('降级：LLM 2 次失败后返回默认 effects（全属性 -3）', async () => {
+  it('降级：LLM 2 次失败后返回默认 effects（全属性 -3）+ 空 factionEffects', async () => {
     generateObjectMock.mockRejectedValueOnce(new Error('fail1'))
     generateObjectMock.mockRejectedValueOnce(new Error('fail2'))
-    readBodyMock.mockResolvedValueOnce(makeBody())
+    readBodyMock.mockResolvedValueOnce(
+      makeBody({ playerDecision: '我想暗中资助湘军', factions: makeFactions() })
+    )
     const event = makeEvent()
 
     const res = (await handler(event)) as any
@@ -101,6 +161,8 @@ describe('POST /api/game/resolve-decision', () => {
       people: -3,
       diplomacy: -3
     })
+    // 降级不得改动任何势力
+    expect(res.data.factionEffects).toEqual([])
     expect((globalThis as any).setHeader).toHaveBeenCalledWith(event, 'X-Fallback', 'true')
   })
 

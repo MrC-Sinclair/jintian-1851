@@ -13,6 +13,7 @@ MVP 阶段全部使用 `Qwen/Qwen3-8B`（硅基流动 SiliconFlow），单价约
 | 自由决策判定 | `Qwen/Qwen3-8B` | `generateObject()` | `true` | 30s |
 | NPC 势力行动 | `Qwen/Qwen3-8B` | `generateObject()` | `true` | 30s |
 | 军师对话（流式） | `Qwen/Qwen3-8B` | `streamText()` SSE | `false` | 60s |
+| 势力谈判（写信/裁定） | `Qwen/Qwen3-8B` | `streamText()` + 工具 | `false` | 30s |
 
 **未启用模型**（保留）：
 
@@ -39,6 +40,7 @@ MVP 阶段全部使用 `Qwen/Qwen3-8B`（硅基流动 SiliconFlow），单价约
 |---|---|---|---|
 | 3 | `resolve-decision` | 玩家选择「自由行动」输入而非事件预置选项 | 选事件选项时不调用，前端直接应用 `option.effects` |
 | 4 | `advisor-chat` | 玩家点击「咨询军师」 | 可一回合多次触发，每次对话独立 |
+| 5 | `faction-negotiate` | 玩家发起「写信谈判」 | 单次谈判最多 2 次调用（letter + settle），受独立配额 `negotiationUsedThisTurn`（每回合 1 次）约束；letter 降级不消耗配额可重试 |
 
 ### 开局调用
 
@@ -58,6 +60,9 @@ MVP 阶段全部使用 `Qwen/Qwen3-8B`（硅基流动 SiliconFlow），单价约
 | `npc-actions`（含 system prompt + compressedFactions + stateSnapshot） | ~1200 | ~500 | ¥0.000595 |
 | `resolve-decision`（仅自由输入时） | ~1800 | ~100 | ¥0.000665 |
 | `advisor-chat`（单轮，~300 字回复） | ~2000 | ~500 | ¥0.000875 |
+| `faction-negotiate`（单阶段：人格 prompt + 兑换表 + 信件/上下文） | ~1200 | ~250 | ¥0.000508 |
+
+> 谈判完整一轮（letter + settle）≈ 2 × ¥0.000508 ≈ ¥0.001，与 npc-actions（每回合必发）同量级；接受条件的效果执行是纯前端确定性计算，不耗 AI。
 
 **典型回合**（选项决策 + 1 次军师对话）：
 
@@ -181,6 +186,7 @@ sha256(saveId + turn + sha256(JSON.stringify(stateSnapshot)) + sha256(JSON.strin
 | `resolve-decision` | 默认 effects `{military:-3, economy:-3, politics:-3, people:-3, diplomacy:-3}` | 模拟决策失误的惩罚 |
 | `npc-actions` | `{ actions: [] }` | 跳过本回合 NPC 行动 |
 | `advisor-chat` | 流式写 `data: {"error":"AI_CALL_FAILED"}` 后 end | 前端显示「军师沉默」占位 |
+| `faction-negotiate` | `{ stance:'reject', reply:'', relationshipDelta:0 }` + `fallback:true`（不重试） | 前端提示「信使途中受阻」，letter 阶段不消耗谈判配额 |
 
 ## 频率限制
 
@@ -188,7 +194,7 @@ sha256(saveId + turn + sha256(JSON.stringify(stateSnapshot)) + sha256(JSON.strin
 
 | 项 | 值 |
 |---|---|
-| 限制范围 | 6 个 AI 端点（init-factions / generate-event / resolve-decision / npc-actions / advisor-chat / advisor-briefing，不含 `sync-save`） |
+| 限制范围 | 7 个 AI 端点（init-factions / generate-event / resolve-decision / npc-actions / advisor-chat / advisor-briefing / faction-negotiate，不含 `sync-save`） |
 | 限制维度 | `deviceId`（请求头 `x-device-id`） |
 | 限制阈值 | 10 次 / 分钟 |
 | 超限响应 | HTTP 429 + `RATE_LIMITED` |

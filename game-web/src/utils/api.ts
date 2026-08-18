@@ -93,19 +93,23 @@ function getDeviceIdSafe(): string {
 }
 
 /**
- * 发起 API 请求。
+ * 发起 API 请求（内部实现，同时返回顶层 fallback 标志）。
  *
  * @param method HTTP 方法（GET/POST/PUT/DELETE）
  * @param url 路径（如 '/api/game/init-factions'），不带 base URL
  * @param body 请求体（POST/PUT 时传入，自动 JSON.stringify）
- * @returns 响应 data 字段（已剥除 ok 包装）
+ * @returns data 字段（已剥除 ok 包装）+ 顶层 fallback 标志
  * @throws ApiError 服务端返回 ok:false 或网络层失败时
  */
-export function request<T = unknown>(method: string, url: string, body?: unknown): Promise<T> {
+function requestRaw<T = unknown>(
+  method: string,
+  url: string,
+  body?: unknown
+): Promise<{ data: T; fallback: boolean }> {
   const fullUrl = getBaseUrl() + url
   const deviceId = getDeviceIdSafe()
 
-  return new Promise<T>((resolve, reject) => {
+  return new Promise<{ data: T; fallback: boolean }>((resolve, reject) => {
     uni.request({
       url: fullUrl,
       method: method.toUpperCase() as
@@ -132,8 +136,9 @@ export function request<T = unknown>(method: string, url: string, body?: unknown
         // 网络层成功，但服务端可能返回业务错误（4xx/5xx + ok:false）
         if (data && typeof data === 'object' && 'ok' in data) {
           if (data.ok === true) {
-            // 业务成功
-            resolve((data as SuccessResponse<T>).data)
+            // 业务成功（fallback 标志随响应顶层返回，如 npc-actions / faction-negotiate 降级）
+            const wrapped = data as SuccessResponse<T>
+            resolve({ data: wrapped.data, fallback: wrapped.fallback === true })
             return
           }
           if (data.ok === false) {
@@ -177,6 +182,19 @@ export function request<T = unknown>(method: string, url: string, body?: unknown
   })
 }
 
+/**
+ * 发起 API 请求。
+ *
+ * @param method HTTP 方法（GET/POST/PUT/DELETE）
+ * @param url 路径（如 '/api/game/init-factions'），不带 base URL
+ * @param body 请求体（POST/PUT 时传入，自动 JSON.stringify）
+ * @returns 响应 data 字段（已剥除 ok 包装）
+ * @throws ApiError 服务端返回 ok:false 或网络层失败时
+ */
+export function request<T = unknown>(method: string, url: string, body?: unknown): Promise<T> {
+  return requestRaw<T>(method, url, body).then((r) => r.data)
+}
+
 /** 便捷方法：GET 请求 */
 export function get<T = unknown>(url: string): Promise<T> {
   return request<T>('GET', url)
@@ -185,6 +203,18 @@ export function get<T = unknown>(url: string): Promise<T> {
 /** 便捷方法：POST 请求 */
 export function post<T = unknown>(url: string, body?: unknown): Promise<T> {
   return request<T>('POST', url, body)
+}
+
+/**
+ * 便捷方法：POST 请求（保留顶层 fallback 标志）
+ *
+ * 供需要区分降级响应的调用方使用（如 faction-negotiate 降级不消耗谈判配额）。
+ */
+export function postWithMeta<T = unknown>(
+  url: string,
+  body?: unknown
+): Promise<{ data: T; fallback: boolean }> {
+  return requestRaw<T>('POST', url, body)
 }
 
 /** 便捷方法：PUT 请求 */

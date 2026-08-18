@@ -13,7 +13,7 @@
 
 import { useGameStore } from '@/stores/game'
 import { useGameState } from '@/composables/useGameState'
-import { post, ApiError } from '@/utils/api'
+import { post, postWithMeta, ApiError } from '@/utils/api'
 import { checkEndConditions } from '@/utils/end-conditions'
 import { getCrisis, type Crisis } from '@/utils/goal-hint'
 import { calcAttributeShortfall } from '@/utils/attribute-shortfall'
@@ -22,12 +22,17 @@ import { SYSTEM_EVENT } from '@/utils/copywriting'
 import type {
   Attributes,
   EventOption,
+  FactionNegotiateResponse,
   FreeFactionEffect,
   GameEvent,
   HistoryEvent,
   NpcAction,
+  NegotiationDeal,
   Resources
 } from '@/types/game'
+
+/** 谈判响应（含降级标志，fallback=true 时未消耗配额、未应用任何效果） */
+export type FactionNegotiateResult = FactionNegotiateResponse & { fallback: boolean }
 
 /** 后端 generate-event 响应数据类型（data.event 包装） */
 interface GenerateEventResponse {
@@ -272,6 +277,138 @@ export function useTurn(options: UseTurnOptions = {}) {
     return null
   }
 
+  // ====================== 谈判（faction-negotiation 提案） ======================
+
+  /**
+   * 发起谈判 letter 阶段：玩家写信 → Agent 回信表态
+   *
+   * - 成功（非降级）：置位 negotiationUsedThisTurn；stance 为 accept/reject 时
+   *   立即应用信件 relationshipDelta 并入档历史事件；counter 时延迟到 settle 再应用
+   * - 降级（fallback）：不置位配额、不应用任何效果（允许同回合重试）
+   * - 网络层/业务错误：返回 null（配额不动）
+   */
+  async function sendNegotiationLetter(
+    factionId: string,
+    letter: string
+  ): Promise<FactionNegotiateResult | null> {
+    const s = store.currentSave
+    if (!s) {
+      options.onError?.('negotiate', '无存档')
+      return null
+    }
+    const fac = s.factions.find((f) => f.id === factionId)
+    if (!fac) {
+      options.onError?.('negotiate', '势力不存在')
+      return null
+    }
+    if (store.negotiationUsedThisTurn) return null
+
+    try {
+      const res = await postWithMeta<FactionNegotiateResponse>('/api/game/faction-negotiate', {
+        saveId: s.saveId,
+        turn: s.state.turn,
+        phase: 'letter',
+        factionId,
+        letter: letter.trim().slice(0, 200),
+        character: {
+          background: s.character.background,
+          factionName: s.character.factionName
+        },
+        stateSnapshot: s.state,
+        faction: fac
+      })
+
+      if (res.fallback) {
+        // 降级：信使途中受阻，不消耗配额，不应用任何效果
+        return { ...res.data, fallback: true }
+      }
+
+      // 成功送达：置位本回合谈判配额（settle 追答不重复计）
+      store.markNegotiationUsed()
+
+      // 直接应允/拒绝：立即应用信件软性影响并入档（counter 的 delta 延迟到 settle 一并应用）
+      if (res.data.stance !== 'counter') {
+        store.applyLetterDelta(factionId, res.data.relationshipDelta)
+      }
+      return { ...res.data, fallback: false }
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '谈判信件发送失败'
+      options.onError?.('negotiate', msg)
+      return null
+    }
+  }
+
+  /**
+   * 谈判 settle 阶段：玩家「接受条件」或「还价」→ Agent 最终裁定
+   *
+   * - 裁定 accept：按实际成交价（接受=原价 / 还价=counterPrice）确定性执行兑换
+   *   （applyNegotiationDeal 内含信件 delta 与 deal 效果的合并应用）
+   * - 裁定 reject / 降级：仅应用信件 relationshipDelta（谈判以未成交告终，配额不退）
+   *
+   * @param params.letterDelta letter 阶段的 relationshipDelta（settle 一并结算）
+   */
+  async function respondNegotiationDeal(params: {
+    factionId: string
+    letter: string
+    previousReply: string
+    deal: NegotiationDeal
+    playerResponse: 'accept' | 'counter'
+    counterPrice?: number
+    letterDelta: number
+  }): Promise<FactionNegotiateResult | null> {
+    const s = store.currentSave
+    if (!s) {
+      options.onError?.('negotiate', '无存档')
+      return null
+    }
+    const fac = s.factions.find((f) => f.id === params.factionId)
+    if (!fac) {
+      options.onError?.('negotiate', '势力不存在')
+      return null
+    }
+
+    try {
+      const res = await postWithMeta<FactionNegotiateResponse>('/api/game/faction-negotiate', {
+        saveId: s.saveId,
+        turn: s.state.turn,
+        phase: 'settle',
+        factionId: params.factionId,
+        letter: params.letter.trim().slice(0, 200),
+        previousReply: params.previousReply,
+        deal: params.deal,
+        playerResponse: params.playerResponse,
+        ...(params.playerResponse === 'counter' ? { counterPrice: params.counterPrice } : {}),
+        character: {
+          background: s.character.background,
+          factionName: s.character.factionName
+        },
+        stateSnapshot: s.state,
+        faction: fac
+      })
+
+      if (res.fallback) {
+        // settle 降级：谈判以未成交告终（letter 已消耗配额），仅应用信件 delta
+        store.applyLetterDelta(params.factionId, params.letterDelta)
+        return { ...res.data, fallback: true }
+      }
+
+      if (res.data.stance === 'accept') {
+        // 成交：接受按原价、还价按还价成交（数值由前端兑换表确定性执行）
+        const price =
+          params.playerResponse === 'counter' ? params.counterPrice! : params.deal.price
+        store.applyNegotiationDeal(params.factionId, params.deal.dealId, price, params.letterDelta)
+      } else {
+        // 拒绝：仅应用信件软性影响
+        store.applyLetterDelta(params.factionId, params.letterDelta)
+      }
+      return { ...res.data, fallback: false }
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '谈判裁定失败'
+      options.onError?.('negotiate', msg)
+      return null
+    }
+  }
+
   /**
    * 结束回合：
    *   1. 调用 npc-actions 获取 NPC 行动
@@ -397,6 +534,8 @@ export function useTurn(options: UseTurnOptions = {}) {
   return {
     startTurn,
     makeDecision,
-    endTurn
+    endTurn,
+    sendNegotiationLetter,
+    respondNegotiationDeal
   }
 }

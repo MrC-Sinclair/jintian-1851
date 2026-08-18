@@ -262,7 +262,25 @@
       @click="onCloseDiplomacy"
     >
       <view class="game-main__diplomacy-drawer" @click.stop>
-        <DiplomacyPanel @close="onCloseDiplomacy" />
+        <DiplomacyPanel
+          @close="onCloseDiplomacy"
+          @negotiate="onNegotiate"
+        />
+      </view>
+    </view>
+
+    <!-- 谈判弹窗（faction-negotiation 提案 T6）：写信 → 回信 → 接受/还价/放弃 -->
+    <view
+      v-if="showNegotiation && negotiationFaction"
+      class="game-main__negotiation-mask"
+      @click="onCloseNegotiation"
+    >
+      <view class="game-main__negotiation-wrap" @click.stop>
+        <NegotiationDialog
+          :key="negotiationFaction.id"
+          :faction="negotiationFaction"
+          @close="onCloseNegotiation"
+        />
       </view>
     </view>
 
@@ -305,12 +323,13 @@ import GoalPanel from '@/components/GoalPanel.vue'
 import CollapsibleSection from '@/components/CollapsibleSection.vue'
 import TooltipView from '@/components/TooltipView.vue'
 import DiplomacyPanel from '@/components/DiplomacyPanel.vue'
+import NegotiationDialog from '@/components/NegotiationDialog.vue'
 import OnboardingOverlay, {
   type OnboardingStep
 } from '@/components/OnboardingOverlay.vue'
 import { PAGE_TEXT, PHASE_HINTS, TOOLTIP_TEXT, ERROR_TEXT, BUTTON_TEXT } from '@/utils/copywriting'
 import { getCrisis } from '@/utils/goal-hint'
-import type { HistoryEvent } from '@/types/game'
+import type { Faction, HistoryEvent } from '@/types/game'
 
 const { load } = useGameState()
 const { confirm } = useConfirmDialog()
@@ -406,6 +425,10 @@ async function autoSync(): Promise<void> {
 // ====================== 响应式状态 ======================
 const showAdvisor = ref(false)
 const showDiplomacy = ref(false)
+
+/** 谈判弹窗（faction-negotiation 提案 T6）：目标势力 + 显隐 */
+const showNegotiation = ref(false)
+const negotiationFaction = ref<Faction | null>(null)
 const showFreeInput = ref(false)
 const freeInput = ref('')
 // T3.1：selectedOptionId 移至 store（跨组件同步，EventCard 内 DecisionButton 读取）
@@ -712,6 +735,17 @@ function onOpenDiplomacy(): void {
 
 function onCloseDiplomacy(): void {
   showDiplomacy.value = false
+}
+
+// ====================== 谈判弹窗（faction-negotiation 提案 T6） ======================
+function onNegotiate(fac: Faction): void {
+  negotiationFaction.value = fac
+  showNegotiation.value = true
+}
+
+function onCloseNegotiation(): void {
+  showNegotiation.value = false
+  negotiationFaction.value = null
 }
 </script>
 
@@ -1128,6 +1162,25 @@ function onCloseDiplomacy(): void {
     border-top-left-radius: 24rpx;
     border-top-right-radius: 24rpx;
     box-shadow: 0 -8rpx 24rpx rgba(0, 0, 0, 0.18);
+  }
+
+  // 谈判弹窗（faction-negotiation 提案 T6）：居中弹窗，盖在外交抽屉之上
+  &__negotiation-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 110;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.45);
+  }
+
+  &__negotiation-wrap {
+    display: flex;
+    justify-content: center;
   }
 }
 

@@ -136,6 +136,34 @@ export interface FreeFactionEffect {
   powerDelta?: number
 }
 
+// ====================== 谈判（faction-negotiation 提案） ======================
+
+/** 谈判表态：应允 / 拒绝 / 还价（仅 letter 阶段可返回 counter） */
+export type NegotiationStance = 'accept' | 'reject' | 'counter'
+
+/** 兑换表 deal id（与 server/server/utils/negotiation-deals.ts 镜像） */
+export type NegotiationDealId = 'gift-deal' | 'trade-deal' | 'truce-deal' | 'alliance-deal'
+
+/** Agent 提出的条件（dealId ∈ 兑换表，price 为 silver 定价，后端已 clamp 区间） */
+export interface NegotiationDeal {
+  dealId: NegotiationDealId
+  price: number
+}
+
+/**
+ * faction-negotiate 出参（两阶段同构，settle 无 deal 字段）
+ * 来源：/api/game/faction-negotiate 的 data
+ */
+export interface FactionNegotiateResponse {
+  stance: NegotiationStance
+  /** 回信（≤200 字） */
+  reply: string
+  /** 信件软性关系影响（后端已 clamp ±10） */
+  relationshipDelta: number
+  /** 仅 letter 阶段 stance='counter' 时存在 */
+  deal?: NegotiationDeal
+}
+
 /** NPC 行动（npc-actions 接口返回） */
 export interface NpcAction {  factionId: string
   factionName: string

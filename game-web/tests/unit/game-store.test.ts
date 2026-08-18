@@ -10,6 +10,7 @@
  *   - markEnded（ended/endedAt/endedReason 同步）
  *   - setEvent / setNpcActions
  *   - setProcessingTurn / setAdvisorStreaming / setSyncing
+ *   - applyFreeFactionEffects（自由行动势力软性微调：clamp/不可变/两通道叠加/反馈记录）
  */
 
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -332,5 +333,100 @@ describe('setEvent / setNpcActions', () => {
     ]
     store.setNpcActions(actions)
     expect(store.npcActions).toEqual(actions)
+  })
+})
+
+describe('applyFreeFactionEffects', () => {
+  /** 双势力存档：f1 关系接近上限 / f2 关系接近下限、实力低，便于验证 clamp */
+  function createFactionSave(): GameSave {
+    const save = createMockSave()
+    save.updatedAt = 0
+    save.factions = [
+      { id: 'f1', name: '清廷', summary: '晚清朝廷', power: 10, relationship: 95, status: 'active' },
+      { id: 'f2', name: '湘军', summary: '地方团练武装', power: 5, relationship: -95, status: 'active' }
+    ]
+    return save
+  }
+
+  it('应用 relationshipDelta/powerDelta 并刷新 updatedAt（不可变更新）', () => {
+    const store = useGameStore()
+    store.setSave(createFactionSave())
+    const originalFactions = store.currentSave!.factions
+    const originalF2 = originalFactions.find((f) => f.id === 'f2')!
+
+    store.applyFreeFactionEffects([{ factionId: 'f2', relationshipDelta: 15, powerDelta: 10 }])
+
+    const f2 = store.currentSave!.factions.find((f) => f.id === 'f2')!
+    expect(f2.relationship).toBe(-80)
+    expect(f2.power).toBe(15)
+    // updatedAt 刷新（初始置 0，应用后必然 > 0）
+    expect(store.currentSave!.updatedAt).toBeGreaterThan(0)
+    // 不可变更新：存档换新数组，原数组与原对象保持不变
+    expect(store.currentSave!.factions).not.toBe(originalFactions)
+    expect(originalF2.relationship).toBe(-95)
+    expect(originalF2.power).toBe(5)
+  })
+
+  it('clamp：delta 超限压回 ±20/±30，relationship 限 [-100,100]，power 下限 0', () => {
+    const store = useGameStore()
+    store.setSave(createFactionSave())
+
+    store.applyFreeFactionEffects([
+      { factionId: 'f1', relationshipDelta: 50 }, // 超出 +20 → 实际 +20；95+20=115 → clamp 100
+      { factionId: 'f2', powerDelta: -30 } // 5-30=-25 → Math.max(0) → 0
+    ])
+
+    const f1 = store.currentSave!.factions.find((f) => f.id === 'f1')!
+    const f2 = store.currentSave!.factions.find((f) => f.id === 'f2')!
+    expect(f1.relationship).toBe(100)
+    expect(f2.power).toBe(0)
+  })
+
+  it('无效 factionId 条目被忽略，不影响其他有效条目', () => {
+    const store = useGameStore()
+    store.setSave(createFactionSave())
+
+    store.applyFreeFactionEffects([
+      { factionId: 'bu-cun-zai', relationshipDelta: 20 },
+      { factionId: 'f2', relationshipDelta: 10 }
+    ])
+
+    const f1 = store.currentSave!.factions.find((f) => f.id === 'f1')!
+    const f2 = store.currentSave!.factions.find((f) => f.id === 'f2')!
+    expect(f1.relationship).toBe(95) // 未命中条目原样保留
+    expect(f2.relationship).toBe(-85) // 有效条目正常应用
+  })
+
+  it('与 applyEffects 两通道叠加（资源扣减 + 关系上升互不干扰）', () => {
+    const store = useGameStore()
+    store.setSave(createFactionSave())
+
+    store.applyEffects({ silver: -50 })
+    store.applyFreeFactionEffects([{ factionId: 'f2', relationshipDelta: 20 }])
+
+    expect(store.currentSave!.state.resources.silver).toBe(950)
+    expect(store.currentSave!.factions.find((f) => f.id === 'f2')!.relationship).toBe(-75)
+  })
+
+  it('lastFreeFactionEffects 记录反馈供 UI 展示，clearLastFreeFactionEffects 清空', () => {
+    const store = useGameStore()
+    store.setSave(createFactionSave())
+
+    store.applyFreeFactionEffects([{ factionId: 'f2', relationshipDelta: 15 }])
+    expect(store.lastFreeFactionEffects).toEqual([{ name: '湘军', relationshipDelta: 15 }])
+
+    store.clearLastFreeFactionEffects()
+    expect(store.lastFreeFactionEffects).toEqual([])
+  })
+
+  it('无存档或空数组时安全早退', () => {
+    const store = useGameStore()
+    // 无存档不抛错
+    expect(() => store.applyFreeFactionEffects([{ factionId: 'f1', relationshipDelta: 5 }])).not.toThrow()
+
+    store.setSave(createFactionSave())
+    // 空数组不产生任何变更
+    expect(() => store.applyFreeFactionEffects([])).not.toThrow()
+    expect(store.currentSave!.factions.find((f) => f.id === 'f2')!.relationship).toBe(-95)
   })
 })

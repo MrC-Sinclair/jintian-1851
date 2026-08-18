@@ -42,6 +42,9 @@ import { vi } from 'vitest'
 ;(globalThis as any).setResponseStatus = vi.fn()
 ;(globalThis as any).setHeader = vi.fn()
 
+// mock getHeader：默认无特殊请求头（E2E 测试模式等由具体用例按需覆盖返回值）
+;(globalThis as any).getHeader = vi.fn(() => undefined)
+
 // mock getQuery / getRouterParam
 ;(globalThis as any).getQuery = vi.fn(() => ({}))
 ;(globalThis as any).getRouterParam = vi.fn(() => undefined)

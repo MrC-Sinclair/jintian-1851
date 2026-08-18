@@ -16,9 +16,10 @@ import { useTurn } from '../../src/composables/useTurn'
 import { useGameStore } from '../../src/stores/game'
 import type { GameSave } from '../../src/types/game'
 
-// mock utils/api 的 post
+// mock utils/api 的 post / postWithMeta（useTurn 谈判方法依赖 postWithMeta）
 vi.mock('@/utils/api', () => ({
   post: vi.fn(),
+  postWithMeta: vi.fn(),
   ApiError: class ApiError extends Error {
     code: string
     statusCode: number

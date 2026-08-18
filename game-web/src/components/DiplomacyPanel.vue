@@ -4,7 +4,9 @@
     <view class="diplomacy-panel__header">
       <view class="diplomacy-panel__title-wrap">
         <text class="diplomacy-panel__title">外交</text>
-        <text class="diplomacy-panel__remaining">本回合剩余次数：{{ remainingDiplomacy }}</text>
+        <text class="diplomacy-panel__remaining">
+          按钮剩余 {{ remainingDiplomacy }} · 谈判剩余 {{ remainingNegotiation }}
+        </text>
       </view>
       <view
         class="diplomacy-panel__close"
@@ -53,7 +55,7 @@
           />
         </view>
 
-        <!-- 6 动作按钮 -->
+        <!-- 6 动作按钮 + 写信入口（faction-negotiation 提案 T6） -->
         <view class="diplomacy-panel__actions">
           <view
             v-for="action in actionList"
@@ -66,6 +68,19 @@
           >
             <text class="diplomacy-panel__action-text">{{ DIPLOMACY_ACTION_LABELS[action] }}</text>
           </view>
+        </view>
+        <view
+          class="diplomacy-panel__action diplomacy-panel__action--letter"
+          :class="{ 'diplomacy-panel__action--disabled': isLetterDisabled(fac) }"
+          role="button"
+          aria-label="写信"
+          tabindex="0"
+          :hover-class="!isLetterDisabled(fac) ? 'diplomacy-panel__action--hover' : ''"
+          hover-stay-time="100"
+          @click="onWriteLetter(fac)"
+          @keydown.enter.prevent="onWriteLetter(fac)"
+        >
+          <text class="diplomacy-panel__action-text diplomacy-panel__action-text--letter">写信谈判</text>
         </view>
       </view>
     </view>
@@ -86,7 +101,12 @@
 import { computed } from 'vue'
 import { useGameStore } from '@/stores/game'
 import { useToast } from '@/composables/useToast'
-import { DIPLOMACY_RULES, canAfford, MAX_DIPLOMACY_PER_TURN } from '@/utils/constants'
+import {
+  DIPLOMACY_RULES,
+  MAX_DIPLOMACY_PER_TURN,
+  MAX_NEGOTIATION_PER_TURN,
+  canAfford
+} from '@/utils/constants'
 import {
   DIPLOMACY_ACTION_LABELS,
   formatRelationshipLabel,
@@ -99,6 +119,8 @@ const toast = useToast()
 
 const emit = defineEmits<{
   (e: 'close'): void
+  /** 写信谈判入口（faction-negotiation 提案）：由上层渲染 NegotiationDialog */
+  (e: 'negotiate', faction: Faction): void
 }>()
 
 /** 当前存档全部势力 */
@@ -110,6 +132,11 @@ const actionList: PlayerDiplomacyAction[] = ['结盟', '宣战', '行贿', '通�
 /** 本回合剩余外交次数（上限 - 已用） */
 const remainingDiplomacy = computed(() =>
   Math.max(0, MAX_DIPLOMACY_PER_TURN - (store.diplomacyUsedThisTurn ? 1 : 0))
+)
+
+/** 本回合剩余谈判次数（faction-negotiation 提案 D4：与按钮配额独立） */
+const remainingNegotiation = computed(() =>
+  Math.max(0, MAX_NEGOTIATION_PER_TURN - (store.negotiationUsedThisTurn ? 1 : 0))
 )
 
 /** relationship -100~100 → 0~100% （50% 表示中立） */
@@ -164,6 +191,27 @@ function onAction(fac: Faction, action: PlayerDiplomacyAction): void {
   } else {
     toast.error('外交行动失败，请稍后再试')
   }
+}
+
+/**
+ * 写信按钮禁用判定（faction-negotiation 提案 T6）
+ * 回合处理中 / 谈判配额已用 / 势力已灭 时禁用（allied 允许写信维持关系，首版口径）
+ */
+function isLetterDisabled(fac: Faction): boolean {
+  if (!store.currentSave) return true
+  if (store.isProcessingTurn) return true
+  if (store.negotiationUsedThisTurn) return true
+  if (fac.status === 'destroyed') return true
+  return false
+}
+
+/** 点击写信：交由上层弹出 NegotiationDialog */
+function onWriteLetter(fac: Faction): void {
+  if (isLetterDisabled(fac)) {
+    toast.error(store.negotiationUsedThisTurn ? '本回合谈判次数已用尽' : '该势力已灭，无从通信')
+    return
+  }
+  emit('negotiate', fac)
 }
 </script>
 
@@ -337,6 +385,19 @@ function onAction(fac: Faction, action: PlayerDiplomacyAction): void {
   &__action-text {
     font-size: 26rpx;
     color: #8b1a1a;
+  }
+
+  // 写信谈判入口（faction-negotiation 提案）：整行按钮，与 6 动作区分
+  &__action--letter {
+    margin-top: 12rpx;
+    min-height: 88rpx;
+    background-color: #f6ecd4;
+    border-color: #c9a86a;
+  }
+
+  &__action-text--letter {
+    font-weight: 600;
+    color: #6d4c41;
   }
 }
 </style>

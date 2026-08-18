@@ -135,6 +135,8 @@ AND 历史剧情类型在 LLM 自主生成路径中仍可被选中（用于无�
 
 `POST /api/game/resolve-decision` MUST 接收玩家自由输入文本，返回 AI 判定的效果。
 
+当前事件存在时，玩家除事件选项外，可通过"自由行动"输入自然语言决策（最多 200 字）。后端调 LLM 将文本解析为结构化 `effects`（属性/资源变更）。请求体可携带 `factions`（6 势力精简信息），LLM 可额外返回 `factionEffects`，使自然语言决策能对各势力产生「软性关系/实力微调」（`relationshipDelta` 限 ±20、`powerDelta` 限 ±30，不改 `status`）。`factionId` 必须为传入 factions 之一，后端 sanitize 丢弃无效 id（防幻觉）。降级（X-Fallback）或旧客户端未传 `factions` 时，`factionEffects` 返回空数组 `[]`，仅应用普通 `effects`，游戏照常进行。
+
 #### Scenario: 正常判定自由输入
 
 WHEN 前端发送 `POST /api/game/resolve-decision` body 含 `{ saveId, turn, playerDecision, stateSnapshot, event }`
@@ -142,18 +144,44 @@ THEN 服务端使用 `Qwen/Qwen3-8B` 模型调用 `generateObject()` + zod schem
 AND 提示词包含：玩家身份/势力、当前局势、本回合事件、玩家自由输入内容
 AND 返回结构 `{ effects: { military?, economy?, politics?, people?, diplomacy?, silver?, troops?, food?, reputation? } }`
 AND 每项属性影响范围 ±5~15
+AND 未携带 `factions` 时 `factionEffects` 恒为空数组（向后兼容旧客户端）
 
 #### Scenario: 自由输入校验
 
 WHEN `playerDecision` 长度 > 200 或为空字符串
 THEN 返回 HTTP 400 + `{ "ok": false, "error": { "code": "INVALID_PARAMS", "message": "..." } }`
 
-#### Scenario: 判定失败降级
+#### Scenario: 自由输入触发势力关系变化
+
+WHEN 玩家输入"我想暗中资助湘军"，且请求体携带 `factions`（含 `xiang-jun` 当前 `relationship`）
+THEN 后端返回 `factionEffects:[{factionId:'xiang-jun', relationshipDelta:>0}]` 与 `effects`（如 `silver:-50`）
+AND 前端分别经 `applyFreeFactionEffects` 与 `applyEffects` 应用，湘军 `relationship` 上升且最终 clamp(-100,100)
+
+#### Scenario: 仅软性微调，禁止改 status
+
+WHEN 玩家自由输入"与湘军结盟"
+THEN LLM 仅可在 `factionEffects` 返回 `relationshipDelta`（受 ±20 约束），不得返回 `status` 变更
+AND 正式结盟仍须走确定性外交按钮（relationship≥50 且 setStatus='allied'）
+
+#### Scenario: 幻觉防护（sanitize）
+
+WHEN LLM 返回 `factionEffects` 含不在 `factions` 列表中的 `factionId`
+THEN 后端 sanitize 丢弃该条，仅保留有效 `factionId` 的变更，不抛出错误
+
+#### Scenario: 判定失败降级（factionEffects 恒空）
 
 WHEN `generateObject()` 重试 1 次后仍失败
 THEN 服务端返回默认效果 `{ military: -3, economy: -3, politics: -3, people: -3, diplomacy: -3 }`
+AND `factionEffects` 返回空数组 `[]`（降级不得改动任何势力）
 AND 响应 header `X-Fallback: true`
 AND 前端 toast 提示「AI 判定失败，已应用默认效果」
+
+#### Scenario: 疑问句判为犹豫（factionEffects 恒空）
+
+WHEN 玩家以"怎么/怎样/如何/为什么/为啥/帮帮我/能不能/能否/该不该/该怎么办/请问"等疑问求助词开头，或仅表达诉求无具体行动（由 LLM 软判定兜底）
+THEN 疑问求助词开头者由后端代码层确定性拦截（不调 LLM，响应含 `hesitation: true`），返回唯一犹豫签名 effects `{ people: -1, silver: -10 }` 且 `factionEffects` 恒为空数组（提问不得改变势力关系）
+AND 前端检测到犹豫签名时提示玩家应去问军师
+AND "我想 + 具体动作"（如"我想暗中资助湘军"）是行动决策，不判犹豫
 
 #### Scenario: 并发锁防重复
 

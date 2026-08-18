@@ -6,7 +6,13 @@
  * 同时承载三份平衡提案（事件权重/资源产出/加权实力）的新增常量。
  */
 
-import type { Attributes, FactionStatus, PlayerDiplomacyAction, Resources } from '@/types/game'
+import type {
+  Attributes,
+  FactionStatus,
+  NegotiationDealId,
+  PlayerDiplomacyAction,
+  Resources
+} from '@/types/game'
 
 /** 危机/短板阈值：属性 < 30 视为危机（事件权重提案复用此阈值，不另建常量） */
 export const CRISIS_THRESHOLD = 30
@@ -88,4 +94,101 @@ export function canAfford(cost: Partial<Resources>, resources: Resources): boole
     const need = Math.abs(cost[k] ?? 0)
     return (resources[k] ?? 0) >= need
   })
+}
+
+// ====================== 谈判（faction-negotiation 提案 D2/D4） ======================
+
+/** 谈判：每回合最多发起次数（与按钮外交配额 diplomacyUsedThisTurn 互不占用） */
+export const MAX_NEGOTIATION_PER_TURN = 1
+
+/** 信件本身的软性关系影响上限（弱于行贿按钮 +15） */
+export const NEGOTIATION_LETTER_DELTA_LIMIT = 10
+
+/**
+ * 谈判条件兑换表（单条定义）
+ *
+ * ⚠️ 与 server/server/utils/negotiation-deals.ts 的 NEGOTIATION_DEALS 镜像，
+ *    修改任一处必须同步另一处（spec 强制）。
+ * - cost：资源价格区间（均为扣减量，正值）；silver 为主资源锚，其余资源按同一 ratio 缩放
+ * - effect：效果区间；status 仅 alliance-deal 有（前端按表映射，LLM 不产出）
+ * - requires：关系门槛（发起该 deal 的前置条件，后端 sanitize 同款校验）
+ */
+export interface NegotiationDealDef {
+  id: NegotiationDealId
+  label: string
+  cost: { silver: [number, number]; reputation?: [number, number] }
+  effect: { relationship: [number, number]; reputation?: [number, number]; status?: 'allied' }
+  requires: { minRelationship?: number; maxRelationship?: number }
+}
+
+export const NEGOTIATION_DEALS: readonly NegotiationDealDef[] = [
+  {
+    id: 'gift-deal',
+    label: '馈赠通好',
+    cost: { silver: [60, 120] },
+    effect: { relationship: [10, 20] },
+    requires: {}
+  },
+  {
+    id: 'trade-deal',
+    label: '互市通商',
+    cost: { silver: [40, 80] },
+    effect: { relationship: [8, 15], reputation: [3, 5] },
+    requires: { minRelationship: 0 }
+  },
+  {
+    id: 'truce-deal',
+    label: '破财止战',
+    cost: { silver: [80, 150] },
+    effect: { relationship: [15, 25] },
+    requires: { maxRelationship: -30 }
+  },
+  {
+    id: 'alliance-deal',
+    label: '歃血为盟',
+    cost: { silver: [120, 200], reputation: [5, 10] },
+    effect: { relationship: [25, 30], status: 'allied' },
+    requires: { minRelationship: 35 }
+  }
+]
+
+export function getNegotiationDealById(dealId: string): NegotiationDealDef | undefined {
+  return NEGOTIATION_DEALS.find((d) => d.id === dealId)
+}
+
+/**
+ * 按价格线性缩放效果与副资源成本（与 server scaleDealValues 同款算法）
+ * ratio = (price − silverMin) / (silverMax − silverMin)，clamp 0~1；
+ * 每个值 = min + ratio × (max − min) 后取整。
+ */
+export function scaleNegotiationEffect(deal: NegotiationDealDef, price: number): {
+  cost: { silver: number; reputation?: number }
+  effect: { relationship: number; reputation?: number; status?: 'allied' }
+} {
+  const [min, max] = deal.cost.silver
+  const ratio = Math.min(Math.max((price - min) / (max - min), 0), 1)
+  const scale = (range: readonly [number, number]) =>
+    Math.round(range[0] + ratio * (range[1] - range[0]))
+
+  return {
+    cost: {
+      silver: price,
+      reputation: deal.cost.reputation ? scale(deal.cost.reputation) : undefined
+    },
+    effect: {
+      relationship: scale(deal.effect.relationship),
+      reputation: deal.effect.reputation ? scale(deal.effect.reputation) : undefined,
+      status: deal.effect.status
+    }
+  }
+}
+
+/**
+ * 玩家还价合法区间：[floor(silverMin×0.5), 原价]（design.md D2）
+ */
+export function counterPriceRange(deal: NegotiationDealDef, originalPrice: number): {
+  min: number
+  max: number
+} {
+  return { min: Math.floor(deal.cost.silver[0] * 0.5), max: originalPrice }
 }

@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
 import { buildResolveDecisionPrompt } from '../../utils/prompts/resolve-decision'
 import { acquireLock, isLocked } from '../../utils/concurrency-lock'
+import { HESITATION_EFFECTS, isHesitationQuery } from '../../utils/hesitation-guard'
 
 /**
  * 前端精简传入的势力信息（自由行动需要势力上下文才能让 AI 关联「资助湘军」指向谁）。
@@ -143,7 +144,18 @@ export default defineEventHandler(async (event) => {
 
   const { saveId, turn, playerDecision, stateSnapshot, event: gameEvent, factions } = parseResult.data
 
-  // 2. 并发锁冲突检查
+  // 2. 疑问句守卫：强疑问/求助词开头的输入不调 LLM，直接返回犹豫签名
+  //    （LLM 对此类输入无法稳定判犹豫且会幻觉 factionEffects，见 utils/hesitation-guard.ts）
+  if (isHesitationQuery(playerDecision)) {
+    console.log('[resolve-decision] 疑问句守卫命中，跳过 LLM 直接返回犹豫签名')
+    return {
+      ok: true,
+      data: { effects: { ...HESITATION_EFFECTS }, factionEffects: [] },
+      hesitation: true
+    }
+  }
+
+  // 3. 并发锁冲突检查
   if (isLocked(saveId)) {
     return createError({
       statusCode: 429,
@@ -155,7 +167,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // 3. 获取锁调用 LLM
+  // 4. 获取锁调用 LLM
   const release = await acquireLock(saveId)
   try {
     // E2E 测试模式：请求头 x-e2e-test-mode=1 时放大自由行动效果，稳定触发崩溃结局
@@ -212,7 +224,7 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // 4. 降级：返回默认 effects + 空 factionEffects（不改动任何势力）
+    // 5. 降级：返回默认 effects + 空 factionEffects（不改动任何势力）
     console.error('[resolve-decision] 2 次重试均失败，降级返回默认 effects:', lastErr)
     setHeader(event, 'X-Fallback', 'true')
     // E2E 模式：使用强力负值兜底，稳定触发崩溃结局

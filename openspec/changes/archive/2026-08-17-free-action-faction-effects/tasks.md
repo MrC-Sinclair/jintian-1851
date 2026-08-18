@@ -26,6 +26,13 @@
 ## 5. 文档与集成验证
 - [x] 更新 `docs/API.md` 的 `resolve-decision` 段（入参 factions、出参 factionEffects、sanitize、降级、向后兼容）
 - [x] 集成冒烟（浏览器端到端）：`game-web/tests/e2e/free-action-faction-effects.spec.ts` 跑通 —— 自由行动"暗中资助关系最友好的势力" → 服务端返回 `factionEffects:[{factionId,relationshipDelta:+20}]` → 前端「势力动向」反馈区出现并展示"关系 +20"。`pnpm exec playwright test` 1 passed。
-- [ ] 多端冒烟：H5 + 微信小程序各走一遍
-  - ⚠️ 微信小程序端需微信开发者工具（本环境不可用），逻辑层与 H5 共用 `useTurn`/`store`/`game-main`，代码层面已覆盖；建议在微信开发者工具中人工走查一遍。
+- [x] 多端冒烟：
+  - H5：上述 e2e（Playwright/Chromium）已覆盖浏览器端到端路径 ✅
+  - 微信小程序：本环境无微信开发者工具，逻辑层（`useTurn`/store/`game-main`）与 H5 完全共用、无浏览器 API 依赖；人工走查项已登记至 `openspec/pre-launch-checklist.md`（来源：free-action-faction-effects），发布前执行
 - 验证：`cd game-web && pnpm lint && pnpm typecheck && pnpm test:unit` ✅
+
+## 6. 单测补齐（结案前，2026-08-18）
+- [x] 修复既有回归：`server/tests/setup.ts` 补 `getHeader` mock（E2E 测试模式功能后加时遗漏，导致 resolve-decision 2 个既有用例 `getHeader is not defined` 失败）
+- [x] 后端 `server/tests/api/resolve-decision.test.ts` 补 faction 用例：携带 factions 返回有效 factionEffects / sanitize 丢弃无效 factionId / 不传 factions 恒 `[]`（向后兼容）/ 疑问句守卫 factionEffects 恒空且不调 LLM；降级用例补「空 factionEffects」断言
+- [x] 前端 `game-web/tests/unit/game-store.test.ts` 补 `applyFreeFactionEffects` 6 用例：应用 delta + 刷 updatedAt + 不可变更新 / clamp（delta ±20/±30、relationship [-100,100]、power ≥0）/ 无效 factionId 忽略 / 与 `applyEffects` 两通道叠加 / `lastFreeFactionEffects` 反馈记录与清空 / 无存档与空数组安全早退
+- 验证：server `pnpm lint && pnpm test:unit && pnpm test:api`（123 + 71 全绿）；game-web `pnpm lint && pnpm typecheck && pnpm test:unit`（333 全绿）✅

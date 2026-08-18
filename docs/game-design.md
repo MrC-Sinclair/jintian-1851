@@ -596,3 +596,28 @@ MVP 阶段不引入复杂平衡机制，后续可考虑：
 - 外交为「次级操作」：独立于事件决策与 `hasDecided`，但 `isProcessingTurn` 为真时禁用。
 - 改 `relationship`/`status`/`power` 后，下回合 NPC Agent 基于新值反应（敌对<-30 转挑衅/备战，友好>30 转外交/结盟），**后端无改动**。
 - 每次外交行动追加 `eventType: '外交'` 历史事件（复用 `TurnTimeline` 的「外交」badge，靠 title + playerChoice 区分）。
+
+### 6.1 谈判（写信，faction-negotiation）
+
+除 6 个确定性按钮外，玩家可对单个势力「写信谈判」：以自然语言与势力 Agent 议价（`POST /api/game/faction-negotiate`，关联提案 `2026-08-18-faction-negotiation`）。外交面板每势力卡片有「写信谈判」入口，弹窗内完成全流程。
+
+**两阶段状态机（单次谈判最多 2 次 AI 调用）**：
+1. **letter（写信）**：玩家写信（1-200 字）→ Agent 以势力人格回信，表态 `accept`（应允）/ `reject`（拒绝）/ `counter`（还价，附表内条件与区间内定价）。
+2. **settle（裁定，仅 counter 后可达）**：玩家「接受条件」或「还价」（仅主资源银两，区间 `[floor(下限×0.5), 原价]`）→ Agent 最终裁定 accept/reject，**不再提新条件**；玩家也可「放弃」（不调 AI，谈判结束）。
+
+**条件兑换表 `NEGOTIATION_DEALS`（4 条议价版交易，前后端镜像）**：
+
+| deal | 标签 | 关系门槛 | 价格区间（银两） | 效果区间 |
+|---|---|---|---|---|
+| `gift-deal` | 馈赠通好 | 无 | 60~120 | 关系 +10~+20 |
+| `trade-deal` | 互市通商 | ≥ 0 | 40~80 | 关系 +8~+15，名望 +3~+5 |
+| `truce-deal` | 破财止战 | ≤ -30 | 80~150 | 关系 +15~+25（宣战后求和的语言渠道） |
+| `alliance-deal` | 歃血为盟 | ≥ 35 | 120~200（另名望 5~10） | 关系 +25~+30，status = 'allied' |
+
+- **效果线性缩放**：`ratio = (price − 下限) / (上限 − 下限)`（clamp 0~1），各效果/副资源成本按 ratio 取整。Agent 只能选 dealId 并在区间内定价，**不产出最终数值与 status**——数值权威在前端兑换表（`applyNegotiationDeal` 确定性执行），防幻觉破坏平衡。
+- `alliance-deal` 门槛 35 低于按钮结盟的 50，但价格更高（银两 120~200 + 名望 5~10 vs 100 + 10）——谈判的差异化价值是「花更多钱换更低门槛」，两条结盟路径并存。
+
+**信件软性影响与配额**：
+- 回信附 `relationshipDelta`（clamp ±10，弱于行贿 +15），未成交（应允/拒绝/放弃）时仅应用此值并入档外交事件。
+- 独立配额 `negotiationUsedThisTurn`：每回合 1 次谈判（发起 letter 计 1 次，settle 追答不重复计），与按钮外交配额互不占用；letter 降级（X-Fallback）不消耗配额可重试，随 `resetDiplomacy()` 一并重置。
+- 与按钮的关系：谈判是「话术 + 议价」通道，按钮是「确定性即时」通道；结盟等 status 变更只能经按钮或 `alliance-deal` 兑换触发。

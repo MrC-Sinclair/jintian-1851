@@ -12,7 +12,14 @@
 
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { DIPLOMACY_RULES, canAfford, clamp } from '@/utils/constants'
+import {
+  DIPLOMACY_RULES,
+  NEGOTIATION_LETTER_DELTA_LIMIT,
+  canAfford,
+  clamp,
+  getNegotiationDealById,
+  scaleNegotiationEffect
+} from '@/utils/constants'
 import type {
   AdvisorMessage,
   Attributes,
@@ -22,6 +29,7 @@ import type {
   GameEvent,
   GameSave,
   HistoryEvent,
+  NegotiationDealId,
   NpcAction,
   PendingChainNode,
   PlayerDiplomacyAction,
@@ -73,6 +81,13 @@ export const useGameStore = defineStore('game', () => {
    * 新回合由 useTurn.startTurn 调 resetDiplomacy 解锁。
    */
   const diplomacyUsedThisTurn = ref(false)
+
+  /**
+   * 谈判（faction-negotiation 提案 D4）：本回合是否已发起过写信。
+   * 与 diplomacyUsedThisTurn 互不占用；letter 成功（非降级）时由 useTurn 置位，
+   * settle 追答不重复计；降级（X-Fallback）不置位允许重试；随 resetDiplomacy 一并重置。
+   */
+  const negotiationUsedThisTurn = ref(false)
 
   /**
    * T4（自由行动势力微调）本次自由行动应用的势力变化列表，供决策反馈 UI 展示。
@@ -333,10 +348,118 @@ export const useGameStore = defineStore('game', () => {
   /**
    * 重置本回合外交上限（player-active-diplomacy 提案 D3）
    *
-   * 新回合开始时由 useTurn.startTurn 调用，解锁外交行动。
+   * 新回合开始时由 useTurn.startTurn 调用，解锁外交行动；
+   * faction-negotiation 提案 D4：谈判配额一并重置（两配额同生命周期，均每回合 1 次）。
    */
   function resetDiplomacy(): void {
     diplomacyUsedThisTurn.value = false
+    negotiationUsedThisTurn.value = false
+  }
+
+  /** 谈判配额置位（letter 成功非降级时由 useTurn 调用） */
+  function markNegotiationUsed(): void {
+    negotiationUsedThisTurn.value = true
+  }
+
+  /**
+   * 谈判（faction-negotiation 提案）：应用信件软性关系影响
+   *
+   * 适用场景：letter 阶段直接 accept/reject、settle 拒绝、玩家放弃——
+   * 即"未成交，仅信件态度影响"。delta clamp ±10（弱于行贿 +15），最终 clamp -100~100。
+   * 追加 eventType '外交' 历史事件（谈判记录入档）。
+   */
+  function applyLetterDelta(factionId: string, delta: number): void {
+    const save = currentSave.value
+    if (!save) return
+    const fac = save.factions.find((f) => f.id === factionId)
+    if (!fac) return
+
+    const clamped = clamp(Math.round(delta), -NEGOTIATION_LETTER_DELTA_LIMIT, NEGOTIATION_LETTER_DELTA_LIMIT)
+    const newFactions = save.factions.map((f) =>
+      f.id === factionId
+        ? { ...f, relationship: clamp(f.relationship + clamped, -100, 100) }
+        : f
+    )
+    currentSave.value = { ...save, factions: newFactions, updatedAt: Date.now() }
+
+    appendEvent({
+      turn: save.state.turn,
+      eventType: '外交',
+      title: `你向${fac.name}致书`,
+      description: `书信往来，${fac.name}态度${clamped >= 0 ? '转好' : '转冷'}（关系 ${clamped >= 0 ? '+' : ''}${clamped}）`,
+      playerChoice: '写信',
+      effects: {}
+    })
+  }
+
+  /**
+   * 谈判（faction-negotiation 提案 D5）：按兑换表确定性执行成交
+   *
+   * 流程：资源校验 → 扣减（price + 按比例缩放的副资源成本）→ 应用缩放效果
+   * （relationship 并入信件 delta；可能的 reputation 增益；alliance-deal 置 status='allied'）
+   * → 追加 eventType '外交' 历史事件。数值权威在本表（LLM 不产出最终数值，防幻觉破坏平衡）。
+   *
+   * @returns 成功返回 true；无存档/deal 不在表内/势力不存在/资源不足返回 false
+   */
+  function applyNegotiationDeal(
+    factionId: string,
+    dealId: NegotiationDealId,
+    price: number,
+    letterDelta: number
+  ): boolean {
+    const save = currentSave.value
+    if (!save) return false
+    const deal = getNegotiationDealById(dealId)
+    if (!deal) return false
+    const fac = save.factions.find((f) => f.id === factionId)
+    if (!fac) return false
+
+    const scaled = scaleNegotiationEffect(deal, price)
+    // 资源校验（cost 为正值扣减量）
+    const costPayload: Partial<Resources> = { silver: -scaled.cost.silver }
+    if (scaled.cost.reputation !== undefined) {
+      costPayload.reputation = -scaled.cost.reputation
+    }
+    if (!canAfford(costPayload, save.state.resources)) return false
+
+    // 1. 扣资源 + 效果增益（trade-deal 的 reputation +N）
+    applyEffects(costPayload)
+    if (scaled.effect.reputation !== undefined) {
+      applyEffects({ reputation: scaled.effect.reputation })
+    }
+
+    // 2. relationship：信件 delta（clamp ±10）+ 兑换效果，最终 clamp -100~100
+    const letterPart = clamp(Math.round(letterDelta), -NEGOTIATION_LETTER_DELTA_LIMIT, NEGOTIATION_LETTER_DELTA_LIMIT)
+    const relTotal = letterPart + scaled.effect.relationship
+    const newFactions = currentSave.value!.factions.map((f) =>
+      f.id === factionId
+        ? {
+            ...f,
+            relationship: clamp(f.relationship + relTotal, -100, 100),
+            // status 变更仅 alliance-deal 有（前端按表映射，LLM 不产出）
+            ...(deal.effect.status ? { status: deal.effect.status } : {}),
+            lastAction: deal.label
+          }
+        : f
+    )
+    currentSave.value = {
+      ...currentSave.value!,
+      factions: newFactions,
+      updatedAt: Date.now()
+    }
+
+    // 3. 历史事件入档（eventType 复用 '外交'）
+    const costText = `耗银两 ${scaled.cost.silver}${scaled.cost.reputation !== undefined ? `、名望 ${scaled.cost.reputation}` : ''}`
+    appendEvent({
+      turn: save.state.turn,
+      eventType: '外交',
+      title: `与${fac.name}${deal.label}`,
+      description: `谈判成交：${costText}，关系 +${relTotal}${deal.effect.status === 'allied' ? '，结为盟友' : ''}`,
+      playerChoice: deal.label,
+      effects: { ...costPayload, ...(scaled.effect.reputation !== undefined ? { reputation: scaled.effect.reputation } : {}) }
+    })
+
+    return true
   }
 
   /**
@@ -446,6 +569,8 @@ export const useGameStore = defineStore('game', () => {
     isProcessingTurn.value = false
     isAdvisorStreaming.value = false
     isSyncing.value = false
+    diplomacyUsedThisTurn.value = false
+    negotiationUsedThisTurn.value = false
   }
 
   return {
@@ -462,6 +587,7 @@ export const useGameStore = defineStore('game', () => {
     isSyncing,
     isLoading,
     diplomacyUsedThisTurn,
+    negotiationUsedThisTurn,
     // 计算属性
     currentTurn,
     isStoryTurn,
@@ -475,6 +601,9 @@ export const useGameStore = defineStore('game', () => {
     updateChainState,
     applyDiplomacyAction,
     resetDiplomacy,
+    markNegotiationUsed,
+    applyLetterDelta,
+    applyNegotiationDeal,
     applyFreeFactionEffects,
     clearLastFreeFactionEffects,
     lastFreeFactionEffects,
