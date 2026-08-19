@@ -36,8 +36,8 @@ beforeEach(() => {
   }
 
   ;(uni as any).getSystemInfoSync = () => ({
-    uniPlatform: 'h5',
-    platform: 'h5'
+    uniPlatform: 'web',
+    platform: 'web'
   })
 })
 
@@ -326,9 +326,10 @@ describe('useSSE - iOS 微信未探测场景', () => {
 
 describe('useSSE - H5 端 fetch 流式', () => {
   beforeEach(() => {
+    // uni-app 3.x H5 端 uniPlatform 实际返回 'web'（官方文档取值）
     ;(uni as any).getSystemInfoSync = () => ({
-      uniPlatform: 'h5',
-      platform: 'h5'
+      uniPlatform: 'web',
+      platform: 'web'
     })
 
     // mock fetch 返回 ReadableStream
@@ -402,6 +403,39 @@ describe('useSSE - H5 端 fetch 流式', () => {
     await new Promise((r) => setTimeout(r, 50))
 
     expect(errCode).toBe('NETWORK')
+    task.abort()
+  })
+
+  it('uniPlatform 兼容历史取值 h5 时也走 fetch（不走 uni.request）', async () => {
+    // 兼容历史取值：部分 uni-app 版本 H5 端返回 'h5'
+    ;(uni as any).getSystemInfoSync = () => ({
+      uniPlatform: 'h5',
+      platform: 'h5'
+    })
+
+    let fetchCalled = false
+    ;(globalThis as any).fetch = vi.fn().mockImplementation(async () => {
+      fetchCalled = true
+      return {
+        ok: false,
+        body: null
+      }
+    })
+
+    const { connect } = useSSE()
+    const task = connect('/api/game/advisor-chat', { saveId: 'x' }, {
+      callbacks: {
+        onChunk: () => {},
+        onDone: () => {},
+        onError: () => {}
+      }
+    })
+
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(fetchCalled).toBe(true)
+    // H5 分支不应触发 uni.request chunked
+    expect(lastUniRequest).toBeNull()
     task.abort()
   })
 })

@@ -56,6 +56,25 @@ describe('EventCard - props 传递', () => {
     const wrapper = mountCard({ event: makeEvent() })
     expect(wrapper.find('.event-card__options-title').text()).toBe('应对方案')
   })
+
+  it('剧情链事件（含 chainId）渲染剧情推进提示', () => {
+    const wrapper = mountCard({
+      event: makeEvent({
+        eventType: '历史剧情',
+        chainId: 'tai-ping-tian-guo',
+        chainNodeId: 'node-1',
+        chainProgress: { current: 1, total: 5 }
+      })
+    })
+    const hint = wrapper.find('.event-card__chain-hint')
+    expect(hint.exists()).toBe(true)
+    expect(hint.text()).toBe('历史剧情：选择应对方案或自由行动回应后，剧情将推进')
+  })
+
+  it('非剧情链事件（无 chainId）不渲染剧情推进提示', () => {
+    const wrapper = mountCard({ event: makeEvent() })
+    expect(wrapper.find('.event-card__chain-hint').exists()).toBe(false)
+  })
 })
 
 describe('EventCard - 子组件 DecisionButton 渲染', () => {

@@ -410,6 +410,87 @@ describe('makeDecision - 选项决策', () => {
   })
 })
 
+describe('makeDecision - 自由行动推进剧情链', () => {
+  it('自由行动（无 option）结算后移除挂起节点并按线性推进下一节点', async () => {
+    const store = useGameStore()
+    const save = createMockSave()
+    save.state.turn = 3
+    // 模拟挂起节点：本回合 node-1 被 pending[0] 服务出来
+    save.pendingChainNodes = [
+      { chainId: 'tai-ping-tian-guo', nodeId: 'node-1', scheduledTurn: 3 }
+    ]
+    store.setSave(save)
+    store.setEvent({
+      title: '金田起义',
+      description: '',
+      eventType: '历史剧情',
+      chainId: 'tai-ping-tian-guo',
+      chainNodeId: 'node-1',
+      chainProgress: { current: 1, total: 5 },
+      options: [
+        { id: 'o1', label: '出兵镇压', effects: { military: 8 }, nextChainNodeId: 'node-2' },
+        { id: 'o2', label: '观望', effects: {} }
+      ]
+    })
+    vi.mocked(post).mockResolvedValueOnce({ effects: { military: 3 } })
+
+    const { makeDecision } = useTurn()
+    const effects = await makeDecision(undefined, '自行募兵抗敌')
+
+    expect(effects).toEqual({ military: 3 })
+    // 剧情链已激活
+    expect(store.currentSave?.activeChainIds).toEqual(['tai-ping-tian-guo'])
+    // 挂起的 node-1 已移除，线性推进 node-2 入队（scheduledTurn = 3 + 1 = 4）
+    expect(store.currentSave?.pendingChainNodes).toEqual([
+      { chainId: 'tai-ping-tian-guo', nodeId: 'node-2', scheduledTurn: 4 }
+    ])
+  })
+
+  it('自由行动末节点结算后完成剧情链', async () => {
+    const store = useGameStore()
+    const save = createMockSave()
+    save.state.turn = 7
+    save.activeChainIds = ['tai-ping-tian-guo']
+    store.setSave(save)
+    store.setEvent({
+      title: '天京陷落',
+      description: '',
+      eventType: '历史剧情',
+      chainId: 'tai-ping-tian-guo',
+      chainNodeId: 'node-5',
+      chainProgress: { current: 5, total: 5 },
+      options: [{ id: 'o1', label: '论功', effects: {} }]
+    })
+    vi.mocked(post).mockResolvedValueOnce({ effects: { reputation: 5 } })
+
+    const { makeDecision } = useTurn()
+    await makeDecision(undefined, '抚恤阵亡将士')
+
+    expect(store.currentSave?.activeChainIds).toEqual([])
+    expect(store.currentSave?.completedChainIds).toEqual(['tai-ping-tian-guo'])
+    expect(store.currentSave?.pendingChainNodes).toEqual([])
+  })
+
+  it('非剧情链事件的自由行动不产生剧情链副作用', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    store.setEvent({
+      title: '普通事件',
+      description: '',
+      eventType: '随机',
+      options: [{ id: 'o1', label: '选项', effects: {} }]
+    })
+    vi.mocked(post).mockResolvedValueOnce({ effects: { economy: 5 } })
+
+    const { makeDecision } = useTurn()
+    await makeDecision(undefined, '兴修水利')
+
+    expect(store.currentSave?.pendingChainNodes).toEqual([])
+    expect(store.currentSave?.activeChainIds).toEqual([])
+    expect(store.currentSave?.completedChainIds).toEqual([])
+  })
+})
+
 describe('makeDecision - 自由输入', () => {
   it('自由输入调用 resolve-decision', async () => {
     const store = useGameStore()

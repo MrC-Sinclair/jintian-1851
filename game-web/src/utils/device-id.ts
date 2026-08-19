@@ -18,9 +18,10 @@ const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[
  */
 export function getDeviceId(): string {
   // 通过 uni.getSystemInfoSync().uniPlatform 判断平台
-  // h5: 走 localStorage；mp-weixin/app: 走 uni.getStorageSync
+  // H5 端 uniPlatform 实际返回 'web'（uni-app 3.x 官方取值），兼容历史 'h5'；
+  // mp-weixin/app: 走 uni.getStorageSync
   const { uniPlatform } = uni.getSystemInfoSync()
-  const isH5 = uniPlatform === 'h5'
+  const isH5 = uniPlatform === 'web' || uniPlatform === 'h5'
 
   if (isH5) {
     let id = localStorage.getItem(STORAGE_KEY)

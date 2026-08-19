@@ -264,6 +264,9 @@ export function useTurn(options: UseTurnOptions = {}) {
         if (res.factionEffects && res.factionEffects.length > 0) {
           store.applyFreeFactionEffects(res.factionEffects)
         }
+        // 自由行动同样视为已回应事件：推进剧情链（移除挂起节点 + 线性入队下一节点），
+        // 与选项 b/c（无 nextChainNodeId）行为一致，避免挂起节点下回合重复出现
+        applyEventOption(evt)
         return res.effects
       } catch (err) {
         const msg = err instanceof ApiError ? err.message : '决策解析失败'

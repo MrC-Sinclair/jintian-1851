@@ -22,9 +22,10 @@ beforeEach(() => {
 
 describe('getDeviceId - H5 端', () => {
   beforeEach(() => {
+    // uni-app 3.x H5 端 uniPlatform 实际返回 'web'（官方文档取值）
     vi.spyOn(uni, 'getSystemInfoSync').mockReturnValue({
-      uniPlatform: 'h5',
-      platform: 'h5',
+      uniPlatform: 'web',
+      platform: 'web',
       screenWidth: 375,
       screenHeight: 812,
       pixelRatio: 2,
@@ -45,6 +46,16 @@ describe('getDeviceId - H5 端', () => {
 
   it('应写入 localStorage', () => {
     const id = getDeviceId()
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(id)
+  })
+
+  it('uniPlatform 历史取值 h5 时同样走 localStorage', () => {
+    vi.spyOn(uni, 'getSystemInfoSync').mockReturnValue({
+      uniPlatform: 'h5',
+      platform: 'h5'
+    } as any)
+    const id = getDeviceId()
+    expect(UUID_V4_REGEX.test(id)).toBe(true)
     expect(localStorage.getItem(STORAGE_KEY)).toBe(id)
   })
 })

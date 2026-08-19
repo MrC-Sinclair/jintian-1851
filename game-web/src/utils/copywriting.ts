@@ -280,7 +280,9 @@ export const PAGE_TEXT = {
   },
   /** EventCard 文案 */
   eventCard: {
-    optionsTitle: '应对方案'
+    optionsTitle: '应对方案',
+    /** 剧情链事件提示：选择方案或自由行动均可推进剧情（仅 chainId 事件显示） */
+    chainHint: '历史剧情：选择应对方案或自由行动回应后，剧情将推进'
   },
   /** AdvisorDrawer 文案 */
   advisorDrawer: {

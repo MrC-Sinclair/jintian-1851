@@ -75,10 +75,12 @@ describe('DiplomacyPanel - 渲染', () => {
     expect(wrapper.findAll('.diplomacy-panel__faction')).toHaveLength(6)
   })
 
-  it('每个势力渲染 6 个动作按钮', () => {
+  it('每个势力渲染 6 个外交动作按钮 + 1 个写信谈判入口', () => {
     const { wrapper } = mountPanel()
     const factions = wrapper.findAll('.diplomacy-panel__faction')
-    expect(factions[0].findAll('.diplomacy-panel__action')).toHaveLength(6)
+    // faction-negotiation 提案 T6：6 动作按钮之外新增「写信」入口（共用 __action 类）
+    expect(factions[0].findAll('.diplomacy-panel__action')).toHaveLength(7)
+    expect(factions[0].find('.diplomacy-panel__action--letter').exists()).toBe(true)
   })
 
   it('显示本回合剩余次数', () => {

@@ -434,6 +434,9 @@ function finishSettle(
     display: flex;
     align-items: center;
     justify-content: center;
+    // 图标按钮触摸目标 ≥ 36px（AGENTS.md 图标按钮规范，与 AdvisorDrawer 一致）
+    min-width: 36px;
+    min-height: 36px;
     width: 56rpx;
     height: 56rpx;
     border-radius: 8rpx;
@@ -570,7 +573,8 @@ function finishSettle(
 
   &__counter-input {
     box-sizing: border-box;
-    height: 80rpx;
+    // 触摸目标 ≥ 44px（与操作按钮一致，避免窄屏下单手难以点中）
+    min-height: 88rpx;
     padding: 0 16rpx;
     font-size: 26rpx;
     color: #2c1810;

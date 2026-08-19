@@ -58,10 +58,15 @@ const DONE_MARKER = 'data: [DONE]'
 
 /**
  * 判断当前是否 H5 环境
+ *
+ * uni-app 3.x H5 端 uniPlatform 实际返回 'web'（官方文档取值：app/web/mp-weixin），
+ * 兼容历史 'h5' 取值。若误判为非 H5，H5 会走 uni.request chunked 分支，
+ * 而 uni-h5 的 XHR 实现不支持 onChunkReceived，导致流式数据永远无法到达。
  */
 function isH5(): boolean {
   try {
-    return uni.getSystemInfoSync().uniPlatform === 'h5'
+    const p = uni.getSystemInfoSync().uniPlatform
+    return p === 'web' || p === 'h5'
   } catch {
     return false
   }

@@ -9,6 +9,8 @@
     </view>
     <text class="event-card__title">{{ event.title }}</text>
     <text class="event-card__description">{{ event.description }}</text>
+    <!-- 剧情链事件提示：告知玩家选项与自由行动均可推进剧情（chainId 事件才显示） -->
+    <text v-if="chainTitle" class="event-card__chain-hint">{{ PAGE_TEXT.eventCard.chainHint }}</text>
 
     <view class="event-card__options">
       <text class="event-card__options-title">{{ PAGE_TEXT.eventCard.optionsTitle }}</text>
@@ -126,10 +128,19 @@ defineEmits<{
 
   &__description {
     display: block;
-    margin-bottom: 24rpx;
+    margin-bottom: 16rpx;
     font-size: 28rpx;
     line-height: 1.6;
     color: #5d4037;
+  }
+
+  // 剧情链推进提示（描述下方弱化小字，仅剧情事件显示）
+  &__chain-hint {
+    display: block;
+    margin-bottom: 24rpx;
+    font-size: 22rpx;
+    line-height: 1.5;
+    color: #8a7a66;
   }
 
   &__options {

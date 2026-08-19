@@ -150,7 +150,9 @@ const toast = useToast()
 const { lock, unlock } = useScrollLock()
 
 const { send, abort, streamingText, isStreaming, toolCalls, briefing, briefingTurn } = useAdvisor({
-  firstChunkTimeoutMs: 3000,
+  // 军师对话系统提示词大（人物+状态快照+势力+事件历史），Qwen3-8B 首 token 常超 3 秒，
+  // 3 秒会把大量正常请求误判为超时；15 秒在 60 秒流式上限内留足生成时间
+  firstChunkTimeoutMs: 15_000,
   onError: (code) => {
     if (code === 'TIMEOUT') {
       toast.error('军师迟迟未答，请稍候再试')
@@ -247,6 +249,14 @@ function maybeInsertBriefing(): void {
   const content = b.summary
     ? `${b.summary}\n\n${b.suggestion}`
     : b.suggestion
+
+  // 简报超时降级时后端返回空 summary/suggestion（HTTP 200 非错误），
+  // 空 content 消息会污染存档：后续军师对话携带它会被 server zod 校验
+  // （content min(1)）拒绝为 400，导致对话永久失败。此处直接跳过插入。
+  if (!content.trim()) {
+    lastShownBriefingTurn.value = briefingTurn.value
+    return
+  }
 
   const briefingMessage: AdvisorMessage = {
     role: 'assistant',

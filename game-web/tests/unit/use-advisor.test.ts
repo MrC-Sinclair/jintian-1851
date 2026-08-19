@@ -36,6 +36,9 @@ const mocks = vi.hoisted(() => ({
   capturedOptions: {
     value: null as { firstChunkTimeoutMs?: number } | null
   },
+  capturedBody: {
+    value: null as { messages?: Array<{ role: string; content: string }> } | null
+  },
   abortFn: vi.fn(),
   persistSaveMock: vi.fn()
 }))
@@ -44,7 +47,7 @@ vi.mock('../../src/composables/useSSE', () => ({
   useSSE: () => ({
     connect: (
       _url: string,
-      _body: unknown,
+      body: unknown,
       options: {
         callbacks: {
           onChunk: (delta: string) => void
@@ -56,6 +59,7 @@ vi.mock('../../src/composables/useSSE', () => ({
     ) => {
       mocks.capturedCallbacks.value = options.callbacks
       mocks.capturedOptions.value = options
+      mocks.capturedBody.value = body as { messages?: Array<{ role: string; content: string }> }
       return {
         abort: mocks.abortFn
       }
@@ -72,6 +76,7 @@ vi.mock('../../src/composables/useGameState', () => ({
 // 测试用便捷访问器
 const capturedCallbacks = () => mocks.capturedCallbacks.value
 const capturedOptions = () => mocks.capturedOptions.value
+const capturedBody = () => mocks.capturedBody.value
 const abortFn = mocks.abortFn
 const persistSaveMock = mocks.persistSaveMock
 
@@ -119,6 +124,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   mocks.capturedCallbacks.value = null
   mocks.capturedOptions.value = null
+  mocks.capturedBody.value = null
   mocks.abortFn.mockClear()
   mocks.persistSaveMock.mockReset()
   mocks.persistSaveMock.mockResolvedValue(undefined)
@@ -167,6 +173,27 @@ describe('useAdvisor - 前置校验', () => {
 })
 
 describe('useAdvisor - 正常流式', () => {
+  it('send 过滤历史空 content 消息（简报超时降级曾插入空简报，server zod 会拒 400）', async () => {
+    const store = useGameStore()
+    const save = createMockSave()
+    // 模拟被空简报污染的存档：1 条空 content 的 briefing 消息 + 1 条正常历史
+    save.advisorMessages = [
+      { role: 'assistant', content: '', turn: 2, timestamp: 1, isBriefing: true },
+      { role: 'user', content: '先前的问题', turn: 2, timestamp: 2 }
+    ]
+    store.setSave(save)
+    const { send } = useAdvisor()
+
+    const p = send('新问题')
+    const msgs = capturedBody()!.messages!
+    // 空消息被过滤，只保留正常历史 + 本次输入
+    expect(msgs).toHaveLength(2)
+    expect(msgs.map((m) => m.content)).toEqual(['先前的问题', '新问题'])
+
+    capturedCallbacks()!.onDone()
+    await p
+  })
+
   it('send 立即把用户消息写入 store', async () => {
     const store = useGameStore()
     store.setSave(createMockSave())

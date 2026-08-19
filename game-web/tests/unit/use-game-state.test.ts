@@ -463,4 +463,39 @@ describe('useGameState.applyEventOption', () => {
     expect(store.currentSave?.activeChainIds).toEqual([])
     expect(store.currentSave?.completedChainIds).toEqual([])
   })
+
+  it('自由行动路径（option 缺省）：移除挂起节点并按线性推进下一节点', () => {
+    const store = useGameStore()
+    const save = buildChainSave()
+    // 模拟挂起节点：本回合 node-1 被 pending[0] 服务出来
+    save.pendingChainNodes = [
+      { chainId: 'tai-ping-tian-guo', nodeId: 'node-1', scheduledTurn: 3 }
+    ]
+    store.setSave(save)
+    const { applyEventOption } = useGameState()
+
+    // 自由行动：不传 option
+    applyEventOption(chainEvent('node-1'))
+
+    // 挂起的 node-1 已移除，线性推进 node-2（与无 nextChainNodeId 的选项 b/c 行为一致）
+    expect(store.currentSave?.pendingChainNodes).toEqual([
+      { chainId: 'tai-ping-tian-guo', nodeId: 'node-2', scheduledTurn: 4 }
+    ])
+    expect(store.currentSave?.activeChainIds).toEqual(['tai-ping-tian-guo'])
+    expect(store.currentSave?.completedChainIds).toEqual([])
+  })
+
+  it('自由行动路径（option 缺省）：末节点完成剧情链', () => {
+    const store = useGameStore()
+    const save = buildChainSave()
+    save.activeChainIds = ['tai-ping-tian-guo']
+    store.setSave(save)
+    const { applyEventOption } = useGameState()
+
+    applyEventOption(chainEvent('node-5', true))
+
+    expect(store.currentSave?.activeChainIds).toEqual([])
+    expect(store.currentSave?.completedChainIds).toEqual(['tai-ping-tian-guo'])
+    expect(store.currentSave?.pendingChainNodes).toEqual([])
+  })
 })

@@ -220,8 +220,11 @@ function onWriteLetter(fac: Faction): void {
   display: flex;
   flex-direction: column;
   background-color: #fdf6e3;
-  // 抽屉容器已限制 max-height + 滚动，这里不再限制
+  // 面板自身限制高度并支持内部滚动：势力较多（如 5 个）时内容会超出 80vh，
+  // 必须由 overflow-y 提供滚动，否则底部势力/写信按钮将被裁切且不可达
   max-height: 80vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   box-sizing: border-box;
   padding: 24rpx 24rpx 40rpx;
 
@@ -256,6 +259,9 @@ function onWriteLetter(fac: Faction): void {
     display: flex;
     align-items: center;
     justify-content: center;
+    // 图标按钮触摸目标 ≥ 36px（AGENTS.md 图标按钮规范，与 AdvisorDrawer 一致）
+    min-width: 36px;
+    min-height: 36px;
     width: 56rpx;
     height: 56rpx;
     border-radius: 8rpx;

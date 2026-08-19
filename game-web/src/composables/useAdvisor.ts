@@ -136,7 +136,12 @@ export function useAdvisor(options: UseAdvisorOptions = {}) {
     store.appendAdvisorMessage(userMessage)
 
     // 准备请求体（消息列表含本次用户输入）
-    const messages = [...save.advisorMessages, userMessage]
+    // 防御：过滤历史空 content 消息（如简报超时降级曾插入的空简报），
+    // 否则 server zod 校验 content min(1) 会整包拒绝为 400
+    const messages = [
+      ...save.advisorMessages.filter((m) => m.content.trim().length > 0),
+      userMessage
+    ]
 
     // 重置流式状态
     streamingText.value = ''

@@ -240,7 +240,7 @@ export function useGameState() {
   }
 
   /**
-   * T3.2：玩家选择一个选项后，处理剧情链入队逻辑
+   * T3.2：玩家决策后处理剧情链入队逻辑（选项决策与自由行动共用）
    *
    * 触发条件：仅当事件为剧情链事件（同时具备 `chainId` 与 `chainNodeId`）时才生效，
    * 普通事件直接返回，无副作用。
@@ -263,9 +263,10 @@ export function useGameState() {
    * 本函数只维护剧情链的运行时状态（pending/active/completed）。
    *
    * @param event 当前回合事件（含 chainId/chainNodeId）
-   * @param option 玩家选择的选项（含可选的 nextChainNodeId）
+   * @param option 玩家选择的选项（含可选的 nextChainNodeId）；缺省表示自由行动路径，
+   *               按线性链下一序位推进（与无 nextChainNodeId 的选项 b/c 行为一致）
    */
-  function applyEventOption(event: GameEvent, option: EventOption): void {
+  function applyEventOption(event: GameEvent, option?: EventOption): void {
     const save = store.currentSave
     if (!save || !event.chainId || !event.chainNodeId) return
 
@@ -296,7 +297,8 @@ export function useGameState() {
       }
     } else {
       // 3. 确定下一节点并入队（scheduledTurn = 当前回合 + 1）
-      const nextNodeId = option.nextChainNodeId ?? getNextNodeId(event.chainId, event.chainNodeId)
+      //    option 缺省（自由行动路径）时与无 nextChainNodeId 的选项一致，按线性链下一序位推进
+      const nextNodeId = option?.nextChainNodeId ?? getNextNodeId(event.chainId, event.chainNodeId)
       if (nextNodeId) {
         pendingChainNodes = [
           ...pendingChainNodes,
