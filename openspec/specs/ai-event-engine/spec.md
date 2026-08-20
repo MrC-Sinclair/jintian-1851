@@ -356,7 +356,7 @@ THEN 执行迁移逻辑：
     events: save.events.map(e => ({ ...e, chainId: undefined, chainNodeId: undefined }))
   }
   ```
-AND 写回本地存储（`uni.setStorageSync`）
+AND 写回本地存储（经 `saveSave` 内部调用 `uni.setStorage`，异步）
 AND 标记存档为已迁移（下次同步上传云端覆盖 v1）
 AND 返回迁移后的 v2 存档
 

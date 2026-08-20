@@ -1,16 +1,16 @@
 # turn-engine Specification
 
 ## Purpose
-编排单回合五段强制流程（局势展示 → AI 事件生成 → 玩家决策 → 状态演化 → NPC 势力行动）与游戏内时间按月推进（1851-01 至 1912-12）。它是连接事件引擎、决策应用、NPC 行动、结局判定的中枢，确保每回合步骤有序、可审计、不跳漏。
+编排单回合五段强制流程（局势展示 → AI 事件生成 → 玩家决策 → 状态演化 → NPC 势力行动）与游戏内时间按月推进（1851-01 至 1912-12）。它是连接事件引擎、决策应用、NPC 行动、结局判定的中枢，确保每回合步骤有序、可审计、不跳漏。此外，回合开始时 `startTurn` 会并行调用 `advisor-briefing` 获取军师局势简报（与事件生成 `Promise.all` 并行，失败降级不阻塞）。
 ## Requirements
 ### Requirement: 回合流程编排
 
-每回合 MUST 按顺序执行五段：局势展示 → AI 事件生成（含选项）→ 玩家决策（选选项 或 自由输入）→ 状态演化 → NPC 势力行动。军师对话为穿插在决策前后的可选功能，不计入强制步骤。
+每回合 MUST 按顺序执行五段：局势展示 → AI 事件生成（含选项）→ 玩家决策（选选项 或 自由输入）→ 状态演化 → NPC 势力行动。军师对话为穿插在决策前后的可选功能，不计入强制步骤；但 `startTurn` 开头会并行调用 `advisor-briefing`（军师局势简报，与事件生成并行，构成回合开始的固定环节）。
 
 #### Scenario: 玩家进入回合主界面看到当前局势
 
 WHEN 玩家进入 `pages/game-main/index.vue` 或点击「下一回合」后
-THEN 顶部显示当前回合数与游戏内日期（如「第 5 回合 · 同治元年三月」）
+THEN 顶部显示当前回合数与游戏内日期（如「第 5 回合 · 1912 年 12 月」，当前按公元年-月渲染，未实现清代年号映射）
 AND `StatusPanel` 组件显示 5 维属性（军事/经济/政治/民心/外交）与 4 资源（银两/兵力/粮草/声望）
 AND `TurnTimeline` 组件显示最近 5 条历史事件标题
 
@@ -62,11 +62,11 @@ AND 玩家可点击某行动查看详情
 WHEN 玩家完成一回合决策并进入下一回合
 THEN `state.date.month` +1
 AND 若 month > 12 则 month = 1 且 year +1
-AND 顶部日期显示更新为对应清代年号（咸丰元年、同治元年、光绪元年、宣统元年等）
+AND 顶部日期显示更新为「{year} 年 {month} 月」格式（如「1912 年 12 月」；当前未做清代年号映射，保持公元年-月）
 
 #### Scenario: 达到 1912 年触发结局
 
-WHEN `state.date.year > 1912` 或 `state.date.year == 1912 AND state.date.month > 12`
+WHEN `state.date.year > 1912`（时光尽头判定仅看年份，`month > 12` 分支因月份溢出后 year 已 +1、逻辑上不可达，实际触发点为走到 1913 年）
 THEN 前端检测到时间超出
 AND 触发「时光尽头」结局画面显示：「大清已亡，你的势力在历史中存活了 N 年」
 AND 显示最终状态快照
@@ -85,7 +85,7 @@ AND 存档标记为 `ended: true`，禁止继续操作
 
 ### Requirement: 胜利条件检测
 
-综合实力 ≥ 90 或存活至 1912 年 MUST 触发胜利结局。
+综合实力 ≥ 90 MUST 触发胜利结局。「存活至 1912 年」并非胜利，而是独立的「时光尽头」结局（见"达到 1912 年触发结局"）。
 
 #### Scenario: 综合实力达到 90 触发胜利
 
@@ -100,7 +100,7 @@ AND 存档标记为 `ended: true`
 #### Scenario: 回合结束后立即持久化
 
 WHEN 任一回合流程完成（含 NPC 行动展示）
-THEN 前端调用 `useSaveSync().save(save)` 写入 `uni.setStorage`
+THEN 前端调用 `useGameState().save(save)` 写入 `uni.setStorage`（经 `utils/storage.ts` 的 `saveSave` 异步封装）
 AND `save.updatedAt` 更新为当前时间戳
 AND `save.state.turn` +1 准备下一回合
 

@@ -38,7 +38,7 @@ export const BUTTON_TEXT = {
   howToPlay: '如何游戏',
   syncSave: '同步存档',
   settings: '设置',
-  advisor: '咨询军师',
+  advisor: '军师',
   confirmDecision: '确认决策',
   nextTurn: '下一回合',
   freeAction: '自由行动',

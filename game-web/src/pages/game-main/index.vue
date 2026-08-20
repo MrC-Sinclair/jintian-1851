@@ -195,7 +195,7 @@
             src="/static/advisor-icon.png"
             mode="aspectFill"
           />
-          <text class="game-main__footer-btn-text">军师</text>
+          <text class="game-main__footer-btn-text">{{ BUTTON_TEXT.advisor }}</text>
         </view>
       </TooltipView>
 

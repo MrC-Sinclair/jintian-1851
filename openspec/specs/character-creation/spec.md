@@ -28,7 +28,7 @@ AND 底部「下一步」按钮从 disabled 变为 enabled
 #### Scenario: 服务端调用 LLM 生成势力
 
 WHEN 前端发送 `POST /api/game/init-factions` body 为 `{ "background": "文官" }`
-THEN 服务端使用 `deepseek-ai/DeepSeek-R1-0528-Qwen3-8B` 模型调用 `generateObject()`
+THEN 服务端使用 `Qwen/Qwen3-8B` 模型调用 `generateObject()`
 AND 提示词包含玩家身份、近代 1851-1912 历史背景、要求生成 6-8 个势力
 AND 返回结构 `{ "factions": Faction[] }`，每个 Faction 含 `id, name, summary, initialPower, initialRelationship`
 AND 势力名称符合近代历史（如湘军、淮军、太平天国、清廷、北洋、革命党等）
@@ -56,7 +56,7 @@ AND 弹出 `useConfirmDialog` 确认「确定选择 XX 势力吗？此选择不�
 AND 玩家点击「确认」
 THEN 前端构建 `GameSave` 对象：
   - `saveId` = `crypto.randomUUID()` 或 `uni.getStorageSync('device_id') + Date.now()`
-  - `saveVersion` = 1
+  - `saveVersion` = 2
   - `character.background` = 玩家所选身份
   - `character.factionId/name/summary` = 玩家所选势力
   - `state.turn` = 1

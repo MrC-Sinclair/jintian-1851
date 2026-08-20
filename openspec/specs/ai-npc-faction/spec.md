@@ -5,16 +5,16 @@
 ## Requirements
 ### Requirement: NPC 决策结构化接口
 
-`POST /api/game/npc-actions` MUST 返回每个活跃 NPC 势力本回合的行动列表，本提案改为多 Agent 并行决策。
+`POST /api/game/npc-actions` MUST 返回每个活跃 NPC 势力本回合的行动列表，采用多 Agent 并行决策。
 
 #### Scenario: 多 Agent 并行决策
 
-WHEN 前端发送 `POST /api/game/npc-actions` body 含 `{ saveId, turn, factions, stateSnapshot, character, recentEvents }`
+WHEN 前端发送 `POST /api/game/npc-actions` body 含 `{ saveId, turn, factions, stateSnapshot, character }`
 THEN 服务端过滤 `status === 'active'` 的 NPC 势力（既有）
-AND 为每个活跃 NPC 势力构造独立 `ToolContext`（含该 NPC 视角下的状态）
+AND 所有 NPC Agent 共享同一个 `ToolContext`（含全部 activeFactions、`recentEvents: []`）
 AND 通过 `Promise.all(activeFactions.map(faction => runNpcAgent(faction, ctx)))` 并行调用
 AND 每个 NPC Agent 调用 `streamText({ model, system: npcSystemPrompt, tools, maxSteps: 3, stopWhen: stepCountIs(3) })`
-AND 每个 NPC Agent 注册 4 个工具：`get-faction-info`/`get-relationship`/`get-character-status`/`get-current-date`
+AND 每个 NPC Agent 注册 4 个工具：`get-faction-info`/`get-all-factions`/`get-relationship`/`get-character-status`（不含 `get-current-date`）
 AND 返回结构：
   ```typescript
   {
@@ -41,7 +41,7 @@ AND 响应 header `X-Partial-Failure: true` 标识部分失败
 #### Scenario: 全部 NPC Agent 失败
 
 WHEN 所有 NPC Agent 均失败
-THEN 服务端返回 `{ actions: [], failedFactionIds: [...all], fallback: true }`
+THEN 服务端返回 `{ actions: [], failedFactionIds: [...all], fallback: true }` + 顶层 `fallback: true` 字段
 AND 响应 header `X-Fallback: true`（既有降级逻辑）
 AND 前端 `NpcActionList` 显示"本回合各势力按兵不动"（既有）
 
@@ -101,7 +101,7 @@ AND 前端 `NpcActionList` 显示失败 NPC 卡片为"决策失败"角标
 #### Scenario: 全部 NPC Agent 失败降级（既有，扩展）
 
 WHEN 所有 NPC Agent 均失败
-THEN 服务端返回 `{ actions: [], failedFactionIds: [...], fallback: true }` + `X-Fallback: true` header
+THEN 服务端返回 `{ actions: [], failedFactionIds: [...], fallback: true }` + `X-Fallback: true` header（返回结构已含顶层 `fallback: true`，见上方"全部 NPC Agent 失败" Scenario）
 AND 前端 `NpcActionList` 显示「本回合各势力按兵不动」（既有）
 
 ### Requirement: NPC 行动对玩家的影响
@@ -121,8 +121,7 @@ AND 前端 `NpcActionList` 中该项标红显示「敌对势力扩张，波及�
 #### Scenario: 行动记录到存档（既有）
 
 WHEN NPC 行动响应后
-THEN 前端将本回合 actions 追加到 `save.factions[i].lastAction` 字段
-AND 同时追加到 `save.events` 数组作为 NPC 行动事件
+THEN 前端将本回合 actions 追加到 `save.events` 数组作为 NPC 行动事件（NPC 行动不写入 `factions[i].lastAction`，该字段仅玩家外交/谈判时更新）
 AND `save.events` 超过 50 条时截断
 
 ### Requirement: 并发锁防重复
@@ -132,7 +131,7 @@ AND `save.events` 超过 50 条时截断
 #### Scenario: 同存档并发请求被拒绝（既有）
 
 WHEN 同一 `saveId` 已有进行中的 npc-actions 请求
-THEN 返回 HTTP 429 + `{ "ok": false, "error": { "code": "CONCURRENT_REQUEST", "message": "本回合 NPC 决策正在处理中" } }`
+THEN 返回 HTTP 429 + `{ "ok": false, "error": { "code": "CONCURRENT_REQUEST", "message": "该存档有进行中的请求，请稍后" } }`
 AND 不调用 LLM
 
 #### Scenario: 锁内多 NPC Agent 并行

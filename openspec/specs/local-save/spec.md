@@ -11,7 +11,7 @@
 
 WHEN 检查 `uni.getStorage('game_save')`
 THEN 返回对象含以下字段：
-  - `saveVersion: 1`
+  - `saveVersion: 2`
   - `saveId: string (UUID)`
   - `deviceId: string`
   - `createdAt: number (timestamp)`
@@ -19,7 +19,7 @@ THEN 返回对象含以下字段：
   - `character: { background, backgroundPerks, factionId, factionName, factionSummary }`
   - `state: { turn, date: { year, month }, attributes: {...}, resources: {...} }`
   - `factions: Array<{ id, name, summary, power, relationship, status, lastAction? }>`
-  - `events: Array<{ turn, eventType, title, description, playerChoice, effects }>`（最近 50 条，`eventType` ∈ `民生|军事|外交|随机|历史剧情|npc`）
+  - `events: Array<{ turn, eventType, title, description, playerChoice, effects }>`（最近 50 条，`eventType` ∈ `民生|军事|外交|随机|历史剧情|系统|npc`）
   - `advisorMessages: Array<{ role, content, turn, timestamp }>`（最近 20 条）
   - `ended: boolean`（结局标志，初始 false）
   - `endedAt: number (timestamp, 可选)`（仅 ended=true 时存在）
@@ -37,22 +37,22 @@ AND 不超过 `uni.setStorage` 单 key 1MB 上限
 
 #### Scenario: 封装 save 方法
 
-WHEN 调用 `useSaveSync().save(save)`
-THEN 内部调用 `uni.setStorage({ key: 'game_save', data: save })`
+WHEN 调用 `useGameState().save(save)`（注意：本地读写封装在 `useGameState`，`useSaveSync` 仅负责云端同步，不提供 save/load/clear）
+THEN 内部经 `utils/storage.ts` 的 `saveSave` 调用 `uni.setStorage({ key: 'game_save', data: save })`（异步）
 AND 更新 `save.updatedAt = Date.now()`
 AND 触发 Pinia store 中的 `currentSave` 状态更新
 
 #### Scenario: 封装 load 方法
 
-WHEN 调用 `useSaveSync().load()`
-THEN 内部调用 `uni.getStorage('game_save')`
+WHEN 调用 `useGameState().load()`
+THEN 内部经 `utils/storage.ts` 的 `loadSave` 调用 `uni.getStorage('game_save')`
 AND 返回 `GameSave | null`（不存在时 null）
 AND 同步更新 Pinia store `currentSave`
 
 #### Scenario: 封装 clear 方法
 
-WHEN 调用 `useSaveSync().clear()`
-THEN 内部调用 `uni.removeStorage('game_save')`
+WHEN 调用 `useGameState().clear()`
+THEN 内部经 `utils/storage.ts` 的 `clearSave` 调用 `uni.removeStorage('game_save')`
 AND 清空 Pinia store `currentSave`
 
 ### Requirement: 历史事件截断
@@ -81,16 +81,16 @@ AND 截断的旧对话不可恢复
 
 #### Scenario: 加载旧版本存档时迁移
 
-WHEN `load()` 读出的存档 `saveVersion < CURRENT_SAVE_VERSION`
-THEN 调用 `migrateSave(oldSave)` 函数链式迁移到最新版本
+WHEN `load()` 读出的存档 `saveVersion < 2`
+THEN 调用 `migrateSaveV1ToV2(oldSave)` 将 v1 迁移到 v2（补齐 `pendingChainNodes`/`completedChainIds`/`activeChainIds` 三个数组字段并置 `saveVersion: 2`）
 AND 迁移成功后写回存储并更新 `saveVersion`
 AND 迁移失败时抛错并提示用户「存档损坏，无法继续」
 
-#### Scenario: MVP 版本仅支持 v1
+#### Scenario: 当前版本为 v2
 
-WHEN 检查 `CURRENT_SAVE_VERSION`
-THEN 等于 1
-AND `migrateSave` 函数为空实现（仅返回原对象）
+WHEN 检查当前存档版本
+THEN 新建与迁移目标均为 `saveVersion: 2`
+AND v2 后无更高版本迁移函数（版本号 2 散落在类型与函数中，无 `CURRENT_SAVE_VERSION` 常量）
 
 ### Requirement: 存档标记结局
 

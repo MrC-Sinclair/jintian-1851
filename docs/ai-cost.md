@@ -39,7 +39,7 @@ MVP 阶段全部使用 `Qwen/Qwen3-8B`（硅基流动 SiliconFlow），单价约
 | 序号 | 接口 | 触发条件 | 备注 |
 |---|---|---|---|
 | 3 | `resolve-decision` | 玩家选择「自由行动」输入而非事件预置选项 | 选事件选项时不调用，前端直接应用 `option.effects` |
-| 4 | `advisor-chat` | 玩家点击「咨询军师」 | 可一回合多次触发，每次对话独立 |
+| 4 | `advisor-chat` | 玩家点击「军师」 | 可一回合多次触发，每次对话独立 |
 | 5 | `faction-negotiate` | 玩家发起「写信谈判」 | 单次谈判最多 2 次调用（letter + settle），受独立配额 `negotiationUsedThisTurn`（每回合 1 次）约束；letter 降级不消耗配额可重试 |
 
 ### 开局调用

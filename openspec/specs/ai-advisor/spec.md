@@ -69,7 +69,7 @@ LLM 调用失败时 MUST 不阻断流程，前端显示「军师沉默」占位�
 
 #### Scenario: LLM 调用失败
 
-WHEN 服务端 `streamText()` 抛出异常 或 响应超时（30 秒）
+WHEN 服务端 `streamText()` 抛出异常 或 响应超时（60 秒）
 THEN 服务端发送 SSE 错误事件 `data: {"error":"AI_CALL_FAILED"}\n\n`
 AND 关闭流
 AND 前端在对话区显示「军师沉默，请自行决断」
@@ -137,7 +137,7 @@ AND 跨 chunk SSE 数据拼接逻辑不变（既有）
 
 WHEN 探测请求在 2 秒内未收到首个 chunk
 THEN `useSSE` 自动在 URL 追加 `?stream=false` 改走非流式（既有）
-AND 服务端返回完整 JSON `{ delta: <full text>, done: true, toolCalls: [...] }`（**新增** `toolCalls` 字段记录工具调用过程）
+AND 服务端返回完整 JSON `{ delta: <full text>, done: true }`（非流式降级当前不携带工具调用过程字段，前端按 `delta`/`done` 渲染）
 
 ### Requirement: 前端工具调用过程展示
 
@@ -148,12 +148,12 @@ AND 服务端返回完整 JSON `{ delta: <full text>, done: true, toolCalls: [..
 WHEN `useSSE` 触发 `onToolCall(toolName, args)` 回调
 THEN `AdvisorDrawer` 在对话区上方显示工具调用气泡
 AND 气泡内容根据 `toolName` 动态生成：
-  - `get-faction-info` → "🔍 查询势力信息…"
-  - `get-all-factions` → "🔍 查询所有势力…"
-  - `get-character-status` → "🔍 查询玩家状态…"
-  - `get-recent-events` → "🔍 查询历史事件…"
-  - `get-relationship` → "🔍 查询势力关系…"
-  - `get-current-date` → "🔍 查询当前日期…"
+  - `get-faction-info` → "查询势力详情…"
+  - `get-all-factions` → "查询所有势力…"
+  - `get-character-status` → "查询玩家状态…"
+  - `get-recent-events` → "查询历史事件…"
+  - `get-relationship` → "查询势力关系…"
+  - `get-current-date` → "查询当前日期…"
 AND 气泡样式：浅灰背景 `#F5F5F5`，圆角 `8rpx`，padding `12rpx 16rpx`，字号 `24rpx`
 
 #### Scenario: 工具调用完成更新
@@ -259,12 +259,7 @@ AND 不改变 token 预算（提示词增加约 50 tokens，可忽略）
 #### Scenario: 空状态展示引导
 
 WHEN `AdvisorDrawer` 打开且无消息（`advisorMessages` 为空）
-THEN 空状态显示引导文案"有问题可问我，比如"
-AND 下方显示 2-3 个示例问题（可点击直接发送）：
-  - "我该优先发展什么？"
-  - "当前局势如何？"
-  - "这个事件该怎么应对？"
-AND 示例问题点击后填入输入框并自动发送
+THEN 空状态显示引导文案"有问题可问我，比如"我该优先发展什么？""当前局势如何？""（纯文本，当前未实现可点击示例）
 
 #### Scenario: 有消息不显示空状态
 
@@ -304,7 +299,7 @@ THEN 中断调用，降级返回空简报（同 LLM 失败降级）
 #### Scenario: 频率限制
 
 WHEN 同一 `deviceId` 每分钟 AI 调用超过 10 次（复用 `rate-limit` 中间件）
-THEN 返回 429 `{ ok: false, error: { code: 'RATE_LIMITD', message: '请求过于频繁，请稍后再试' } }`
+THEN 返回 429 `{ ok: false, error: { code: 'RATE_LIMITED', message: '请求过于频繁，请稍后再试' } }`
 
 #### Scenario: 开关关闭
 

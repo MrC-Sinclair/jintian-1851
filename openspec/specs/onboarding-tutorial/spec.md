@@ -11,22 +11,22 @@
 
 WHEN 玩家首次进入 `game-main` 页面（`localStorage.onboarding_done` 不存在或为 false）
 THEN `OnboardingOverlay` 组件挂载并显示第 1 步引导
-AND 全屏半透明遮罩 `position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1000` 覆盖游戏界面
+AND 全屏覆盖层 `position:fixed; inset:0; z-index:1000`；半透明遮罩由高亮层的 `box-shadow: 0 0 0 9999px rgba(0,0,0,0.6)` 提供（独立的 `__mask` 层背景透明），覆盖游戏界面
 AND 引导卡片显示在屏幕底部（距底部 `120rpx`），含标题、内容、步骤指示"1/6"、"下一步"与"跳过"按钮
 
 #### Scenario: 引导步骤数据驱动
 
 WHEN `OnboardingOverlay` 挂载
-THEN `steps` props 包含 6 个步骤对象，每个对象含 `{ target: string, title: string, content: string }`
+THEN `steps` props 包含 6 个步骤对象，每个对象含 `{ targetKey?: string | null, title: string, content: string }`（`targetKey` 为指向 `targetSelectors` 映射表的键，用于定位高亮区块；非直接 CSS 选择器）
 AND 步骤顺序为：①欢迎与背景 ②状态面板（5维属性+4资源）③事件卡片 ④决策方式（选项/自由行动）⑤军师对话 ⑥胜利/失败条件
-AND 每步切换时调 `getElementRect(targetRef)` 获取目标区块位置，设置高亮元素 `style.left/top/width/height`
+AND 每步切换时按 `targetKey` 从 `targetSelectors` 取选择器，调 `getElementRect(selector)` 获取目标区块位置，设置高亮元素 `style.left/top/width/height`
 AND 高亮目标区块用 `box-shadow: 0 0 0 9999px rgba(0,0,0,0.6)` 外阴影覆盖非高亮区
 
 #### Scenario: 玩家点击"下一步"前进
 
 WHEN 玩家在第 N 步点击"下一步"按钮（N < 6）
 THEN `currentStep` 递增到 N+1
-AND 高亮目标切换到第 N+1 步的 `target` 区块
+AND 高亮目标切换到第 N+1 步的 `targetKey` 对应区块
 AND 步骤指示更新为"(N+1)/6"
 AND 第 6 步时"下一步"按钮文案变为"开始游戏"
 

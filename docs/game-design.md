@@ -184,15 +184,16 @@ state = {
 | `外交` | 列强、邻省、朝贡、教案 | 12 条 |
 | `随机` | 异象、宝物、故人、奇书 | 12 条 |
 | `历史剧情` | 英法联军、洋务、甲午等独立历史插曲 | 12 条 |
+| `系统` | 回合结算自动产出（如银两 +50），非 LLM 生成、不入兜底池 | — |
 | `npc` | NPC 行动记录（不作为玩家事件出现） | — |
 
-兜底事件池共 **60 条**（5 类型 × 12 条），数据源 [fallback-events.ts](file:///d:/code/codeWork/jintian-1851/server/server/runtime/fallback-events.ts)。
+兜底事件池共 **60 条**（5 类型 × 12 条，不含 `系统`/`npc`），数据源 [fallback-events.ts](file:///d:/code/codeWork/jintian-1851/server/server/runtime/fallback-events.ts)。
 
 ### MVP 阶段权重分布
 
 MVP 阶段 `generate-event` 由 LLM 自主决定事件类型（**不预设权重**），但 prompt 引导倾向于「民生/军事/外交」3 类常规事件，历史剧情仅在特定年份触发，随机事件概率较低。
 
-兜底池因每类型 12 条等量分布，类型命中概率均等（1/5）。
+兜底池因每类型 12 条等量分布，类型命中概率均等（1/5，仅计 LLM 生成的 5 类；`系统` 为回合结算产出、`npc` 为势力行动记录，均不计入兜底命中概率）。
 
 ### 兜底事件清单
 

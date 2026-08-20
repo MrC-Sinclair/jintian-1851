@@ -44,7 +44,7 @@ THEN 返回 HTTP 400 + `{ "ok": false, "error": { "code": "INVALID_PARAMS", "mes
 
 WHEN 前端发送 `GET /api/game/sync-save?saveId=xxx`
 AND 数据库中存在该 `saveId`
-THEN 返回 `{ "ok": true, "data": { "save": <GameSave> } }`
+THEN 返回 `{ "ok": true, "data": { "save": <GameSave>, "updatedAt": <服务端 NOW()> } }`
 AND `save` 字段为完整存档对象
 
 #### Scenario: 拉取不存在的存档
@@ -117,15 +117,17 @@ AND 用户可重试
 
 #### Scenario: 表字段完整
 
-WHEN 检查 `server/db/schema.ts` 中 `gameSaves` 定义
+WHEN 检查 `server/server/db/schema.ts` 中 `gameSaves` 定义
 THEN 含字段：
   - `id: UUID PK DEFAULT random_uuid()`
   - `saveId: UUID UNIQUE NOT NULL`
   - `deviceId: TEXT NOT NULL`
   - `saveData: JSONB NOT NULL`
   - `saveVersion: INT NOT NULL DEFAULT 1`
-  - `createdAt: TIMESTAMP NOT NULL DEFAULT NOW()`
-  - `updatedAt: TIMESTAMP NOT NULL DEFAULT NOW()`
+  - `endedAt: TIMESTAMPTZ NULL`（结局时间，`NULL` 表示进行中）
+  - `endedReason: TEXT NULL`（结局原因，如 `military_collapse`/`victory`/`time_up`）
+  - `createdAt: TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+  - `updatedAt: TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 
 #### Scenario: 索引创建
 

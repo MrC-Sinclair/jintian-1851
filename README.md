@@ -52,7 +52,7 @@ GAME/
 │   └── tests/             # unit / component / e2e
 ├── server/                # 后端：Nuxt 3 纯 API 服务
 │   └── server/
-│       ├── api/game/      # 7 个核心接口（见下方 API 概览）
+│       ├── api/game/      # 8 个核心接口（见下方 API 概览）
 │       ├── db/            # Drizzle Schema 与查询
 │       ├── runtime/       # 兜底势力 / 事件 / 剧情链
 │       ├── tools/         # Agent 工具（init-factions / npc 等）
@@ -173,7 +173,7 @@ cd server && pnpm build && pnpm preview # 生产构建与预览
 
 ## 🔌 API 概览
 
-后端 `server/server/api/game/` 下提供 7 个核心接口（完整定义见 [`docs/API.md`](./docs/API.md)）：
+后端 `server/server/api/game/` 下提供 8 个核心接口（完整定义见 [`docs/API.md`](./docs/API.md)）：
 
 | 方法 & 路径 | 说明 |
 |---|---|
@@ -181,6 +181,7 @@ cd server && pnpm build && pnpm preview # 生产构建与预览
 | `POST /api/game/generate-event` | 生成本回合事件（三层触发：挂起剧情链 > 时间窗口 > LLM 生成） |
 | `POST /api/game/resolve-decision` | 结算玩家决策，应用属性 / 资源 effects |
 | `POST /api/game/npc-actions` | 活跃势力 AI 自主行动 |
+| `POST /api/game/faction-negotiate` | 势力谈判（写信议价 / 还价裁定，Agent 两阶段处理） |
 | `POST /api/game/advisor-briefing` | 军师局势简报 |
 | `POST /api/game/advisor-chat` | 军师自由对话 |
 | `POST /api/game/sync-save` | 云端存档同步 |

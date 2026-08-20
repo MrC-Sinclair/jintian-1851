@@ -57,11 +57,11 @@ AND 全部通过
 
 ### Requirement: 环境变量配置模板
 
-工程根目录与 `server/` 子目录 MUST 各提供 `.env.example`，列出所有必需环境变量。
+工程 MUST 提供环境变量配置模板：真实模板位于 `server/.env.example`（列出 `OPENAI_API_KEY`/`OPENAI_BASE_URL`/`LLM_MODEL`/`DATABASE_URL` 等必需变量）；仓库根目录 `.env.example` 仅为占位空文件，不列变量。
 
-#### Scenario: 复制 .env.example 后填写真实值可启动
+#### Scenario: 复制 server/.env.example 后填写真实值可启动
 
-WHEN 开发者将 `.env.example` 复制为 `.env`
+WHEN 开发者将 `server/.env.example` 复制为 `server/.env`
 AND 填入真实的 `OPENAI_API_KEY` 与 `DATABASE_URL`
 THEN `pnpm dev` 可正常启动前端
 AND `cd server && pnpm dev` 可正常启动后端

@@ -24,7 +24,7 @@ THEN 页面用 `scroll-view` 滚动展示以下章节：
   3. 胜利与失败：综合实力≥90 胜利、任一属性≤0 失败、1912 年时光尽头
   4. 玩法技巧：优先平衡发展、关注危机预警、善用军师、自由行动可解锁隐藏策略
   5. FAQ：5-8 条常见问题
-AND 顶部有返回按钮（`v-tooltip` 提示"返回"）+ 标题"如何游戏"
+AND 顶部有返回按钮（使用 `TooltipView` 组件包裹，`:content="TOOLTIP_TEXT.back"` 提示"返回"）+ 标题"如何游戏"
 AND 返回按钮触摸目标 `min-w/min-h: 72rpx`
 
 #### Scenario: 帮助页术语与 InfoHint 一致
@@ -40,7 +40,7 @@ AND 文案来源统一为 `utils/copywriting.ts` 或常量模块，禁止多处�
 #### Scenario: InfoHint 渲染与交互
 
 WHEN `InfoHint` 组件挂载
-THEN 渲染圆形问号图标（直径 `48rpx`≈24px，背景 `#8B1A1A`，白色"?"）
+THEN 渲染圆形问号图标（直径 `44rpx`，背景 `#8d6e63`，白色"?"）
 AND 点击问号弹出说明浮层（`position:fixed` 居中，半透明遮罩）
 AND 浮层内容：术语标题（粗体）+ 解释段落 + 关闭按钮
 AND 点击浮层外区域或关闭按钮关闭浮层

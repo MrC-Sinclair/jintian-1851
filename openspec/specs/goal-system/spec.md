@@ -34,7 +34,7 @@ AND 折叠态仅显示标题"游戏目标"+ 缩略进度值
 
 WHEN 玩家综合实力 ≥ 90
 THEN 进度条填充变为绿色
-AND `FocusPanel` 显示"🎉 综合实力已达 90，再坚持数回合即可成就霸业"
+AND `FocusPanel` 显示"综合实力已达 90，再坚持数回合即可成就霸业"（带"本回合建议："前缀，无 emoji）
 
 ### Requirement: 危机属性预警
 
@@ -44,8 +44,8 @@ AND `FocusPanel` 显示"🎉 综合实力已达 90，再坚持数回合即可成
 
 WHEN `useTurn.startTurn()` 执行且某属性 < 30（如 military=15）
 THEN `getCrisis(attributes)` 返回 `{ attr: 'military', name: '军事', value: 15 }`（取 <30 中最低者）
-AND `toast.warning` 显示"军事濒临崩溃（当前 15），需尽快应对"
-AND `FocusPanel` 危机行显示 ⚠ 红色"军事 15（濒临崩溃）"+ InfoHint 解释
+AND `toast.warning` 显示"军事 15（濒临崩溃，建议优先应对）"
+AND `FocusPanel` 危机行显示红色"军事 15（濒临崩溃）"（警告图标由 CSS 绘制，非 Unicode ⚠ 字符）+ InfoHint 解释
 
 #### Scenario: 多个属性低于阈值取最低
 
