@@ -2,7 +2,7 @@
  * @file 简易频率限制
  *
  * 进程内 Map<deviceId, { count, resetAt }>，按 deviceId 每分钟最多 10 次 AI 调用。
- * 仅对 /api/game/ 下 AI 端点生效（init-factions、generate-event、resolve-decision、npc-actions、advisor-chat、advisor-briefing，共 6 个）。
+ * 仅对 /api/game/ 下 AI 端点生效（init-factions、generate-event、resolve-decision、npc-actions、advisor-chat、advisor-briefing、faction-negotiate，共 7 个）。
  * sync-save 不限制（非 AI 调用）。
  *
  * 进程内实现：单实例 MVP 足够，多实例需换 Redis。

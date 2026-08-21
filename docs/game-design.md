@@ -197,7 +197,7 @@ MVP 阶段 `generate-event` 由 LLM 自主决定事件类型（**不预设权重
 
 ### 兜底事件清单
 
-#### 民生类（4 条）
+#### 民生类（12 条）
 
 | 标题 | 选项数 | 典型 effects 范围 |
 |---|---|---|
@@ -206,7 +206,7 @@ MVP 阶段 `generate-event` 由 LLM 自主决定事件类型（**不预设权重
 | 水利失修 | 3 | people ±5, silver -100, economy -10 |
 | 科举风波 | 3 | politics ±6, reputation ±8 |
 
-#### 军事类（4 条）
+#### 军事类（12 条）
 
 | 标题 | 选项数 | 典型 effects 范围 |
 |---|---|---|
@@ -215,7 +215,7 @@ MVP 阶段 `generate-event` 由 LLM 自主决定事件类型（**不预设权重
 | 新军操练 | 3 | military ±12, silver -400 |
 | 边警频传 | 3 | military ±8, troops -80, diplomacy ±8 |
 
-#### 外交类（4 条）
+#### 外交类（12 条）
 
 | 标题 | 选项数 | 典型 effects 范围 |
 |---|---|---|
@@ -224,7 +224,7 @@ MVP 阶段 `generate-event` 由 LLM 自主决定事件类型（**不预设权重
 | 朝贡使节 | 3 | diplomacy ±10, troops -100, reputation ±7 |
 | 教案冲突 | 3 | diplomacy ±10, silver -500, people ±8 |
 
-#### 随机类（4 条）
+#### 随机类（12 条）
 
 | 标题 | 选项数 | 典型 effects 范围 |
 |---|---|---|
@@ -562,17 +562,17 @@ function getCrisis(attributes: Attributes): Crisis | null {
 ### 4. 历史沉浸感
 
 - 6 个势力对应真实历史势力（清廷/湘军/淮军/太平天国/北洋/革命党）
-- 4 个历史剧情事件锚定真实时间点（1851 金田 / 1860 英法 / 1861-1895 洋务 / 1894 甲午）
+- 4 个代表性历史剧情（兜底池示例）锚定真实时间点（1851 金田 / 1860 英法 / 1861-1895 洋务 / 1894 甲午）
 - 1851-1912 时间跨度覆盖晚清主要历史节点
 
 ### 5. 后续平衡方向
 
 MVP 阶段不引入复杂平衡机制，后续可考虑：
 
-- **事件权重动态调整**：根据玩家属性短板提高对应类型事件出现率（如 military < 30 时军事事件 +20% 概率） —— **已落地（见 2026-08-07-event-weight-dynamic-adjust）**：前端计算 `attributeShortfall`（值 < `CRISIS_THRESHOLD`=30）随 `generate-event` 请求传入，后端提示词以软偏好（约 +20%）引导 LLM 优先补短板 —— **已落地（见 2026-08-07-event-weight-dynamic-adjust）**：前端算短板信号随 `generate-event` 请求传入，后端提示词注入"补短板 +20%"软偏好
+- **事件权重动态调整**：根据玩家属性短板提高对应类型事件出现率（如 military < 30 时军事事件 +20% 概率） —— **已落地（见 2026-08-07-event-weight-dynamic-adjust）**：前端计算 `attributeShortfall`（值 < `CRISIS_THRESHOLD`=30）随 `generate-event` 请求传入，后端提示词以软偏好（约 +20%）引导 LLM 优先补短板
 - **NPC 行动反馈**：NPC 行动 effects 累计影响玩家属性，避免 NPC 行动孤立 —— **已落地（见 2026-08-06-npc-action-cumulative-impact）**：`NpcActionList` 顶部新增"本回合累计影响"汇总卡
-- **资源产出机制**：每回合自动产出少量资源（如 silver +50/turn），避免长期消耗后无解 —— **已落地（见 2026-08-07-resource-per-turn-yield）**：`endTurn` 结算时 `calcTurnYield()` 返 `{ silver: 50 }` 经 `applyEffects` 入账，并以 `eventType:'系统'` 历史事件记录于 timeline —— **已落地（见 2026-08-07-resource-per-turn-yield）**：`endTurn` 结算注入银两 +50 并记录系统历史事件
-- **加权综合实力**：引入 `politics` 与 `people` 权重更高（治世之要），引导玩家注重内政 —— **已落地（见 2026-08-07-weighted-overall-power）**：`calcOverallPower` 改 `Σ(attr×w)/Σ(w)` 加权平均，`POWER_WEIGHTS = { politics: 1.3, people: 1.3, 其余 1.0 }`，阈值常量收口 `constants.ts` —— **已落地（见 2026-08-07-weighted-overall-power）**：`calcOverallPower` 改加权平均（政治/民心权重 1.3），阈值常量收口 constants.ts
+- **资源产出机制**：每回合自动产出少量资源（如 silver +50/turn），避免长期消耗后无解 —— **已落地（见 2026-08-07-resource-per-turn-yield）**：`endTurn` 结算时 `calcTurnYield()` 返 `{ silver: 50 }` 经 `applyEffects` 入账，并以 `eventType:'系统'` 历史事件记录于 timeline
+- **加权综合实力**：引入 `politics` 与 `people` 权重更高（治世之要），引导玩家注重内政 —— **已落地（见 2026-08-07-weighted-overall-power）**：`calcOverallPower` 改 `Σ(attr×w)/Σ(w)` 加权平均，`POWER_WEIGHTS = { politics: 1.3, people: 1.3, 其余 1.0 }`，阈值常量收口 `constants.ts`
 
 ---
 

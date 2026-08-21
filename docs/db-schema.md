@@ -30,7 +30,7 @@ MVP 阶段仅含 1 张表 `game_saves`，后续随功能扩展追加。
 | `save_id` | `uuid` | `NOT NULL UNIQUE` | — | 客户端生成的存档唯一标识，云端同步主键 |
 | `device_id` | `text` | `NOT NULL` | — | 设备指纹（MVP 占位，后续接登录系统） |
 | `save_data` | `jsonb` | `NOT NULL` | — | 完整 GameSave JSON 数据（含 character/state/factions/events/advisorMessages 等） |
-| `save_version` | `integer` | `NOT NULL` | `1` | 存档结构版本号（用于后续迁移，当前固定为 1） |
+| `save_version` | `integer` | `NOT NULL` | `1` | 存档结构版本号（默认 1；当前客户端已支持 v2，新增 pendingChainNodes/completedChainIds/activeChainIds 三字段） |
 | `ended_at` | `timestamptz` | `NULL` | `NULL` | 游戏结局时间（`NULL` 表示进行中） |
 | `ended_reason` | `text` | `NULL` | `NULL` | 结局原因（如 `military_collapse`、`victory`、`time_up`） |
 | `created_at` | `timestamptz` | `NOT NULL` | `NOW()` | 首次创建时间（服务端生成，不接受客户端值） |

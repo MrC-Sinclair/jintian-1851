@@ -1,7 +1,7 @@
 /**
  * @file 频率限制中间件
  *
- * 仅对 /api/game/ 下 AI 端点生效（init-factions、generate-event、resolve-decision、npc-actions、advisor-chat、advisor-briefing，共 6 个）。
+ * 仅对 /api/game/ 下 AI 端点生效（init-factions、generate-event、resolve-decision、npc-actions、advisor-chat、advisor-briefing、faction-negotiate，共 7 个）。
  * sync-save 不限制。
  *
  * 通过请求头 x-device-id 识别设备，缺失时返回 400。

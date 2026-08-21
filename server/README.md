@@ -100,6 +100,7 @@ pnpm dev          # 启动开发服务，默认 http://localhost:3000
 | `POST /api/game/npc-actions` | 活跃势力 AI 自主行动 |
 | `POST /api/game/advisor-briefing` | 军师局势简报 |
 | `POST /api/game/advisor-chat` | 军师自由对话 |
+| `POST /api/game/faction-negotiate` | 玩家与势力 Agent 自然语言谈判（写信 / 裁定） |
 | `POST /api/game/sync-save` | 云端存档同步 |
 
 ### 目录结构
@@ -107,7 +108,7 @@ pnpm dev          # 启动开发服务，默认 http://localhost:3000
 ```
 server/
 ├── server/
-│   ├── api/game/      # 7 个核心 HTTP 接口
+│   ├── api/game/      # 8 个核心 HTTP 接口
 │   ├── db/            # Drizzle Schema 与查询（schema 唯一来源见 ../docs/db-schema.md）
 │   ├── runtime/       # 兜底数据：fallback-factions / fallback-events / story-chains
 │   ├── tools/         # Agent 工具（init-factions / npc 等）

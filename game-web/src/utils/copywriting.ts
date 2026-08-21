@@ -293,5 +293,12 @@ export const PAGE_TEXT = {
     status: '状态',
     timeline: '近况时间线',
     npcActions: '天下动静'
+  },
+  /** 同步存档冲突确认（index/settings/game-main 共用，避免三处重复硬编码） */
+  syncConfirm: {
+    title: '云端存档较新',
+    message: (cloudDate: string) => `云端存档更新时间：${cloudDate}\n是否拉取覆盖本地？`,
+    pull: '拉取云端',
+    keep: '保留本地'
   }
 } as const

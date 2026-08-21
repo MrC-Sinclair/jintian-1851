@@ -121,9 +121,9 @@ const attributesList = [
 
 const resourcesList = [
   { key: 'silver' as const, label: '银两' },
-  { key: 'troops' as const, label: '兵力' },
+  { key: 'troops' as const, label: '兵员' },
   { key: 'food' as const, label: '粮草' },
-  { key: 'reputation' as const, label: '声望' }
+  { key: 'reputation' as const, label: '名望' }
 ]
 
 /** 显示中的属性值（动画过渡值） */

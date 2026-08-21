@@ -912,8 +912,8 @@ x-device-id: {设备指纹}
 | code | HTTP | 含义 | 触发接口 |
 |---|---|---|---|
 | `INVALID_PARAMS` | 400 | 请求参数校验失败（body 解析失败、zod 校验失败、UUID 格式错误等） | 全部 |
-| `RATE_LIMITED` | 429 | 频率超限（>10 次/分钟/deviceId） | 6 个 AI 端点（init-factions / generate-event / resolve-decision / npc-actions / advisor-chat / advisor-briefing） |
-| `CONCURRENT_REQUEST` | 429 | 同 `saveId` 已有进行中请求 | generate-event / resolve-decision / npc-actions / advisor-chat |
+| `RATE_LIMITED` | 429 | 频率超限（>10 次/分钟/deviceId） | 7 个 AI 端点（init-factions / generate-event / resolve-decision / npc-actions / advisor-chat / advisor-briefing / faction-negotiate） |
+| `CONCURRENT_REQUEST` | 429 | 同 `saveId` 已有进行中请求 | generate-event / resolve-decision / npc-actions / advisor-chat / faction-negotiate |
 | `SAVE_NOT_FOUND` | 404 | 云端未找到此存档 | GET sync-save |
 | `DB_ERROR` | 500 | 数据库读写失败 | sync-save |
 | `METHOD_NOT_ALLOWED` | 405 | 非 POST/GET 方法 | sync-save |

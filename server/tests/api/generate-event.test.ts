@@ -258,8 +258,8 @@ describe('POST /api/game/generate-event', () => {
     expect(generateObjectMock).not.toHaveBeenCalled()
   })
 
-  it('同年份多链按 chainId 字典序：1851 命中太平天国（字典序先于捻军）', async () => {
-    // 1851 同时命中 tai-ping-tian-guo 与 nian-jun-zhi-luan
+  it('时间窗口匹配：1851 命中太平天国（seed 中各 startYear 互不相同，无同年多链）', async () => {
+    // 1851 仅命中 tai-ping-tian-guo（seed 中捻军 startYear=1853，不与太平天国同年）
     readBodyMock.mockResolvedValueOnce(makeBody(2, { stateSnapshot: makeStateSnapshot(2, 1851) }))
     const event = makeEvent()
     const res = (await handler(event)) as any

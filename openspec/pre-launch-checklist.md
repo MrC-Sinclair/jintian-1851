@@ -29,7 +29,7 @@
 ### 生产环境配置
 
 - [ ] `.env` 配置 `OPENAI_API_KEY`（硅基流动）
-- [ ] `.env` 配置 `DATABASE_URL`（PostgreSQL 端口 5434）
+- [ ] `.env` 配置 `DATABASE_URL`（PostgreSQL 端口 5534）
 - [ ] `.env` 配置 `IMGBB_API_KEY`（若用图片对话）
 - [ ] `docker compose up -d` 启动 PostgreSQL 并验证 healthy
 - [ ] `pnpm db:push` 同步 schema 到生产数据库

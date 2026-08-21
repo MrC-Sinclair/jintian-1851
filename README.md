@@ -31,7 +31,7 @@
 | AI | Vercel AI SDK v5（`ai` / `@ai-sdk/openai`） | 工具调用、流式、多步推理；默认模型 `Qwen/Qwen3-8B` |
 | 数据库 | PostgreSQL 18（pgvector） + Drizzle ORM | 向量能力预留；`drizzle-kit` 管理迁移 |
 | LLM Provider | 硅基流动 SiliconFlow（OpenAI 兼容协议） | 通过 `OPENAI_BASE_URL` / `OPENAI_API_KEY` 接入 |
-| 包管理 | pnpm 11 | `game-web` 与 `server` 为**两个独立工作区** |
+| 包管理 | pnpm 11 | `game-web` 与 `server` 为**两个独立子项目，各自用 pnpm 管理** |
 | 测试 | Vitest + Playwright | 单元 / 组件 / API / E2E 分层 |
 | 基础设施 | Docker Compose | 一键拉起开发 / 测试数据库 |
 
@@ -40,7 +40,7 @@
 ## 📁 目录结构
 
 ```
-GAME/
+jintian-1851/
 ├── game-web/              # 前端：uni-app（H5 + 微信小程序）
 │   ├── src/
 │   │   ├── components/    # 事件卡、势力卡、进度条等 UI 组件
@@ -63,6 +63,7 @@ GAME/
 │   ├── API.md             # HTTP 接口定义（唯一接口来源）
 │   └── ai-cost.md         # AI 调用成本约束
 ├── openspec/              # 需求 / 规格 / 变更 / 上线清单
+├── docker/                # docker-compose 初始化脚本（pgvector 扩展）
 ├── docker-compose.yml     # Postgres 18（pgvector）开发 & 测试库
 └── AGENTS.md              # AI 编程助手纪律与执行规则（必读）
 ```
@@ -84,6 +85,8 @@ GAME/
 # 开发库 sw_game 映射 5534，测试库 sw_game_test 映射 5533
 docker compose up -d
 ```
+
+> 数据库默认用户/密码均为 `sw_game`。请确保 `server/.env` 的 `DATABASE_URL` 中密码与之相同；如需修改，可在仓库根目录 `.env` 设置 `POSTGRES_PASSWORD` 覆盖默认值。
 
 ### 2. 配置后端环境变量
 
@@ -141,7 +144,7 @@ cd server && pnpm build && pnpm preview # 生产构建与预览
 
 ## 🧪 常用命令
 
-> ⚠️ `game-web/` 与 `server/` 是**两个独立 pnpm 工作区**，命令须各自在对应目录执行，**禁止在仓库根目录直接运行** `pnpm dev/build/test`。
+> ⚠️ `game-web/` 与 `server/` 是**两个独立的 pnpm 子项目**，命令须各自在对应目录执行，**禁止在仓库根目录直接运行** `pnpm dev/build/test`。
 
 ### 后端 `server/`
 

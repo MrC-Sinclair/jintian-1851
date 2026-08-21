@@ -57,7 +57,7 @@ AND 响应 header `X-Event-Source: llm`
 
 #### Scenario: 同一年份多个剧情链可触发
 
-WHEN 当前游戏内时间命中多个剧情链 `startYear`（如 1851 年同时命中"太平天国兴亡"和"捻军之乱"）
+WHEN 当前游戏内时间命中多个剧情链 `startYear`（示例：某年份同时命中"太平天国兴亡"与另一条链；注：当前种子数据各剧情链 `startYear` 互不相同，本场景演示同年多链时的取舍规则）
 THEN 按 `startYear` 升序排序（同年份时按 `chainId` 字典序）
 AND 取第一个满足前置条件的剧情链触发
 AND 其他剧情链在后续回合或重复触发时再判断

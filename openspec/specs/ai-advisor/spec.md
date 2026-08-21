@@ -179,7 +179,7 @@ AND 触摸目标 ≥ 44px（符合 AGENTS.md 规范）
 
 ### Requirement: 新回合军师主动局势简报
 
-每回合开始时，游戏 MUST 调用 `POST /api/game/advisor-briefing` 获取军师主动生成的局势简报（50 字内），在 `FocusPanel` 与 `AdvisorDrawer` 中展示，让玩家无需主动提问即可获得当前局势分析与建议。
+每回合开始时，游戏 MUST 调用 `POST /api/game/advisor-briefing` 获取军师主动生成的局势简报（60 字内），在 `FocusPanel` 与 `AdvisorDrawer` 中展示，让玩家无需主动提问即可获得当前局势分析与建议。
 
 #### Scenario: 回合开始触发简报
 

@@ -37,11 +37,11 @@
           <text class="cc__bg-desc">{{ bg.desc }}</text>
           <view class="cc__bg-perks">
             <text
-              v-for="perk in bg.perks"
-              :key="perk.label"
+              v-for="perk in formatPerks(bg.perks)"
+              :key="perk.text"
               class="cc__bg-perk"
               :class="perk.cls"
-            >{{ perk.label }}</text>
+            >{{ perk.text }}</text>
           </view>
         </view>
       </view>
@@ -141,7 +141,7 @@ import { useToast } from '@/composables/useToast'
 import FactionCard from '@/components/FactionCard.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
-import { PAGE_TEXT } from '@/utils/copywriting'
+import { PAGE_TEXT, EFFECT_LABELS } from '@/utils/copywriting'
 import type { Background, Faction } from '@/types/game'
 
 /** init-factions 接口返回的势力结构 */
@@ -153,10 +153,26 @@ interface InitFaction {
   initialRelationship: number
 }
 
+interface Perk {
+  key: keyof typeof EFFECT_LABELS
+  value: number
+}
+
 interface BackgroundOption {
   value: Background
   desc: string
-  perks: Array<{ label: string; cls: string }>
+  perks: Perk[]
+}
+
+/**
+ * 身份加成标签：走集中 EFFECT_LABELS 拼接（与 DecisionButton 一致），
+ * 避免在各组件硬编码维度名导致脱节（design.md D6：用完整词而非单字缩写）
+ */
+function formatPerks(perks: Perk[]): Array<{ text: string; cls: string }> {
+  return perks.map((p) => ({
+    text: `${EFFECT_LABELS[p.key]}${p.value > 0 ? '+' : ''}${p.value}`,
+    cls: p.value > 0 ? 'cc__bg-perk--positive' : 'cc__bg-perk--negative'
+  }))
 }
 
 const BACKGROUNDS: BackgroundOption[] = [
@@ -164,45 +180,45 @@ const BACKGROUNDS: BackgroundOption[] = [
     value: '文官',
     desc: '通晓政事，善理政务',
     perks: [
-      { label: '政+10', cls: 'cc__bg-perk--positive' },
-      { label: '外+5', cls: 'cc__bg-perk--positive' },
-      { label: '军-5', cls: 'cc__bg-perk--negative' }
+      { key: 'politics', value: 10 },
+      { key: 'diplomacy', value: 5 },
+      { key: 'military', value: -5 }
     ]
   },
   {
     value: '武将',
     desc: '沙场宿将，威震四方',
     perks: [
-      { label: '军+10', cls: 'cc__bg-perk--positive' },
-      { label: '民+5', cls: 'cc__bg-perk--positive' },
-      { label: '政-5', cls: 'cc__bg-perk--negative' }
+      { key: 'military', value: 10 },
+      { key: 'people', value: 5 },
+      { key: 'politics', value: -5 }
     ]
   },
   {
     value: '商贾',
     desc: '富甲一方，财通四海',
     perks: [
-      { label: '经+15', cls: 'cc__bg-perk--positive' },
-      { label: '外+5', cls: 'cc__bg-perk--positive' },
-      { label: '政-5', cls: 'cc__bg-perk--negative' }
+      { key: 'economy', value: 15 },
+      { key: 'diplomacy', value: 5 },
+      { key: 'politics', value: -5 }
     ]
   },
   {
     value: '士绅',
     desc: '望重乡里，深得民心',
     perks: [
-      { label: '民+10', cls: 'cc__bg-perk--positive' },
-      { label: '政+5', cls: 'cc__bg-perk--positive' },
-      { label: '军-5', cls: 'cc__bg-perk--negative' }
+      { key: 'people', value: 10 },
+      { key: 'politics', value: 5 },
+      { key: 'military', value: -5 }
     ]
   },
   {
     value: '宗室',
     desc: '皇族后裔，名正言顺',
     perks: [
-      { label: '外+10', cls: 'cc__bg-perk--positive' },
-      { label: '政+5', cls: 'cc__bg-perk--positive' },
-      { label: '军-5', cls: 'cc__bg-perk--negative' }
+      { key: 'diplomacy', value: 10 },
+      { key: 'politics', value: 5 },
+      { key: 'military', value: -5 }
     ]
   }
 ]

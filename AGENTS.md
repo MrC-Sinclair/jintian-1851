@@ -1,8 +1,8 @@
 # AGENTS.md
 
-GAME — monorepo 项目，包含 `game-web/`（uni-app 前端，H5 + 微信小程序）和 `server/`（Nuxt 3 + Vercel AI SDK 后端）两个子项目。**项目业务架构、设计文档、任务清单等详见 `docs/` 与 `openspec/`，修改任何业务模块前必须先查阅对应文档。**
+金田：1851（jintian-1851）— 多子项目仓库，包含 `game-web/`（uni-app 前端，H5 + 微信小程序）和 `server/`（Nuxt 3 + Vercel AI SDK 后端）两个独立子项目（各自用 pnpm 管理，根目录非 pnpm workspace）。**项目业务架构、设计文档、任务清单等详见 `docs/` 与 `openspec/`，修改任何业务模块前必须先查阅对应文档。**
 
-> 本文件只承载「跨工具通用的 AI 编程助手纪律」，与具体业务无关。项目特定的目录约定、命令、陷阱等由各子项目的 `package.json`、`docs/`、`openspec/` 与 `.trae/rules/` 提供，AI 助手在动手前应主动查阅。
+> 本文件只承载「跨工具通用的 AI 编程助手纪律」，与具体业务无关。项目特定的目录约定、命令、陷阱等由各子项目的 `package.json`、`docs/`、`openspec/` 提供，AI 助手在动手前应主动查阅。
 
 ## AI Agent 执行纪律
 
@@ -12,7 +12,8 @@ GAME — monorepo 项目，包含 `game-web/`（uni-app 前端，H5 + 微信小�
 
 - **验证规则触发条件**：每次对任何 `.vue`、`.ts`、`.js` 文件执行编辑操作后，无论改动多小（包括仅修改注释、文案、CSS 类名、格式调整），任务结束前都必须在所在子项目目录运行 `pnpm lint`；涉及类型定义的变更必须额外运行 `pnpm typecheck`；核心逻辑变更必须额外运行 `pnpm test:unit`
 - **禁止以改动简单为由跳过验证（硬性禁令）**：严禁以"改动太小不会出错""只改了一行""只是文案调整""只改了格式"等任何理由跳过验证步骤。任何代码变更都必须通过对应的验证命令，违反此规则视为严重执行失误
-- **命令必须在对应子项目目录执行**：`game-web/` 和 `server/` 是两个独立的 pnpm 工作区，命令各自独立，禁止在仓库根目录直接运行 `pnpm dev`/`pnpm build`/`pnpm test`
+- **命令必须在对应子项目目录执行**：`game-web/` 和 `server/` 是两个独立的 pnpm 子项目，命令各自独立，禁止在仓库根目录直接运行 `pnpm dev`/`pnpm build`/`pnpm test`
+- **pnpm 不可用时的兜底**：若运行环境无法使用 pnpm（例如 Windows 上因"不受信任挂载点"导致 corepack 按 `packageManager` 字段切换版本失败），可用 `npm install --no-package-lock` 安装依赖，并以 `npm run lint` / `npm run typecheck` / `npm run test:unit` 等价替代对应验证命令
 
 ### 多方案确认模式
 

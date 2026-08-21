@@ -211,7 +211,7 @@
         @keydown.enter.prevent="onShowFreeInput"
         @keydown.space.prevent="onShowFreeInput"
       >
-        <text class="game-main__footer-btn-text">自由行动</text>
+        <text class="game-main__footer-btn-text">{{ BUTTON_TEXT.freeAction }}</text>
       </view>
 
       <view
@@ -228,7 +228,7 @@
         @keydown.enter.prevent="onConfirmDecision"
         @keydown.space.prevent="onConfirmDecision"
       >
-        <text class="game-main__footer-btn-text">确认决策</text>
+        <text class="game-main__footer-btn-text">{{ BUTTON_TEXT.confirmDecision }}</text>
       </view>
 
       <view
@@ -248,7 +248,7 @@
         <view v-if="isProcessingTurn" class="game-main__btn-spinner">
           <view class="game-main__btn-dot" />
         </view>
-        <text v-else class="game-main__footer-btn-text">下一回合</text>
+        <text v-else class="game-main__footer-btn-text">{{ BUTTON_TEXT.nextTurn }}</text>
       </view>
     </view>
 
@@ -403,10 +403,10 @@ const { sync, isSyncing } = useSaveSync({
   confirmOverwrite: async (cloudTs) => {
     const cloudDate = new Date(cloudTs).toLocaleString('zh-CN')
     return confirm({
-      title: '云端存档较新',
-      message: `云端存档更新时间：${cloudDate}\n是否拉取覆盖本地？`,
-      confirmText: '拉取云端',
-      cancelText: '保留本地'
+      title: PAGE_TEXT.syncConfirm.title,
+      message: PAGE_TEXT.syncConfirm.message(cloudDate),
+      confirmText: PAGE_TEXT.syncConfirm.pull,
+      cancelText: PAGE_TEXT.syncConfirm.keep
     })
   },
   onSuccess: (msg) => toast.success(msg),

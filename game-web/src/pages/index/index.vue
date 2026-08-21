@@ -114,10 +114,10 @@ const { sync, isSyncing } = useSaveSync({
   confirmOverwrite: async (cloudTs) => {
     const cloudDate = new Date(cloudTs).toLocaleString('zh-CN')
     return confirm({
-      title: '云端存档较新',
-      message: `云端存档更新时间：${cloudDate}\n是否拉取覆盖本地？`,
-      confirmText: '拉取云端',
-      cancelText: '保留本地'
+      title: PAGE_TEXT.syncConfirm.title,
+      message: PAGE_TEXT.syncConfirm.message(cloudDate),
+      confirmText: PAGE_TEXT.syncConfirm.pull,
+      cancelText: PAGE_TEXT.syncConfirm.keep
     })
   }
 })

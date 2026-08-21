@@ -4,7 +4,7 @@
  * 60 条事件，覆盖 5 类型各 12 条（民生/军事/外交/随机/历史剧情）。
  * 当 LLM generate-event 失败时从池中随机返回，保证回合不阻断。
  *
- * 每条事件含 title/description/options(2-4)/effects（effects 数值 ±5~15 平衡）。
+ * 每条事件含 title/description/options(2-4)/effects（effects 数值 ±3~15 平衡）。
  * 兜底事件**不携带** chainId 字段（独立事件，不进入剧情链）。
  */
 

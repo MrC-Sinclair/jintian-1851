@@ -85,7 +85,7 @@ const END_REASON_DESCRIPTIONS: Record<EndedReason, string> = {
   military_collapse: '军力耗尽，无以御敌，势力遂亡于刀兵之间。',
   economy_collapse: '财政枯竭，府库空虚，势力遂亡于匮乏之中。',
   politics_collapse: '政令不通，纲纪废弛，势力遂亡于内乱之中。',
-  people_collapse: '民怨沸腾，众叛亲离，势力遂亡于民心尽失。',
+  people_collapse: '民怨沸腾，众叛亲离，势力遂亡于民心尽失之中。',
   diplomacy_collapse: '四面楚歌，孤立无援，势力遂亡于外交断绝。',
   victory: '运筹帷幄，决胜千里，终成中兴大业，名垂青史。',
   time_up: '岁月如梭，时局已尽，大清命数已终，后世自有评说。'
