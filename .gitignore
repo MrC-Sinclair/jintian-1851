@@ -32,6 +32,3 @@ Desktop.ini
 .env
 .env.*
 !.env.example
-
-# 含本地密码的编排文件（POSTGRES_PASSWORD 明文，勿提交）
-docker-compose.yml

@@ -1,0 +1,49 @@
+# 金田：1851 — 本地开发 / 测试数据库
+# 启动：docker compose up -d
+# 开发库 sw_game 映射宿主机 5534，测试库 sw_game_test 映射宿主机 5533
+# 镜像：pgvector/pgvector:pg18（PostgreSQL 18 + pgvector 向量扩展，向量能力预留）
+# 默认用户/密码：sw_game / sw_game
+#   如需修改密码，请在仓库根目录 .env 设置 POSTGRES_PASSWORD，并同步 server/.env 的 DATABASE_URL 密码
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: sw_game_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sw_game}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sw_game}
+      POSTGRES_DB: sw_game
+    ports:
+      - "5534:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sw_game} -d sw_game"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres_test:
+    image: pgvector/pgvector:pg18
+    container_name: sw_game_test_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sw_game}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sw_game}
+      POSTGRES_DB: sw_game_test
+    ports:
+      - "5533:5432"
+    volumes:
+      - pgtestdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sw_game} -d sw_game_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  pgtestdata:
