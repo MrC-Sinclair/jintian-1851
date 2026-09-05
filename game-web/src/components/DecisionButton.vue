@@ -33,14 +33,9 @@
       <view class="decision-button__spinner-dot" />
     </view>
 
-    <!-- T3.1：选中态标记（右上角勾选 SVG，仅 selected 时显示） -->
+    <!-- T3.1：选中态标记（右上角勾选图标，仅 selected 时显示） -->
     <view v-if="selected" class="decision-button__check">
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-        <path
-          fill="currentColor"
-          d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
-        />
-      </svg>
+      <AppIcon name="check" :size="20" color="#fff" />
     </view>
   </view>
 </template>
@@ -49,6 +44,7 @@
 import { computed } from 'vue'
 import type { Attributes, Resources } from '@/types/game'
 import { EFFECT_LABELS } from '@/utils/copywriting'
+import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
   defineProps<{

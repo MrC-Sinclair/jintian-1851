@@ -8,52 +8,8 @@
         :class="`toast--${t.type}`"
       >
         <view class="toast__icon">
-          <!-- success: ✓ -->
-          <svg
-            v-if="t.type === 'success'"
-            viewBox="0 0 24 24"
-            width="20"
-            height="20"
-            aria-hidden="true"
-          >
-            <path
-              fill="currentColor"
-              d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
-            />
-          </svg>
-          <!-- error: ✕ -->
-          <svg
-            v-else-if="t.type === 'error'"
-            viewBox="0 0 24 24"
-            width="20"
-            height="20"
-            aria-hidden="true"
-          >
-            <path
-              fill="currentColor"
-              d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-            />
-          </svg>
-          <!-- warning: ⚠ 三角警告（避免 Unicode ⚠ 字符） -->
-          <svg
-            v-else-if="t.type === 'warning'"
-            viewBox="0 0 24 24"
-            width="20"
-            height="20"
-            aria-hidden="true"
-          >
-            <path
-              fill="currentColor"
-              d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
-            />
-          </svg>
-          <!-- info: i -->
-          <svg v-else viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"
-            />
-          </svg>
+          <!-- 图标名按 toast 类型映射（success ✓ / error ✕ / warning ⚠ / info ℹ） -->
+          <AppIcon :name="toastIcon(t.type)" :size="20" color="#fff" />
         </view>
         <text class="toast__message">{{ t.message }}</text>
       </view>
@@ -65,9 +21,19 @@
 import { storeToRefs } from 'pinia'
 import { onUnmounted, watch } from 'vue'
 import { useUIStore } from '@/stores/ui'
+import type { ToastType } from '@/stores/ui'
+import AppIcon from '@/components/AppIcon.vue'
 
 const ui = useUIStore()
 const { toasts } = storeToRefs(ui)
+
+/** toast 类型 → AppIcon 图标名（error 用 close 叉号，info 兜底） */
+function toastIcon(type: ToastType): 'check' | 'close' | 'warning' | 'info' {
+  if (type === 'success') return 'check'
+  if (type === 'error') return 'close'
+  if (type === 'warning') return 'warning'
+  return 'info'
+}
 
 /** 跟踪每条 toast 的定时器，组件卸载时清理 */
 const timers = new Map<number, ReturnType<typeof setTimeout>>()

@@ -7,11 +7,9 @@
       :hover-stay-time="100"
       @click="toggle"
     >
-      <!-- 标题图标（可选，SVG path） -->
+      <!-- 标题图标（可选，SVG path，经 AppIcon 跨端渲染） -->
       <view v-if="icon" class="collapsible-section__icon">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-          <path fill="currentColor" :d="icon" />
-        </svg>
+        <AppIcon :path="icon" :size="20" />
       </view>
 
       <!-- chevron 旋转图标（CSS border 画三角形，避免 Unicode 字符） -->
@@ -59,6 +57,7 @@
  */
 
 import { ref } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
   defineProps<{

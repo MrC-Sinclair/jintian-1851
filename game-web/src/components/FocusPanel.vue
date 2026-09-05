@@ -36,20 +36,13 @@
 
     <!-- 建议行：briefing.suggestion 优先于规则 suggestion -->
     <view class="focus-panel__suggestion">
-      <!-- SVG 灯泡图标（避免 Unicode 💡 字符） -->
+      <!-- 灯泡图标（避免 Unicode 💡 字符） -->
       <view class="focus-panel__suggestion-icon">
-        <svg
+        <AppIcon
           class="focus-panel__suggestion-svg"
-          viewBox="0 0 24 24"
-          width="20"
-          height="20"
-          aria-hidden="true"
-        >
-          <path
-            fill="currentColor"
-            d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm-2 19c0 .55.45 1 1 1h2c.55 0 1-.45 1-1v-1h-4v1z"
-          />
-        </svg>
+          name="lightbulb"
+          color="#f9a825"
+        />
       </view>
       <text class="focus-panel__suggestion-text">
         本回合建议：{{ finalSuggestion }}
@@ -66,16 +59,11 @@
       <view class="focus-panel__pending-head">
         <!-- 书卷图标（与 TurnTimeline 书卷图标同款） -->
         <view class="focus-panel__pending-icon">
-          <svg
+          <AppIcon
             class="focus-panel__pending-svg"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zM21 18.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z" />
-            <path d="M17.5 10.5c.6 0 1.15.1 1.65.25V7.5c-.5-.15-1.05-.25-1.65-.25s-1.15.1-1.65.25v3.25c.5-.15 1.05-.25 1.65-.25z" />
-            <path d="M17.5 14.5c.6 0 1.15.1 1.65.25V11.5c-.5-.15-1.05-.25-1.65-.25s-1.15.1-1.65.25v3.25c.5-.15 1.05-.25 1.65-.25z" />
-          </svg>
+            name="book"
+            color="#8b1a1a"
+          />
         </view>
         <text class="focus-panel__pending-title">剧情待续</text>
         <text class="focus-panel__pending-count">{{ pendingChainNodes.length }} 条</text>
@@ -128,6 +116,7 @@ import type { Attributes, PendingChainNode } from '@/types/game'
 import { generateFocusHint, VICTORY_THRESHOLD } from '@/utils/goal-hint'
 import { TERM_EXPLANATIONS, CHAIN_PROGRESS_LABEL, CHAIN_EXPAND_LABEL } from '@/utils/copywriting'
 import { getChainMeta, getChainProgress, getNodeTitle } from '@/data/story-chains'
+import AppIcon from '@/components/AppIcon.vue'
 import InfoHint from './InfoHint.vue'
 
 /** AI 简报结构（由 advisor-briefing 接口返回，T1.14 实现） */

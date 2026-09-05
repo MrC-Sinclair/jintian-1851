@@ -9,9 +9,7 @@
           :hover-stay-time="100"
           @click="onBack"
         >
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-          </svg>
+          <AppIcon name="arrow-back" :size="22" color="#fff" />
         </view>
       </TooltipView>
       <text class="help__title">如何游戏</text>
@@ -214,6 +212,7 @@
 import InfoHint from '@/components/InfoHint.vue'
 import TooltipView from '@/components/TooltipView.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
 import { TERM_EXPLANATIONS, TOOLTIP_TEXT } from '@/utils/copywriting'
 

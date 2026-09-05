@@ -76,9 +76,9 @@ describe('StatusPanel - props 传递与初始渲染', () => {
     const wrapper = mountPanel()
     const text = wrapper.text()
     expect(text).toContain('银两')
-    expect(text).toContain('兵力')
+    expect(text).toContain('兵员')
     expect(text).toContain('粮草')
-    expect(text).toContain('声望')
+    expect(text).toContain('名望')
   })
 
   it('渲染初始属性值（初始动画 from===to 直接赋值）', () => {

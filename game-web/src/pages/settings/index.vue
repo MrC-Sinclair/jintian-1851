@@ -13,9 +13,7 @@
           @keydown.enter.prevent="onBack"
           @keydown.space.prevent="onBack"
         >
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-          </svg>
+          <AppIcon name="arrow-back" :size="22" color="#fff" />
         </view>
       </TooltipView>
       <text class="settings__title">设置</text>
@@ -138,6 +136,7 @@ import { TOOLTIP_TEXT, PAGE_TEXT } from '@/utils/copywriting'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import TooltipView from '@/components/TooltipView.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const { sync, isSyncing } = useSaveSync({
   confirmOverwrite: async (cloudTs) => {

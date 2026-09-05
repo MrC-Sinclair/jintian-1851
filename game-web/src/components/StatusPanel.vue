@@ -39,17 +39,14 @@
             mode="aspectFit"
             aria-hidden="true"
           />
-          <!-- 危机预警图标（属性 < 30 时显示，SVG 避免 Unicode 字符） -->
-          <svg
+          <!-- 危机预警图标（属性 < 30 时显示） -->
+          <AppIcon
             v-if="props.attributes[attr.key] < 30"
             class="status-panel__warning-icon"
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            aria-hidden="true"
-          >
-            <path fill="#c62828" d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-          </svg>
+            name="warning"
+            :size="18"
+            color="#c62828"
+          />
           <text class="status-panel__label">{{ attr.label }}</text>
           <InfoHint :title="attr.label" :content="TERM_EXPLANATIONS[attr.key]" />
         </view>
@@ -93,6 +90,7 @@
 import { computed, reactive, watch } from 'vue'
 import type { Attributes, Resources } from '@/types/game'
 import InfoHint from '@/components/InfoHint.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import { TERM_EXPLANATIONS } from '@/utils/copywriting'
 import { calcOverallPower, VICTORY_THRESHOLD } from '@/utils/goal-hint'
 
