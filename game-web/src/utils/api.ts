@@ -65,6 +65,28 @@ interface UniRequestResult {
   header: Record<string, string>
 }
 
+/** 默认请求超时（AI 端点最长 60s，SSE 走 useSSE 不经此封装） */
+const DEFAULT_TIMEOUT_MS = 60_000
+
+/** GET 默认重试次数（幂等请求可安全重试；POST/PUT/DELETE 默认不重试） */
+const DEFAULT_RETRIES = 2
+
+/** 重试基础退避毫秒（指数递增：300ms → 600ms → …） */
+const RETRY_BASE_DELAY_MS = 300
+
+/** 重试单次等待上限 */
+const MAX_RETRY_DELAY_MS = 5_000
+
+/** 请求可选项 */
+export interface RequestOptions {
+  /** 超时毫秒（默认 60_000） */
+  timeoutMs?: number
+  /** 网络层失败重试次数（默认 GET=2、其余方法=0） */
+  retries?: number
+  /** 重试基础退避毫秒（默认 300，测试可传 1 加速） */
+  retryBaseDelayMs?: number
+}
+
 /**
  * 取 API base URL。
  *
@@ -98,88 +120,117 @@ function getDeviceIdSafe(): string {
  * @param method HTTP 方法（GET/POST/PUT/DELETE）
  * @param url 路径（如 '/api/game/init-factions'），不带 base URL
  * @param body 请求体（POST/PUT 时传入，自动 JSON.stringify）
+ * @param options 可选项（超时 / 重试）
  * @returns data 字段（已剥除 ok 包装）+ 顶层 fallback 标志
  * @throws ApiError 服务端返回 ok:false 或网络层失败时
  */
 function requestRaw<T = unknown>(
   method: string,
   url: string,
-  body?: unknown
+  body?: unknown,
+  options?: RequestOptions
 ): Promise<{ data: T; fallback: boolean }> {
   const fullUrl = getBaseUrl() + url
   const deviceId = getDeviceIdSafe()
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  // 重试语义：GET 幂等可自动重试；POST/PUT/DELETE 有副作用（属性结算/存档覆盖），不自动重试
+  // （服务端并发锁 + 前端 isProcessingTurn 守卫负责幂等性，重试只兜瞬时网络抖动）
+  const maxRetries = options?.retries ?? (method.toUpperCase() === 'GET' ? DEFAULT_RETRIES : 0)
+  const baseDelayMs = options?.retryBaseDelayMs ?? RETRY_BASE_DELAY_MS
 
-  return new Promise<{ data: T; fallback: boolean }>((resolve, reject) => {
-    uni.request({
-      url: fullUrl,
-      method: method.toUpperCase() as
-        | 'GET'
-        | 'POST'
-        | 'PUT'
-        | 'DELETE'
-        | 'OPTIONS'
-        | 'HEAD'
-        | 'TRACE'
-        | 'CONNECT',
-      data: body as AnyObject | undefined,
-      // uni.request 会自动 JSON.stringify 对象，并设置 Content-Type
-      header: {
-        'Content-Type': 'application/json',
-        'x-device-id': deviceId,
-        // E2E 测试模式下附加标记头，触发后端 npc-actions 加速与自由行动强力负值兜底
-        ...(IS_E2E ? { 'x-e2e-test-mode': '1' } : {})
-      },
-      timeout: 60_000,
-      success: (res: UniRequestResult) => {
-        const { statusCode, data } = res
+  const attemptOnce = (): Promise<{ data: T; fallback: boolean }> =>
+    new Promise<{ data: T; fallback: boolean }>((resolve, reject) => {
+      uni.request({
+        url: fullUrl,
+        method: method.toUpperCase() as
+          | 'GET'
+          | 'POST'
+          | 'PUT'
+          | 'DELETE'
+          | 'OPTIONS'
+          | 'HEAD'
+          | 'TRACE'
+          | 'CONNECT',
+        data: body as AnyObject | undefined,
+        // uni.request 会自动 JSON.stringify 对象，并设置 Content-Type
+        header: {
+          'Content-Type': 'application/json',
+          'x-device-id': deviceId,
+          // E2E 测试模式下附加标记头，触发后端 npc-actions 加速与自由行动强力负值兜底
+          ...(IS_E2E ? { 'x-e2e-test-mode': '1' } : {})
+        },
+        timeout: timeoutMs,
+        success: (res: UniRequestResult) => {
+          const { statusCode, data } = res
 
-        // 网络层成功，但服务端可能返回业务错误（4xx/5xx + ok:false）
-        if (data && typeof data === 'object' && 'ok' in data) {
-          if (data.ok === true) {
-            // 业务成功（fallback 标志随响应顶层返回，如 npc-actions / faction-negotiate 降级）
-            const wrapped = data as SuccessResponse<T>
-            resolve({ data: wrapped.data, fallback: wrapped.fallback === true })
-            return
-          }
-          if (data.ok === false) {
-            // 业务失败（含 400/404/429/500 等）
-            const err = (data as ErrorResponse).error
-            reject(
-              new ApiError(
-                err?.code ?? 'UNKNOWN',
-                err?.message ?? '请求失败',
-                statusCode,
-                err?.detail
+          // 网络层成功，但服务端可能返回业务错误（4xx/5xx + ok:false）
+          if (data && typeof data === 'object' && 'ok' in data) {
+            if (data.ok === true) {
+              // 业务成功（fallback 标志随响应顶层返回，如 npc-actions / faction-negotiate 降级）
+              const wrapped = data as SuccessResponse<T>
+              resolve({ data: wrapped.data, fallback: wrapped.fallback === true })
+              return
+            }
+            if (data.ok === false) {
+              // 业务失败（含 400/404/429/500 等）：服务端已裁决，不重试
+              const err = (data as ErrorResponse).error
+              reject(
+                new ApiError(
+                  err?.code ?? 'UNKNOWN',
+                  err?.message ?? '请求失败',
+                  statusCode,
+                  err?.detail
+                )
               )
-            )
-            return
+              return
+            }
           }
-        }
 
-        // 响应格式不符合约定（如 502 Bad Gateway 返回 HTML）
-        reject(
-          new ApiError(
-            'INVALID_RESPONSE',
-            `响应格式异常（HTTP ${statusCode}）`,
-            statusCode
+          // 响应格式不符合约定（如 502 Bad Gateway 返回 HTML）
+          reject(
+            new ApiError(
+              'INVALID_RESPONSE',
+              `响应格式异常（HTTP ${statusCode}）`,
+              statusCode
+            )
           )
-        )
-      },
-      fail: (err: { errMsg?: string }) => {
-        // T3.4：网络层失败（连接超时、DNS 失败、CORS 拦截等）
-        // 技术错误码（'NETWORK'）保留供调用方判断；message 统一白话化友好文案
-        // 原始 errMsg 由调用方 console.error 记录（如 game-main onError）
-        reject(
-          new ApiError(
-            'NETWORK',
-            ERROR_TEXT.networkError,
-            0,
-            err?.errMsg
+        },
+        fail: (err: { errMsg?: string }) => {
+          // T3.4：网络层失败（连接超时、DNS 失败、CORS 拦截等）
+          // 技术错误码（'NETWORK'）保留供调用方判断；message 统一白话化友好文案
+          // 原始 errMsg 由调用方 console.error 记录（如 game-main onError）
+          reject(
+            new ApiError(
+              'NETWORK',
+              ERROR_TEXT.networkError,
+              0,
+              err?.errMsg
+            )
           )
-        )
-      }
+        }
+      })
     })
-  })
+
+  const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+  /** 指数退避重试循环：仅网络层失败（NETWORK）触发，业务错误直接抛出 */
+  const run = async (): Promise<{ data: T; fallback: boolean }> => {
+    let lastErr: unknown
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await attemptOnce()
+      } catch (err) {
+        lastErr = err
+        const isNetworkError = err instanceof ApiError && err.code === 'NETWORK'
+        if (!isNetworkError || attempt === maxRetries) throw err
+        const waitMs = Math.min(baseDelayMs * 2 ** attempt, MAX_RETRY_DELAY_MS)
+        await delay(waitMs)
+      }
+    }
+    throw lastErr
+  }
+
+  return run()
 }
 
 /**
@@ -188,11 +239,17 @@ function requestRaw<T = unknown>(
  * @param method HTTP 方法（GET/POST/PUT/DELETE）
  * @param url 路径（如 '/api/game/init-factions'），不带 base URL
  * @param body 请求体（POST/PUT 时传入，自动 JSON.stringify）
+ * @param options 可选项（超时 / 重试）
  * @returns 响应 data 字段（已剥除 ok 包装）
  * @throws ApiError 服务端返回 ok:false 或网络层失败时
  */
-export function request<T = unknown>(method: string, url: string, body?: unknown): Promise<T> {
-  return requestRaw<T>(method, url, body).then((r) => r.data)
+export function request<T = unknown>(
+  method: string,
+  url: string,
+  body?: unknown,
+  options?: RequestOptions
+): Promise<T> {
+  return requestRaw<T>(method, url, body, options).then((r) => r.data)
 }
 
 /** 便捷方法：GET 请求 */

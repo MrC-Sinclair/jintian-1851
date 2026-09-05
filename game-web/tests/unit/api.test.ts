@@ -326,3 +326,103 @@ describe('便捷方法', () => {
     await promise
   })
 })
+
+describe('请求选项（超时 / 重试）', () => {
+  /** 让 uni.request 前 failCount 次 fail，之后 success */
+  function mockFailThenSuccess(failCount: number, response: unknown): void {
+    let calls = 0
+    ;(uni as any).request = (opts: any) => {
+      lastCall = opts
+      calls++
+      if (calls <= failCount) {
+        opts.fail({ errMsg: 'request:fail timeout' })
+      } else {
+        opts.success(response)
+      }
+    }
+  }
+
+  it('timeoutMs 覆盖默认超时（透传给 uni.request.timeout）', async () => {
+    const promise = request('POST', '/api/game/init-factions', {}, { timeoutMs: 5000 })
+
+    expect(lastCall!.timeout).toBe(5000)
+
+    lastCall!.success({
+      statusCode: 200,
+      data: { ok: true, data: {} },
+      header: {}
+    })
+
+    await promise
+  })
+
+  it('默认超时 60 秒', async () => {
+    const promise = get('/api/game/sync-save?saveId=x')
+
+    expect(lastCall!.timeout).toBe(60_000)
+
+    lastCall!.success({
+      statusCode: 200,
+      data: { ok: true, data: {} },
+      header: {}
+    })
+
+    await promise
+  })
+
+  it('GET 网络失败自动重试后成功（幂等请求）', async () => {
+    mockFailThenSuccess(2, {
+      statusCode: 200,
+      data: { ok: true, data: { save: {} } },
+      header: {}
+    })
+
+    const result = await get('/api/game/sync-save?saveId=x')
+    expect(result).toEqual({ save: {} })
+  })
+
+  it('GET 重试次数耗尽后抛 NETWORK 错误', async () => {
+    let calls = 0
+    ;(uni as any).request = (opts: any) => {
+      lastCall = opts
+      calls++
+      opts.fail({ errMsg: 'request:fail timeout' })
+    }
+
+    const promise = request('GET', '/x', undefined, { retries: 2, retryBaseDelayMs: 1 })
+    await expect(promise).rejects.toMatchObject({ code: 'NETWORK' })
+    // 首次 + 2 次重试 = 3 次调用
+    expect(calls).toBe(3)
+  })
+
+  it('POST 不自动重试（非幂等，有副作用）', async () => {
+    let calls = 0
+    ;(uni as any).request = (opts: any) => {
+      lastCall = opts
+      calls++
+      opts.fail({ errMsg: 'request:fail timeout' })
+    }
+
+    const promise = post('/api/game/generate-event', { saveId: 'x' })
+    await expect(promise).rejects.toMatchObject({ code: 'NETWORK' })
+    // 只调用 1 次，无重试
+    expect(calls).toBe(1)
+  })
+
+  it('业务错误（ok:false）不触发重试', async () => {
+    let calls = 0
+    ;(uni as any).request = (opts: any) => {
+      lastCall = opts
+      calls++
+      opts.success({
+        statusCode: 429,
+        data: { ok: false, error: { code: 'RATE_LIMITED', message: '请求过于频繁' } },
+        header: {}
+      })
+    }
+
+    const promise = get('/api/game/generate-event')
+    await expect(promise).rejects.toMatchObject({ code: 'RATE_LIMITED' })
+    expect(calls).toBe(1)
+  })
+})

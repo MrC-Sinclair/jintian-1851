@@ -118,3 +118,57 @@ describe('saveSave 错误处理', () => {
     ;(uni as any).setStorage = original
   })
 })
+
+describe('损坏存档防护（结构校验 + 隔离备份）', () => {
+  const CORRUPTED_BACKUP_KEY = 'game_save_corrupted'
+
+  beforeEach(() => {
+    uni.removeStorageSync(CORRUPTED_BACKUP_KEY)
+  })
+
+  it('关键字段缺失（无 saveId）→ loadSave 返回 null 并隔离备份', async () => {
+    const corrupted = createMockSave() as unknown as Record<string, unknown>
+    delete corrupted.saveId
+    await saveSave(corrupted as unknown as GameSave)
+
+    const loaded = await loadSave()
+    expect(loaded).toBeNull()
+    // 原始数据备份到隔离 key，主键已被清除
+    expect(uni.getStorageSync(CORRUPTED_BACKUP_KEY)).toEqual(corrupted)
+    expect(uni.getStorageSync(STORAGE_KEY)).toBeUndefined()
+  })
+
+  it('saveVersion 非法（如 3）→ 视为损坏', async () => {
+    const corrupted = { ...createMockSave(), saveVersion: 3 }
+    await saveSave(corrupted)
+
+    expect(await loadSave()).toBeNull()
+    expect(uni.getStorageSync(CORRUPTED_BACKUP_KEY)).toEqual(corrupted)
+  })
+
+  it('factions 为空数组不视为损坏（v1 兼容：遗留存档可能为空，由迁移逻辑处理）', async () => {
+    const legacy = { ...createMockSave(), factions: [] }
+    await saveSave(legacy)
+
+    const loaded = await loadSave()
+    expect(loaded).not.toBeNull()
+    expect(loaded?.factions).toEqual([])
+  })
+
+  it('loadSaveSync 同样隔离损坏存档', () => {
+    const corrupted = createMockSave() as unknown as Record<string, unknown>
+    delete corrupted.state
+    uni.setStorageSync(STORAGE_KEY, corrupted)
+
+    expect(loadSaveSync()).toBeNull()
+    expect(uni.getStorageSync(CORRUPTED_BACKUP_KEY)).toEqual(corrupted)
+  })
+
+  it('合法存档不受校验影响（不触发隔离）', async () => {
+    const save = createMockSave()
+    await saveSave(save)
+
+    expect(await loadSave()).not.toBeNull()
+    expect(uni.getStorageSync(CORRUPTED_BACKUP_KEY)).toBeUndefined()
+  })
+})

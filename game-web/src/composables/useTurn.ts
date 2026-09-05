@@ -241,6 +241,15 @@ export function useTurn(options: UseTurnOptions = {}) {
       store.applyEffects(option.effects)
       // T3.2：应用选项后处理剧情链入队（非剧情链事件自动无操作）
       applyEventOption(evt, option)
+      // 决策生效后立即落盘：若等到 endTurn 才保存，期间手动同步会产出
+      // 「效果已应用、事件未解决」的云端存档（换设备重新生成事件可重复获益）
+      try {
+        await save()
+      } catch (err) {
+        // 落盘失败不回滚内存状态（决策已生效），仅提示
+        console.error('[useTurn] 决策后保存失败:', err)
+        options.onError?.('makeDecision', '本地保存失败，请检查存储空间')
+      }
       return option.effects
     }
 
@@ -267,6 +276,13 @@ export function useTurn(options: UseTurnOptions = {}) {
         // 自由行动同样视为已回应事件：推进剧情链（移除挂起节点 + 线性入队下一节点），
         // 与选项 b/c（无 nextChainNodeId）行为一致，避免挂起节点下回合重复出现
         applyEventOption(evt)
+        // 决策生效后立即落盘（同选项决策，防中途同步产生跨端不一致存档）
+        try {
+          await save()
+        } catch (err) {
+          console.error('[useTurn] 自由行动后保存失败:', err)
+          options.onError?.('makeDecision', '本地保存失败，请检查存储空间')
+        }
         return res.effects
       } catch (err) {
         const msg = err instanceof ApiError ? err.message : '决策解析失败'
