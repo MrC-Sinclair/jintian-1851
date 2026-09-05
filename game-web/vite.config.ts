@@ -22,7 +22,9 @@ export default defineConfig({
     strictPort: isPlaywright,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        // 后端地址可用 VITE_PROXY_TARGET 覆盖（默认 3000），
+        // 供本机多项目端口冲突时错开使用（如 VITE_PROXY_TARGET=http://localhost:3010）
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:3000',
         changeOrigin: true
       }
     }

@@ -1149,7 +1149,8 @@ function onCloseNegotiation(): void {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 100;
+    // 高于 uni 页面头（z-index 998）：蒙层需盖住头部，否则抽屉顶区被标题栏压住
+    z-index: 1100;
     display: flex;
     align-items: flex-end;
     background-color: rgba(0, 0, 0, 0.45);
@@ -1171,7 +1172,8 @@ function onCloseNegotiation(): void {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 110;
+    // 高于外交抽屉（1100）：谈判弹窗从外交面板内发起，需盖在其上
+    z-index: 1110;
     display: flex;
     align-items: center;
     justify-content: center;

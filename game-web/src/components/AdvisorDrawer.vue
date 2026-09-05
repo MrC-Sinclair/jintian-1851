@@ -12,13 +12,8 @@
             :hover-stay-time="100"
             @click="onClose"
           >
-            <!-- 关闭 SVG 图标（禁止 Unicode ✕） -->
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-              />
-            </svg>
+            <!-- 关闭图标（禁止 Unicode ✕） -->
+            <AppIcon name="close" :size="20" color="#fff" />
           </view>
         </TooltipView>
       </view>
@@ -35,9 +30,11 @@
           @click="toggleTool(i)"
         >
           <view class="advisor-tool__head">
-            <svg class="advisor-tool__icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path :d="statusIconPath(tc.status)" fill="currentColor" />
-            </svg>
+            <AppIcon
+              class="advisor-tool__icon"
+              :name="statusIconName(tc.status)"
+              :color="statusIconColor(tc.status)"
+            />
             <text class="advisor-tool__label">{{ toolText(tc) }}</text>
           </view>
           <!-- 展开详情：工具名 + 参数 + 完整结果 JSON -->
@@ -135,6 +132,7 @@ import { useScrollLock } from '@/composables/useScrollLock'
 import { EMPTY_TEXT, PAGE_TEXT, TOOLTIP_TEXT } from '@/utils/copywriting'
 import type { AdvisorMessage } from '@/types/game'
 import TooltipView from '@/components/TooltipView.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const props = defineProps<{
   /** 是否显示 */
@@ -173,20 +171,25 @@ function toggleTool(i: number): void {
 }
 
 /**
- * T2.5：状态图标路径（SVG path，配合 fill="currentColor" 跟随气泡配色）
+ * T2.5：状态图标名（经 AppIcon 跨端渲染）
  *   - calling：放大镜（查询中）
  *   - done：✓ 勾（已完成）
  *   - fail：✗ 叉（失败）
  */
-function statusIconPath(status: string): string {
-  if (status === 'done') {
-    return 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'
-  }
-  if (status === 'fail') {
-    return 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'
-  }
-  // calling：放大镜
-  return 'M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z'
+function statusIconName(status: string): 'check' | 'close' | 'search' {
+  if (status === 'done') return 'check'
+  if (status === 'fail') return 'close'
+  return 'search'
+}
+
+/**
+ * T2.5：状态图标色（小程序端 data-URI 需要具体色值，与 SCSS 状态色一一对应）
+ *   - done 绿 / fail 红 / calling 灰（原 .advisor-tool__icon 基础色）
+ */
+function statusIconColor(status: string): string {
+  if (status === 'done') return '#2e7d32'
+  if (status === 'fail') return '#c62828'
+  return '#616161'
 }
 
 /** T2.5：气泡文案（按状态区分） */
@@ -327,7 +330,8 @@ onUnmounted(unlock)
 .advisor-drawer {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  // 高于 uni 页面头（z-index 998）：否则头部标题栏压住抽屉，✕ 关闭按钮不可点
+  z-index: 1100;
 
   &__mask {
     position: absolute;
