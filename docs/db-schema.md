@@ -106,19 +106,23 @@ SET save_data = EXCLUDED.save_data,
     updated_at = NOW(),
     ended_at = EXCLUDED.ended_at,
     ended_reason = EXCLUDED.ended_reason
+WHERE game_saves.device_id = $2  -- 属主校验（原子，无竞态窗口）
 RETURNING save_id, updated_at, ended_at, ended_reason;
 ```
 
-#### GET /api/game/sync-save?saveId=xxx（拉取）
+- `WHERE device_id = $2`（Drizzle `setWhere`）：`saveId` 已存在但属于其他设备时 0 行更新 → 接口返回 403 `SAVE_FORBIDDEN`
+- 首次上传（无冲突）直接插入成功，不受 WHERE 影响
+
+#### GET /api/game/sync-save?saveId=xxx&deviceId=yyy（拉取）
 
 ```sql
 SELECT save_data, updated_at
 FROM game_saves
-WHERE save_id = $1
+WHERE save_id = $1 AND device_id = $2
 LIMIT 1;
 ```
 
-未找到返回 404 + `SAVE_NOT_FOUND`。
+未找到**或 deviceId 不匹配**统一返回 404 + `SAVE_NOT_FOUND`（不泄漏他人存档存在性）。
 
 ### 维护命令
 

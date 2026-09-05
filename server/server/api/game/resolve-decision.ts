@@ -11,6 +11,8 @@ import { z } from 'zod'
 import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
 import { buildResolveDecisionPrompt } from '../../utils/prompts/resolve-decision'
 import { acquireLock, isLocked } from '../../utils/concurrency-lock'
+import { isE2eTestMode } from '../../utils/e2e-test-mode'
+import { logLlmUsage } from '../../utils/llm-usage'
 import { HESITATION_EFFECTS, isHesitationQuery } from '../../utils/hesitation-guard'
 
 /**
@@ -170,8 +172,8 @@ export default defineEventHandler(async (event) => {
   // 4. 获取锁调用 LLM
   const release = await acquireLock(saveId)
   try {
-    // E2E 测试模式：请求头 x-e2e-test-mode=1 时放大自由行动效果，稳定触发崩溃结局
-    const isE2E = getHeader(event, 'x-e2e-test-mode') === '1'
+    // E2E 测试模式：放大自由行动效果，稳定触发崩溃结局（生产环境恒关闭，见 e2e-test-mode.ts）
+    const isE2E = isE2eTestMode(getHeader(event, 'x-e2e-test-mode'))
     const config = useRuntimeConfig(event)
     const openai = createOpenAI({
       apiKey: config.openaiApiKey,
@@ -192,13 +194,15 @@ export default defineEventHandler(async (event) => {
     let lastErr: unknown
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const { object } = await generateObject({
+        const { object, usage } = await generateObject({
           model,
           schema: effectsSchema,
           prompt,
+          maxOutputTokens: 500,
           providerOptions: { openai: { structuredOutputs: true } },
           abortSignal: AbortSignal.timeout(30_000)
         })
+        logLlmUsage('resolve-decision', usage, { attempt: attempt + 1 })
         // 诊断日志：记录 LLM 实际返回的 effects 与 factionEffects，便于排查字段名映射问题
         console.log(
           '[resolve-decision] LLM 返回:',

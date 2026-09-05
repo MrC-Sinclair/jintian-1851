@@ -51,6 +51,10 @@ MVP 阶段全部使用 `Qwen/Qwen3-8B`（硅基流动 SiliconFlow），单价约
 ## Token 成本预估
 
 > Qwen3-8B 单价 ¥0.35 / 1M tokens，下表估算含输入+输出。
+>
+> **实测校准数据源**：各端点 LLM 调用已统一设置 `maxOutputTokens` 上限，并在调用完成后输出 `[llm-usage]` 单行 JSON 日志（含 endpoint / inputTokens / outputTokens / totalTokens，多步 Agent 按次记录），生产环境可用日志聚合校准下表纸面估算（见 `server/utils/llm-usage.ts`）。
+>
+> **输出上限**：generate-event 2000 / resolve-decision 500 / init-factions 2500 / npc-actions 1000（每 Agent）/ advisor-chat 1500 / advisor-briefing 800 / faction-negotiate 1000。
 
 ### 单回合成本
 

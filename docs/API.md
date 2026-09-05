@@ -16,6 +16,7 @@
 - [POST /api/game/faction-negotiate](#post-apigamefaction-negotiate)
 - [POST /api/game/sync-save](#post-apigamesync-save)
 - [GET /api/game/sync-save](#get-apigamesync-save)
+- [GET /api/game/saves](#get-apigamesaves)
 - [错误码表](#错误码表)
 
 ---
@@ -771,6 +772,8 @@ AI 调用异常或 JSON 不可解析时**不重试**，返回 HTTP 200 + 响应�
 上传/覆盖云端存档。源码：[sync-save.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/sync-save.ts)。
 
 > 服务端权威 `updated_at` 方案：POST body **不含 `updatedAt` 字段**（zod `.strict()` 模式拒绝），`updated_at` 由 DB `NOW()` 生成，从源头消除两设备并发 race。
+>
+> **属主校验**：存档归属由「`saveId` + `deviceId` 对」绑定。`ON CONFLICT DO UPDATE` 附加 `setWhere(device_id = 请求 deviceId)` 原子条件，`saveId` 已存在但属于其他设备时返回 403 `SAVE_FORBIDDEN`（deviceId 随存档传播：跨设备拉取后本地存档继承原 deviceId，同步不受影响）。
 
 ### 请求
 
@@ -851,6 +854,7 @@ x-device-id: {设备指纹}
 | HTTP | code | 触发场景 |
 |---|---|---|
 | 400 | `INVALID_PARAMS` | body 解析失败 / zod 校验失败（含传入 `updatedAt` 字段） |
+| 403 | `SAVE_FORBIDDEN` | `saveId` 已存在且归属于其他 `deviceId`（禁止覆盖他人存档） |
 | 500 | `DB_ERROR` | 数据库写入失败 |
 
 > sync-save **不受频率限制**，**不使用并发锁**（无 race 风险，服务端权威方案保证）。
@@ -864,13 +868,16 @@ x-device-id: {设备指纹}
 ### 请求
 
 ```http
-GET /api/game/sync-save?saveId=550e8400-e29b-41d4-a716-446655440000
+GET /api/game/sync-save?saveId=550e8400-e29b-41d4-a716-446655440000&deviceId=device-abc123
 x-device-id: {设备指纹}
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `saveId` (query) | string (uuid) | 是 | 存档 ID |
+| `deviceId` (query) | string (≥1) | 是 | 设备指纹（属主校验，必须与存档归属一致） |
+
+> **属主校验**：`deviceId` 与存档归属不匹配时返回 404（与「不存在」同响应，不泄漏他人存档存在性）。前端 `useSaveSync` 以本地存档内嵌的 `deviceId` 发起请求（该值随存档跨设备传播）。
 
 ### 响应（成功）
 
@@ -901,9 +908,65 @@ x-device-id: {设备指纹}
 
 | HTTP | code | 触发场景 |
 |---|---|---|
-| 400 | `INVALID_PARAMS` | `saveId` 缺失或非 UUID 格式 |
-| 404 | `SAVE_NOT_FOUND` | 云端未找到此存档 |
+| 400 | `INVALID_PARAMS` | `saveId` / `deviceId` 缺失，或 `saveId` 非 UUID 格式 |
+| 404 | `SAVE_NOT_FOUND` | 云端未找到此存档，或存档不属于该 `deviceId`（不区分，防存在性泄漏） |
 | 500 | `DB_ERROR` | 数据库查询失败 |
+
+---
+
+## GET /api/game/saves
+
+按 `deviceId` 拉取存档列表（多存档管理基础能力）。源码：[saves.get.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/saves.get.ts)。
+
+> 仅返回摘要（不含完整 `saveData` blob），按 `updated_at` 倒序；命中 `idx_game_saves_device_id` 索引。归属模型与 sync-save 一致：deviceId 随存档传播。
+
+### 请求
+
+```http
+GET /api/game/saves?deviceId=device-abc123&limit=20
+x-device-id: {设备指纹}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `deviceId` (query) | string (≥1) | 是 | 设备指纹（归属过滤） |
+| `limit` (query) | number (1-50) | 否 | 返回条数上限，默认 20 |
+
+### 响应（成功）
+
+```json
+{
+  "ok": true,
+  "data": {
+    "saves": [
+      {
+        "saveId": "550e8400-e29b-41d4-a716-446655440000",
+        "saveVersion": 2,
+        "updatedAt": 1721536801234,
+        "endedAt": null,
+        "endedReason": null,
+        "summary": {
+          "background": "文官",
+          "factionName": "清廷",
+          "turn": 7,
+          "ended": false
+        }
+      }
+    ]
+  }
+}
+```
+
+`summary` 从 `saveData` JSONB 中提取；`saveData` 结构异常时字段安全兜底为空值（不 500）。
+
+### 错误
+
+| HTTP | code | 触发场景 |
+|---|---|---|
+| 400 | `INVALID_PARAMS` | `deviceId` 缺失 / `limit` 非 1-50 整数 |
+| 500 | `DB_ERROR` | 数据库查询失败 |
+
+> saves **不受频率限制**、不使用并发锁（只读列表，与 sync-save 同口径）。
 
 ---
 
@@ -914,7 +977,8 @@ x-device-id: {设备指纹}
 | `INVALID_PARAMS` | 400 | 请求参数校验失败（body 解析失败、zod 校验失败、UUID 格式错误等） | 全部 |
 | `RATE_LIMITED` | 429 | 频率超限（>10 次/分钟/deviceId） | 7 个 AI 端点（init-factions / generate-event / resolve-decision / npc-actions / advisor-chat / advisor-briefing / faction-negotiate） |
 | `CONCURRENT_REQUEST` | 429 | 同 `saveId` 已有进行中请求 | generate-event / resolve-decision / npc-actions / advisor-chat / faction-negotiate |
-| `SAVE_NOT_FOUND` | 404 | 云端未找到此存档 | GET sync-save |
+| `SAVE_NOT_FOUND` | 404 | 云端未找到此存档（或 deviceId 属主校验不通过，不区分） | GET sync-save |
+| `SAVE_FORBIDDEN` | 403 | 存档归属于其他 deviceId，禁止覆盖 | POST sync-save |
 | `DB_ERROR` | 500 | 数据库读写失败 | sync-save |
 | `METHOD_NOT_ALLOWED` | 405 | 非 POST/GET 方法 | sync-save |
 

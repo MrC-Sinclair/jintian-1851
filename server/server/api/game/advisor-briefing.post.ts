@@ -22,6 +22,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { generateObject } from 'ai'
 import { z } from 'zod'
 import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
+import { logLlmUsage } from '../../utils/llm-usage'
 
 /** 局势简报请求体校验 */
 const bodySchema = z.object({
@@ -134,13 +135,15 @@ export default defineEventHandler(async (event) => {
     })
     const model = openai.chat('Qwen/Qwen3-8B')
 
-    const { object } = await generateObject({
+    const { object, usage } = await generateObject({
       model,
       schema: briefingSchema,
       prompt: buildBriefingPrompt(turn, stateSnapshot),
+      maxOutputTokens: 800,
       providerOptions: { openai: { structuredOutputs: true } },
       abortSignal: AbortSignal.timeout(BRIEFING_TIMEOUT_MS)
     })
+    logLlmUsage('advisor-briefing', usage)
 
     return { ok: true, data: object }
   } catch (err) {

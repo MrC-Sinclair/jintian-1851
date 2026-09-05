@@ -18,6 +18,8 @@ import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
 import { buildNegotiationPrompt } from '../../utils/prompts/negotiation-agent'
 import { createNpcTools, type ToolContext } from '../../utils/tool-context'
 import { acquireLock, isLocked } from '../../utils/concurrency-lock'
+import { isE2eTestMode } from '../../utils/e2e-test-mode'
+import { logLlmUsage } from '../../utils/llm-usage'
 import {
   sanitizeDeal,
   getDealById,
@@ -259,7 +261,7 @@ export default defineEventHandler(async (event) => {
   // 3. 获取锁调用 Agent
   const release = await acquireLock(saveId)
   try {
-    const testMode = getHeader(event, 'x-e2e-test-mode') === '1'
+    const testMode = isE2eTestMode(getHeader(event, 'x-e2e-test-mode'))
     const config = useRuntimeConfig(event)
     const caps = getModelCapabilities('Qwen/Qwen3-8B')
     const openai = createOpenAI({
@@ -301,9 +303,11 @@ export default defineEventHandler(async (event) => {
         system,
         tools: createNpcTools(ctx),
         stopWhen: testMode ? stepCountIs(1) : stepCountIs(3),
+        maxOutputTokens: 1000,
         prompt: phase === 'letter' ? '请以该势力决策者的身份回信并表态' : '请做出最终裁定',
         providerOptions: { openai: { structuredOutputs: true } },
-        abortSignal: AbortSignal.timeout(testMode ? 8_000 : 30_000)
+        abortSignal: AbortSignal.timeout(testMode ? 8_000 : 30_000),
+        onFinish: ({ usage }) => logLlmUsage('faction-negotiate', usage, { phase, factionId: faction.id })
       })
 
       const fullText = await result.text

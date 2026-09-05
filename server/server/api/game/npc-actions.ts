@@ -21,6 +21,8 @@ import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
 import { buildNpcAgentPrompt } from '../../utils/prompts/npc-agent'
 import { createNpcTools, type ToolContext } from '../../utils/tool-context'
 import { acquireLock, isLocked } from '../../utils/concurrency-lock'
+import { isE2eTestMode } from '../../utils/e2e-test-mode'
+import { logLlmUsage } from '../../utils/llm-usage'
 import type {
   Attributes,
   Faction,
@@ -28,6 +30,9 @@ import type {
   NpcActionType,
   Resources
 } from '../../../types/game'
+
+/** 单请求允许的最大 NPC Agent 数（游戏内 6 势力，留余量防成本放大） */
+const MAX_NPC_AGENTS_PER_REQUEST = 10
 
 const bodySchema = z.object({
   saveId: z.string().uuid(),
@@ -65,6 +70,9 @@ const bodySchema = z.object({
       })
     )
     .min(1)
+    // 每个 active 势力触发 1 个独立 Agent（多次 LLM 调用），必须设上限防成本放大 DoS
+    // （限流按请求数计数，拦不住 1 请求内 N 个 Agent）；游戏内 6 势力，上限 10 留余量
+    .max(MAX_NPC_AGENTS_PER_REQUEST)
 })
 
 /** runNpcAgent 返回：成功为 NpcAction，失败携带 factionId 以便隔离 */
@@ -170,15 +178,17 @@ async function runNpcAgent(
   const system = buildNpcAgentPrompt(faction, ctx)
   try {
     // E2E 测试模式：压缩 Agent 步数与超时，避免 6 个并行 Agent 拖垮整轮（~30s→~8s），
-    // 不影响正式游戏（仅当请求携带 x-e2e-test-mode: 1 头时生效）。
+    // 生产环境恒关闭（见 e2e-test-mode.ts）。
     const result = streamText({
       model,
       system,
       tools,
       stopWhen: testMode ? stepCountIs(1) : stepCountIs(3),
+      maxOutputTokens: 1000,
       prompt: '请决策本回合行动',
       providerOptions: { openai: { structuredOutputs: true } },
-      abortSignal: AbortSignal.timeout(testMode ? 8_000 : 30_000)
+      abortSignal: AbortSignal.timeout(testMode ? 8_000 : 30_000),
+      onFinish: ({ usage }) => logLlmUsage('npc-actions', usage, { factionId: faction.id })
     })
 
     const fullText = await result.text
@@ -255,8 +265,8 @@ export default defineEventHandler(async (event) => {
   const release = await acquireLock(saveId)
   try {
     const config = useRuntimeConfig(event)
-    // E2E 测试模式：请求头 x-e2e-test-mode=1 时压缩 NPC Agent 步数/超时，加速整轮
-    const testMode = getHeader(event, 'x-e2e-test-mode') === '1'
+    // E2E 测试模式：压缩 NPC Agent 步数/超时，加速整轮（生产环境恒关闭）
+    const testMode = isE2eTestMode(getHeader(event, 'x-e2e-test-mode'))
     const caps = getModelCapabilities('Qwen/Qwen3-8B')
     const openai = createOpenAI({
       apiKey: config.openaiApiKey,

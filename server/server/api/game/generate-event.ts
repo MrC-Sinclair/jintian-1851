@@ -21,6 +21,7 @@ import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
 import { buildGenerateEventPrompt } from '../../utils/prompts/generate-event'
 import { getCached, setCached } from '../../utils/ai-cache'
 import { acquireLock, isLocked } from '../../utils/concurrency-lock'
+import { logLlmUsage } from '../../utils/llm-usage'
 import { getRandomFallbackEvent } from '../../runtime/fallback-events'
 import { STORY_CHAINS } from '../../runtime/story-chains'
 import { createTools, type ToolContext } from '../../utils/tool-context'
@@ -340,13 +341,15 @@ export default defineEventHandler(async (event) => {
     let lastErr: unknown
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const { object } = await generateObject({
+        const { object, usage } = await generateObject({
           model,
           schema: eventSchema,
           prompt,
+          maxOutputTokens: 2000,
           providerOptions: { openai: { structuredOutputs: true } },
           abortSignal: AbortSignal.timeout(30_000)
         })
+        logLlmUsage('generate-event', usage, { attempt: attempt + 1 })
         // 写入缓存
         setCached(cacheKey, object, CACHE_TTL_MS)
         setHeader(event, 'X-Cache', 'MISS')
@@ -363,10 +366,13 @@ export default defineEventHandler(async (event) => {
     // 5. 降级：返回预置事件
     console.error('[generate-event] 2 次重试均失败，降级返回预置事件:', lastErr)
     setHeader(event, 'X-Cache', 'MISS')
-    setHeader(event, 'X-Event-Source', 'llm')
+    // 降级语义必须与 LLM 成功路径区分（此前误标 'llm' 会误导监控与前端）
+    setHeader(event, 'X-Event-Source', 'fallback')
     setHeader(event, 'X-Fallback', 'true')
     if (toolFallback) setHeader(event, 'X-Tool-Fallback', 'true') // T4.2：工具降级标识
     const fallback = getRandomFallbackEvent()
+    // 短暂缓存 fallback：同 cache key 下一请求直接命中，不再白打 2 次 LLM
+    setCached(cacheKey, fallback, CACHE_TTL_MS)
     return { ok: true, data: { event: fallback }, fallback: true }
   } finally {
     release()

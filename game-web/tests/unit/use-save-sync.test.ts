@@ -137,6 +137,10 @@ describe('useSaveSync - 分支 1：云端 404 触发 POST 上传', () => {
     const result = await sync()
 
     expect(result.action).toBe('uploaded')
+    // GET URL 契约：saveId + deviceId 双参数（服务端属主校验必需）
+    expect(apiMocks.get).toHaveBeenCalledWith(
+      expect.stringContaining('saveId=save-test-id&deviceId=test-device')
+    )
     expect(apiMocks.post).toHaveBeenCalledTimes(1)
     // 用服务端 updatedAt 写回本地
     expect(storageMocks.saveSave).toHaveBeenCalledWith(expect.objectContaining({ updatedAt: 3000 }))

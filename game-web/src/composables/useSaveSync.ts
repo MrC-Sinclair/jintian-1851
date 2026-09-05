@@ -79,10 +79,13 @@ export function useSaveSync(options: UseSaveSyncOptions = {}) {
     store.setSyncing(true)
 
     try {
-      // 1. 查询云端状态
+      // 1. 查询云端状态（deviceId 为属主校验必需：服务端按 saveId+deviceId 双条件查询）
+      // 不用 URLSearchParams：小程序端无此全局对象（跨端兼容）
       let cloud: SyncSaveGetResponse | null = null
       try {
-        cloud = await get<SyncSaveGetResponse>(`/api/game/sync-save?saveId=${encodeURIComponent(localSave.saveId)}`)
+        cloud = await get<SyncSaveGetResponse>(
+          `/api/game/sync-save?saveId=${encodeURIComponent(localSave.saveId)}&deviceId=${encodeURIComponent(localSave.deviceId)}`
+        )
       } catch (err) {
         if (err instanceof ApiError && err.statusCode === 404) {
           // 404: 云端不存在，走首次上传

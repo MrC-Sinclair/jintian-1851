@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
 import { buildInitFactionsPrompt } from '../../utils/prompts/init-factions'
 import { getFallbackFactions } from '../../runtime/fallback-factions'
+import { logLlmUsage } from '../../utils/llm-usage'
 
 const bodySchema = z.object({
   background: z.enum(['文官', '武将', '商贾', '士绅', '宗室'])
@@ -75,16 +76,18 @@ export default defineEventHandler(async (event) => {
   const model = openai.chat('Qwen/Qwen3-8B')
 
   try {
-    const { object } = await generateObject({
+    const { object, usage } = await generateObject({
       model,
       schema: factionsSchema,
       prompt: buildInitFactionsPrompt(background),
+      maxOutputTokens: 2500,
       providerOptions: {
         openai: { structuredOutputs: true }
       },
       // 30 秒超时（评审补充：玩家首次进入等待 < 30s）
       abortSignal: AbortSignal.timeout(30_000)
     })
+    logLlmUsage('init-factions', usage)
 
     return {
       ok: true,

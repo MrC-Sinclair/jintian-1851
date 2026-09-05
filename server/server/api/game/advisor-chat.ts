@@ -22,6 +22,7 @@ import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
 import { buildAdvisorSystemPrompt } from '../../utils/prompts/advisor-chat'
 import { createTools, type ToolContext } from '../../utils/tool-context'
 import { acquireLock, isLocked } from '../../utils/concurrency-lock'
+import { logLlmUsage } from '../../utils/llm-usage'
 
 const MAX_MESSAGES = 20
 
@@ -184,8 +185,11 @@ export default defineEventHandler(async (event) => {
       messages: coreMessages,
       tools,
       stopWhen: stepCountIs(5),
+      maxOutputTokens: 1500,
       providerOptions: { openai: { structuredOutputs: false } },
-      abortSignal: AbortSignal.timeout(60_000)
+      abortSignal: AbortSignal.timeout(60_000),
+      // 记录 token 用量（可能含工具调用多步，output 为全程累计）
+      onFinish: ({ usage }) => logLlmUsage('advisor-chat', usage, { saveId, turn })
     })
 
     let fullText = ''

@@ -176,12 +176,31 @@ describe('POST/GET /api/game/sync-save', () => {
       expect((res2 as any).ok).toBe(true)
       expect(dbMock.insertMock).toHaveBeenCalledTimes(2)
     })
+
+    it('属主校验：onConflictDoUpdate 携带 setWhere(deviceId) 原子条件', async () => {
+      readBodyMock.mockResolvedValueOnce(makeSaveData())
+
+      await handler(makeEvent())
+
+      const config = (dbMock.onConflictMock.mock.calls as any[][])[0][0] as any
+      expect(config.setWhere).toBeDefined()
+    })
+
+    it('属主校验：saveId 已存在且属于其他设备 → 403 SAVE_FORBIDDEN', async () => {
+      // setWhere 条件排除他人存档时 returning 返回 0 行
+      dbMock.returningMock.mockReturnValueOnce([])
+      readBodyMock.mockResolvedValueOnce(makeSaveData())
+
+      const res = (await handler(makeEvent())) as any
+      expect(res.statusCode).toBe(403)
+      expect(res.data.error.code).toBe('SAVE_FORBIDDEN')
+    })
   })
 
   describe('GET 拉取', () => {
     it('拉取成功：返回存档数据', async () => {
       ;(globalThis as any).getMethod = vi.fn(() => 'GET')
-      getQueryMock.mockReturnValueOnce({ saveId: SAVE_ID })
+      getQueryMock.mockReturnValueOnce({ saveId: SAVE_ID, deviceId: 'device-1' })
       const saveData = makeSaveData()
       dbMock.limitMock.mockReturnValueOnce([
         { saveData, updatedAt: new Date('2026-01-01') }
@@ -195,7 +214,17 @@ describe('POST/GET /api/game/sync-save', () => {
 
     it('拉取不存在：404', async () => {
       ;(globalThis as any).getMethod = vi.fn(() => 'GET')
-      getQueryMock.mockReturnValueOnce({ saveId: SAVE_ID })
+      getQueryMock.mockReturnValueOnce({ saveId: SAVE_ID, deviceId: 'device-1' })
+      dbMock.limitMock.mockReturnValueOnce([])
+
+      const res = (await handler(makeEvent())) as any
+      expect(res.statusCode).toBe(404)
+      expect(res.data.error.code).toBe('SAVE_NOT_FOUND')
+    })
+
+    it('属主校验：deviceId 与存档归属不匹配 → 404（与不存在同响应，不泄漏存在性）', async () => {
+      ;(globalThis as any).getMethod = vi.fn(() => 'GET')
+      getQueryMock.mockReturnValueOnce({ saveId: SAVE_ID, deviceId: 'device-other' })
       dbMock.limitMock.mockReturnValueOnce([])
 
       const res = (await handler(makeEvent())) as any
@@ -205,7 +234,15 @@ describe('POST/GET /api/game/sync-save', () => {
 
     it('拉取参数错误：saveId 缺失', async () => {
       ;(globalThis as any).getMethod = vi.fn(() => 'GET')
-      getQueryMock.mockReturnValueOnce({})
+      getQueryMock.mockReturnValueOnce({ deviceId: 'device-1' })
+
+      const res = (await handler(makeEvent())) as any
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('拉取参数错误：deviceId 缺失（属主校验必填）', async () => {
+      ;(globalThis as any).getMethod = vi.fn(() => 'GET')
+      getQueryMock.mockReturnValueOnce({ saveId: SAVE_ID })
 
       const res = (await handler(makeEvent())) as any
       expect(res.statusCode).toBe(400)
@@ -213,7 +250,7 @@ describe('POST/GET /api/game/sync-save', () => {
 
     it('拉取参数错误：saveId 非 UUID', async () => {
       ;(globalThis as any).getMethod = vi.fn(() => 'GET')
-      getQueryMock.mockReturnValueOnce({ saveId: 'not-uuid' })
+      getQueryMock.mockReturnValueOnce({ saveId: 'not-uuid', deviceId: 'device-1' })
 
       const res = (await handler(makeEvent())) as any
       expect(res.statusCode).toBe(400)

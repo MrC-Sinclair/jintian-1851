@@ -3,12 +3,18 @@
  *
  * 服务端权威 updated_at 方案：
  *   - POST：zod `.strict()` 模式拒绝 updatedAt 字段，updated_at 由 DB `NOW()` 生成
- *   - GET：按 saveId 查询，404 if 不存在
+ *   - GET：按 saveId + deviceId 查询，404 if 不存在或不属于该设备
+ *
+ * 属主校验（防越权读写）：
+ *   - 存档归属由「saveId + deviceId 对」绑定（deviceId 随存档传播，跨设备拉取后继承）
+ *   - POST：`ON CONFLICT DO UPDATE` 附加 `setWhere(device_id = 请求 deviceId)` 原子条件更新，
+ *     冲突且设备不匹配 → 0 行更新 → 403 SAVE_FORBIDDEN（无 Read-Modify-Write 竞态窗口）
+ *   - GET：WHERE 同时匹配 saveId + deviceId；不匹配与不存在统一返回 404（不泄漏他人存档存在性）
  *
  * 注意：sync-save 不受 rate-limit 中间件限制（非 AI 调用）。
  */
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../../db'
 import { gameSaves } from '../../db/schema'
@@ -138,6 +144,7 @@ export default defineEventHandler(async (event) => {
     try {
       // INSERT ... ON CONFLICT (save_id) DO UPDATE
       // updated_at 由 DB NOW() 强制生成，不接受客户端值
+      // setWhere：冲突时仅当已有行属于同一 deviceId 才允许覆盖（原子属主校验）
       const [inserted] = await db
         .insert(gameSaves)
         .values({
@@ -156,7 +163,8 @@ export default defineEventHandler(async (event) => {
             updatedAt: new Date(), // 强制服务端时间
             endedAt: save.endedAt ? new Date(save.endedAt) : null,
             endedReason: save.endedReason ?? null
-          }
+          },
+          setWhere: eq(gameSaves.deviceId, save.deviceId)
         })
         .returning({
           saveId: gameSaves.saveId,
@@ -164,6 +172,18 @@ export default defineEventHandler(async (event) => {
           endedAt: gameSaves.endedAt,
           endedReason: gameSaves.endedReason
         })
+
+      // 0 行返回 = saveId 已存在且属于其他设备（首插无冲突时必有 1 行）
+      if (!inserted) {
+        return createError({
+          statusCode: 403,
+          statusMessage: 'SAVE_FORBIDDEN',
+          data: {
+            ok: false,
+            error: { code: 'SAVE_FORBIDDEN', message: '该存档归属于其他设备，禁止覆盖' }
+          }
+        })
+      }
 
       return {
         ok: true,
@@ -188,16 +208,20 @@ export default defineEventHandler(async (event) => {
   if (method === 'GET') {
     const query = getQuery(event)
     const saveId = query.saveId as string | undefined
+    const deviceId = query.deviceId as string | undefined
 
-    if (!saveId) {
+    if (!saveId || !deviceId) {
       return createError({
         statusCode: 400,
         statusMessage: 'INVALID_PARAMS',
-        data: { ok: false, error: { code: 'INVALID_PARAMS', message: 'saveId must be a UUID' } }
+        data: {
+          ok: false,
+          error: { code: 'INVALID_PARAMS', message: 'saveId 与 deviceId 均为必填' }
+        }
       })
     }
 
-    // UUID 格式校验
+    // UUID 格式校验（saveId）
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     if (!uuidRegex.test(saveId)) {
       return createError({
@@ -208,13 +232,14 @@ export default defineEventHandler(async (event) => {
     }
 
     try {
+      // 属主校验：saveId + deviceId 双条件；不匹配与不存在统一 404（不泄漏存在性）
       const rows = await db
         .select({
           saveData: gameSaves.saveData,
           updatedAt: gameSaves.updatedAt
         })
         .from(gameSaves)
-        .where(eq(gameSaves.saveId, saveId))
+        .where(and(eq(gameSaves.saveId, saveId), eq(gameSaves.deviceId, deviceId)))
         .limit(1)
 
       if (rows.length === 0) {
