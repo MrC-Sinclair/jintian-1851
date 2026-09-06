@@ -13,6 +13,7 @@ import { buildResolveDecisionPrompt } from '../../utils/prompts/resolve-decision
 import { acquireLock, isLocked } from '../../utils/concurrency-lock'
 import { isE2eTestMode } from '../../utils/e2e-test-mode'
 import { logLlmUsage } from '../../utils/llm-usage'
+import { writeFactionMemory } from '../../utils/memory'
 import { HESITATION_EFFECTS, isHesitationQuery } from '../../utils/hesitation-guard'
 
 /**
@@ -213,6 +214,20 @@ export default defineEventHandler(async (event) => {
         const factionEffects = (object.factionEffects ?? []).filter(
           (fe) => validIds.has(fe.factionId)
         )
+        // 判定含非空 factionEffects → 对每个受影响势力 fire-and-forget 写入关系记忆
+        // （提案 任务7 / D4：source='player_action'，关系升/降对应 positive/negative；
+        // 内部 try/catch 静默失败，不阻塞响应）
+        for (const fe of factionEffects) {
+          const delta = fe.relationshipDelta ?? 0
+          void writeFactionMemory({
+            saveId,
+            factionId: fe.factionId,
+            turn,
+            source: 'player_action',
+            sentiment: delta > 0 ? 'positive' : delta < 0 ? 'negative' : 'neutral',
+            content: `玩家：${playerDecision}（对我方关系${delta > 0 ? '+' : ''}${delta}）`
+          })
+        }
         // E2E 模式：放大为负值，确保 2~3 回合内触发属性崩溃结局
         return {
           ok: true,

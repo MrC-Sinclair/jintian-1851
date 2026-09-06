@@ -307,3 +307,20 @@ WHEN `runtimeConfig.enableBriefing === false`
 THEN 直接返回 200 `{ ok: true, data: { summary: '', suggestion: '' }, fallback: true, reason: 'disabled' }`
 AND 不调用 LLM
 
+### Requirement: 军师 search-memory 语义检索工具（2026-09-06-ai-long-term-memory）
+
+`advisor-chat` 工具集 SHALL 注册 `search-memory` 工具（NPC 工具集不注册），按语义检索本局全部历史记忆（阈值 0.45 / topK 上限 10）；prompt 工具清单与数据约束补充「涉及过往事件时优先调用，不要凭空编造历史」。
+
+#### Scenario: 正常检索与参数校验
+
+WHEN LLM 调用 `search-memory({ query, limit })`
+THEN 返回按相似度倒序的记忆条目（含 `content` / `turn`）
+AND `query` 为空或超过 200 字符时返回 `{ error: 'INVALID_PARAMS' }`
+AND `limit` 越界时钳制到 1-10（默认 5）
+
+#### Scenario: 检索失败降级
+
+WHEN embedding 调用或数据库查询失败
+THEN 工具返回 `{ error: 'MEMORY_UNAVAILABLE', detail: '...' }`，军师转向其他工具或坦诚告知，对话不中断
+AND 前端复用既有 SSE `tool-call` 气泡展示查询过程，无需任何前端改动
+

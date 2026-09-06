@@ -15,7 +15,7 @@
 
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateObject } from 'ai'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
 import { buildGenerateEventPrompt } from '../../utils/prompts/generate-event'
@@ -25,6 +25,7 @@ import { logLlmUsage } from '../../utils/llm-usage'
 import { getRandomFallbackEvent } from '../../runtime/fallback-events'
 import { STORY_CHAINS } from '../../runtime/story-chains'
 import { createTools, type ToolContext } from '../../utils/tool-context'
+import { searchEventMemories, writeEventMemory } from '../../utils/memory'
 import type { ChainNode, PendingChainNode, StoryChain } from '../../../types/game'
 
 // 5 分钟 TTL 缓存
@@ -328,13 +329,41 @@ export default defineEventHandler(async (event) => {
       toolFallback = true
     }
 
+    // ===== AI 长期记忆：LLM 路径生成前检索历史事件做语义去重（提案 任务5 / design D9）=====
+    // 仅在 LLM 路径执行；缓存命中 / 剧情链 / fallback 路径不检索不写入。
+    // 检索失败降级为不注入（不阻断生成），阈值 0.76 / topK 5。
+    let dedupEvents: { turn: number; summary: string }[] = []
+    try {
+      const dedupQuery = [
+        character.factionName,
+        factions.map((f) => f.name).join('、'),
+        recentEvents.map((e: any) => e.title).filter(Boolean).join('、'),
+        `第${turn}回合`
+      ]
+        .filter(Boolean)
+        .join(' ')
+      const hits = await searchEventMemories(saveId, dedupQuery, { threshold: 0.76, topK: 5 })
+      dedupEvents = hits.map((h) => ({ turn: h.turn, summary: h.content }))
+    } catch (err) {
+      console.warn('[generate-event] 历史去重检索失败，降级跳过:', err)
+      try {
+        setHeader(event, 'X-Memory-Skip', 'true')
+      } catch {
+        // header 设置失败不影响主流程
+      }
+    }
+    if (dedupEvents.length > 0) {
+      setHeader(event, 'X-Dedup-Applied', 'true')
+    }
+
     const prompt = buildGenerateEventPrompt({
       character,
       stateSnapshot,
       factions,
       recentEvents: effectiveRecentEvents,
       turn,
-      attributeShortfall
+      attributeShortfall,
+      dedupEvents
     })
 
     // 重试 1 次
@@ -352,6 +381,14 @@ export default defineEventHandler(async (event) => {
         logLlmUsage('generate-event', usage, { attempt: attempt + 1 })
         // 写入缓存
         setCached(cacheKey, object, CACHE_TTL_MS)
+        // 写入长期记忆：事件语义去重基础（fire-and-forget，失败静默，不阻塞响应）
+        void writeEventMemory({
+          saveId,
+          turn,
+          eventId: randomUUID(),
+          eventType: object.eventType,
+          content: `${object.title} ${object.description}`
+        })
         setHeader(event, 'X-Cache', 'MISS')
         setHeader(event, 'X-Event-Source', 'llm')
         if (chainFallback) setHeader(event, 'X-Fallback', 'true')

@@ -14,7 +14,13 @@
 
 ## 表清单
 
-MVP 阶段仅含 1 张表 `game_saves`，后续随功能扩展追加。
+当前含 3 张表：
+
+| 表 | 用途 | 引入 |
+|---|---|---|
+| `game_saves` | 云端存档同步 | MVP |
+| `game_events` | 情景记忆（本局事件向量，供语义去重） | AI 长期记忆提案 |
+| `faction_memories` | 关系记忆（各势力对玩家印象，供 NPC 决策注入 / 军师检索） | AI 长期记忆提案 |
 
 ---
 
@@ -124,19 +130,160 @@ LIMIT 1;
 
 未找到**或 deviceId 不匹配**统一返回 404 + `SAVE_NOT_FOUND`（不泄漏他人存档存在性）。
 
-### 维护命令
+---
+
+## game_events — 情景记忆（本局事件向量）
+
+源码：[server/server/db/schema.ts](file:///d:/code/codeWork/jintian-1851/server/server/db/schema.ts)
+
+> 本表为「AI 长期记忆」提案（openspec/changes/2026-09-06-ai-long-term-memory）新增。存储本局每回合 `generate-event` 产出的事件向量化结果，供**事件语义去重**检索。详见 design.md D2/D3/D6。
+
+### 字段说明
+
+| 列名 | 类型 | 约束 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `id` | `uuid` | `PRIMARY KEY` | `gen_random_uuid()` | 主键 |
+| `save_id` | `uuid` | `NOT NULL` | — | 存档唯一标识（检索作用域：跨回合全局去重） |
+| `turn` | `integer` | `NOT NULL` | — | 事件发生回合 |
+| `event_id` | `text` | `NOT NULL` | — | 事件标识（与 generate-event 产出对齐） |
+| `event_type` | `text` | `NOT NULL` | — | 事件类型 |
+| `content` | `text` | `NOT NULL` | — | 事件标题 + 描述（向量化原文，写入前截断到 750 字符，见 design.md D3） |
+| `embedding` | `vector(1024)` | `NOT NULL` | — | `BAAI/bge-large-zh-v1.5` 向量（512 token 硬上限，超长调前截断） |
+| `created_at` | `timestamptz` | `NOT NULL` | `NOW()` | 写入时间（服务端生成） |
+
+### 索引
+
+| 索引名 | 字段 | 类型 | 说明 |
+|---|---|---|---|
+| `game_events_pkey` | `id` | PRIMARY KEY | 主键索引（自动） |
+| `idx_game_events_save_turn` | `save_id`, `turn` | btree | 按存档 + 回合检索（调试 / 审计） |
+| `idx_game_events_embedding` | `embedding` | HNSW (`vector_cosine_ops`) | 余弦相似度向量检索（design.md D6） |
+
+### 关键约束
+
+#### embedding 列不回 select（D6）
+
+`postgres@^3.4` 未注册 pgvector 的 `vector` 类型 parser，SELECT 出该列会退化为字符串。所有检索查询**只 select 相似度标量**（`1 - cosineDistance(...)`），不 select `embedding` 列，规避类型解析坑。插入侧无坑：Drizzle `vector` 列会自动 `JSON.stringify` 成 pgvector 字面量。
+
+#### 写入方式（D4/D5）
+
+由 `generate-event` 的 LLM 路径在事件生成成功后 **fire-and-forget** 异步写入（仅 `X-Event-Source: llm` 路径；缓存命中 / 剧情链 / fallback 不写入），失败静默跳过，不阻塞回合主流程。
+
+#### 去重阈值（D9）
+
+`generate-event` 生成前检索同 `saveId` 历史事件，相似度 **> 0.76**（topK 5）时注入避重清单。阈值沉淀为常量 `DEDUP_THRESHOLD = 0.76`。
+
+### Drizzle Schema 定义
+
+```ts
+export const gameEvents = pgTable(
+  'game_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    saveId: uuid('save_id').notNull(),
+    turn: integer('turn').notNull(),
+    eventId: text('event_id').notNull(),
+    eventType: text('event_type').notNull(),
+    content: text('content').notNull(),
+    embedding: vector('embedding', { dimensions: 1024 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    saveTurnIdx: index('idx_game_events_save_turn').on(table.saveId, table.turn),
+    embeddingIdx: index('idx_game_events_embedding').using('hnsw', table.embedding.op('vector_cosine_ops'))
+  })
+)
+
+export type InsertGameEvent = typeof gameEvents.$inferInsert
+export type SelectGameEvent = typeof gameEvents.$inferSelect
+```
+
+---
+
+## faction_memories — 关系记忆（势力对玩家印象）
+
+源码：[server/server/db/schema.ts](file:///d:/code/codeWork/jintian-1851/server/server/db/schema.ts)
+
+> 本表为「AI 长期记忆」提案新增。存储每个 NPC 势力对玩家的印象条目（NPC 自述行动 / 玩家对势力的作为），供 **NPC 决策注入**与**军师检索**。详见 design.md D2/D7/D8。
+
+### 字段说明
+
+| 列名 | 类型 | 约束 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `id` | `uuid` | `PRIMARY KEY` | `gen_random_uuid()` | 主键 |
+| `save_id` | `uuid` | `NOT NULL` | — | 存档唯一标识 |
+| `faction_id` | `text` | `NOT NULL` | — | 势力标识（检索作用域第二维，硬隔离，design.md D7） |
+| `turn` | `integer` | `NOT NULL` | — | 发生回合 |
+| `source` | `text` | `NOT NULL` | — | 来源：`npc_action`（NPC 自述行动）/ `player_action`（玩家自由决策） |
+| `sentiment` | `text` | `NOT NULL` | — | 情绪：`positive` / `negative` / `neutral` |
+| `content` | `text` | `NOT NULL` | — | 记忆正文（行动类型+描述 / 玩家输入原文+关系变化，截断到 750 字符） |
+| `embedding` | `vector(1024)` | `NOT NULL` | — | `BAAI/bge-large-zh-v1.5` 向量 |
+| `created_at` | `timestamptz` | `NOT NULL` | `NOW()` | 写入时间（服务端生成） |
+
+### 索引
+
+| 索引名 | 字段 | 类型 | 说明 |
+|---|---|---|---|
+| `faction_memories_pkey` | `id` | PRIMARY KEY | 主键索引（自动） |
+| `idx_faction_memories_save_faction` | `save_id`, `faction_id` | btree | 按存档 + 势力硬隔离检索（D7） |
+| `idx_faction_memories_embedding` | `embedding` | HNSW (`vector_cosine_ops`) | 余弦相似度向量检索 |
+
+### 关键约束
+
+#### 作用域双隔离（D7）
+
+`faction_memories` 查询**必须**同时满足 `save_id = ?` **且** `faction_id = ?`，在表结构层面保证「某势力只能看到自己的记忆」，防止跨势力记忆泄漏与决策同质化。
+
+#### 正负混合召回（D8）
+
+`sentiment` 字段标记情绪。检索时 topK 内尽量正负混合，prompt 同时呈现恩怨两面；记忆**不参与** `relationship` 等数值结算，只影响叙事与意图偏置。
+
+#### 写入方式（D4/D5）
+
+由 `npc-actions`（source=`npc_action`）与 `resolve-decision`（source=`player_action`）在决策 / 判定成功后 **fire-and-forget** 写入（关系升/降对应 `positive`/`negative`），失败静默跳过，不阻塞主流程。
+
+### Drizzle Schema 定义
+
+```ts
+export const factionMemories = pgTable(
+  'faction_memories',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    saveId: uuid('save_id').notNull(),
+    factionId: text('faction_id').notNull(),
+    turn: integer('turn').notNull(),
+    source: text('source').notNull(),
+    sentiment: text('sentiment').notNull(),
+    content: text('content').notNull(),
+    embedding: vector('embedding', { dimensions: 1024 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    saveFactionIdx: index('idx_faction_memories_save_faction').on(table.saveId, table.factionId),
+    embeddingIdx: index('idx_faction_memories_embedding').using('hnsw', table.embedding.op('vector_cosine_ops'))
+  })
+)
+
+export type InsertFactionMemory = typeof factionMemories.$inferInsert
+export type SelectFactionMemory = typeof factionMemories.$inferSelect
+```
+
+---
+
+## 维护命令
 
 | 命令 | 作用 |
 |---|---|
-| `pnpm db:push` | 同步 schema.ts 到数据库（修改 schema 后必须执行） |
+| `pnpm db:push` | 同步 schema.ts 到数据库（修改 schema 后必须执行）。**前置步骤** `ensure-extensions.ts` 会幂等执行 `CREATE EXTENSION IF NOT EXISTS vector`（Drizzle 不会自动建扩展，design.md D1） |
 | `pnpm db:studio` | 启动 Drizzle Studio 可视化数据库（http://localhost:4983） |
 | `docker compose ps` | 检查 PostgreSQL 容器状态 |
 | `psql -h localhost -p 5534 -U sw_game -d sw_game` | 命令行连接数据库 |
 
-### 排查
+## 排查
 
 | 问题 | 排查步骤 |
 |---|---|
 | 数据库连接失败 | `docker compose ps` → 端口 5534 是否占用 → `.env` 中 `DATABASE_URL` 是否正确 |
 | `pnpm db:push` 失败 | 检查 schema.ts 语法 → 检查 drizzle.config.ts 配置 → 检查数据库连通性 |
+| `pnpm db:push` 报 `42P16 column "id" is in a primary key` | **既有 `game_saves` 表的 pre-existing 工具链问题**（与记忆表无关）：PostgreSQL 18 将 `NOT NULL` 实现为命名约束，drizzle-kit 0.29 尝试 DROP 主键列的 NOT NULL 约束导致中止。记忆表本身的建表与索引已落地；彻底修复需将 drizzle-kit 升级到兼容 PG18 的版本。 |
 | 同步 POST 返回 500 | 检查 saveId 是否为合法 UUID → 检查 saveData 是否符合 zod schema → 查看服务端日志 `[sync-save POST] DB error` |

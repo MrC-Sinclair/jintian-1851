@@ -23,13 +23,18 @@ interface GenerateEventArgs {
    * 仅作 LLM 输入提示，不强制概率；缺失时跳过短板导向段。
    */
   attributeShortfall?: { dimension: string; value: number }[]
+  /**
+   * 历史去重提示（AI 长期记忆提案 任务5）。命中历史事件时注入"避免重复"清单，
+   * 引导 LLM 不生成与历史雷同的事件。为空（首局/无命中/检索降级）时不注入段落。
+   */
+  dedupEvents?: { turn: number; summary: string }[]
 }
 
 /**
  * 构造 generate-event 提示词
  */
 export function buildGenerateEventPrompt(args: GenerateEventArgs): string {
-  const { character, stateSnapshot, factions, recentEvents, turn, attributeShortfall } = args
+  const { character, stateSnapshot, factions, recentEvents, turn, attributeShortfall, dedupEvents } = args
   const isFirstTurn = turn === 1
   const dateStr = `${stateSnapshot.date.year}年${stateSnapshot.date.month}月`
 
@@ -57,6 +62,14 @@ export function buildGenerateEventPrompt(args: GenerateEventArgs): string {
           .join('、')}。在生成事件类型时，优先选择能弥补以下短板的事件类型，相对基线约 +20% 倾向（示例：军事短板→军事/边患类事件，政治短板→吏治/朝堂类事件）。保持叙事合理，勿生硬堆砌。`
       : ''
 
+  // 历史去重提示（任务5）：命中历史事件时注入"避免重复"清单，引导 LLM 不生成雷同事件
+  const dedupStr =
+    dedupEvents && dedupEvents.length > 0
+      ? `\n【避免重复】历史上已发生以下类似事件，请勿生成雷同内容：\n${dedupEvents
+          .map((d) => `- 第${d.turn}回合：${d.summary}`)
+          .join('\n')}`
+      : ''
+
   return `你是近代历史策略游戏的剧情生成器。请为玩家生成 1 个回合事件。
 
 【玩家势力】${character.factionName}（${character.background}出身）：${character.factionSummary}
@@ -71,7 +84,7 @@ ${factionStr}
 
 【最近事件】
 ${recentEventsStr}
-${shortfallStr}
+${shortfallStr}${dedupStr}
 
 【事件要求】
 1. 事件类型从 5 类中选 1：民生 / 军事 / 外交 / 随机 / 历史剧情

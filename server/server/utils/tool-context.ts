@@ -12,6 +12,7 @@ import { createGetCharacterStatusTool } from '../tools/get-character-status'
 import { createGetRecentEventsTool } from '../tools/get-recent-events'
 import { createGetRelationshipTool } from '../tools/get-relationship'
 import { createGetCurrentDateTool } from '../tools/get-current-date'
+import { createSearchMemoryTool } from '../tools/search-memory'
 
 /** 工具上下文：单次请求内的全部查询数据源（来自请求 body 的内存数据） */
 export interface ToolContext {
@@ -24,7 +25,7 @@ export interface ToolContext {
 }
 
 /**
- * 基于 ToolContext 创建完整工具集（advisor-chat 使用全部 6 个工具）
+ * 基于 ToolContext 创建完整工具集（advisor-chat 使用全部 7 个工具）
  */
 export function createTools(ctx: ToolContext) {
   return {
@@ -33,7 +34,9 @@ export function createTools(ctx: ToolContext) {
     'get-character-status': createGetCharacterStatusTool(ctx),
     'get-recent-events': createGetRecentEventsTool(ctx),
     'get-relationship': createGetRelationshipTool(ctx),
-    'get-current-date': createGetCurrentDateTool(ctx)
+    'get-current-date': createGetCurrentDateTool(ctx),
+    // AI 长期记忆（任务8）：军师专用语义检索，NPC 工具集不注册（D7 隔离 NPC 无权回溯全量记忆）
+    'search-memory': createSearchMemoryTool(ctx)
   }
 }
 

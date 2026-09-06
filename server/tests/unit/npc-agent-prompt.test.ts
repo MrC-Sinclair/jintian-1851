@@ -91,4 +91,40 @@ describe('buildNpcAgentPrompt', () => {
     expect(p).toContain('"description"')
     expect(p).toContain('"effects"')
   })
+
+  // ============ AI 长期记忆：记忆注入（任务6 / D8）============
+
+  it('任务6：传入记忆时注入「你记得的事」段落（正负分组 + 内容）', () => {
+    const p = buildNpcAgentPrompt(makeFaction(), makeCtx(), {
+      positive: ['第3回合：玩家资助粮草'],
+      negative: ['第7回合：玩家劫掠辎重'],
+      neutral: []
+    })
+    expect(p).toContain('你记得关于玩家势力的事')
+    expect(p).toContain('善意 / 友好')
+    expect(p).toContain('第3回合：玩家资助粮草')
+    expect(p).toContain('敌意 / 怨恨')
+    expect(p).toContain('第7回合：玩家劫掠辎重')
+    // 中性组为空时不渲染该分组
+    expect(p).not.toContain('中性：')
+  })
+
+  it('任务6：无记忆（不传或全空）时不注入记忆段落', () => {
+    const p1 = buildNpcAgentPrompt(makeFaction(), makeCtx())
+    expect(p1).not.toContain('你记得关于玩家势力的事')
+    const p2 = buildNpcAgentPrompt(makeFaction(), makeCtx(), { positive: [], negative: [], neutral: [] })
+    expect(p2).not.toContain('你记得关于玩家势力的事')
+  })
+
+  it('任务6：记忆段落位于 JSON 输出要求之前（上下文不污染输出格式）', () => {
+    const p = buildNpcAgentPrompt(makeFaction(), makeCtx(), {
+      positive: [],
+      negative: ['第2回合：旧怨'],
+      neutral: []
+    })
+    const memIdx = p.indexOf('你记得关于玩家势力的事')
+    const jsonIdx = p.indexOf('只输出一个 JSON 对象')
+    expect(memIdx).toBeGreaterThan(-1)
+    expect(jsonIdx).toBeGreaterThan(memIdx)
+  })
 })

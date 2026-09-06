@@ -23,6 +23,14 @@ MVP 阶段全部使用 `Qwen/Qwen3-8B`（硅基流动 SiliconFlow），单价约
 | `Qwen/Qwen3.5-4B` | 视觉场景 | 未启用（MVP 无多模态需求） |
 | `THUDM/GLM-Z1-9B-0414` | 备选 | 未启用 |
 
+**Embedding 模型**（AI 长期记忆提案新增）：
+
+| 模型 | 场景 | 价格 | 维度 | 上下文 | 单句延迟 |
+|---|---|---|---|---|---|
+| `BAAI/bge-large-zh-v1.5` | 记忆向量化（事件去重 / NPC 记忆 / 军师检索） | **免费** | 1024 | 512 token（硬上限，超长 400） | ~99ms |
+
+> 模型 ID 沉淀于 [server/server/config/models.ts](file:///d:/code/codeWork/jintian-1851/server/server/config/models.ts)（`EMBEDDING_MODEL_ID`），调用统一走 `embedText()`（512 token 硬上限 → 内容先截断到 750 字符再向量化）。备选 `Pro/BAAI/bge-m3`（8K 上下文，¥0.07/M tokens），切换仅需改一处配置。
+
 ## 单回合 AI 调用拆分
 
 参考 [design.md D3](file:///d:/code/codeWork/jintian-1851/openspec/changes/archive/add-qing-revival-mvp/design.md) 的「AI 全包四段拆分」。
@@ -94,6 +102,27 @@ generate-event + resolve-decision + npc-actions + advisor-chat
 | 开局 + 50 回合 + 每回合军师 | ¥0.001 + ¥0.110 | **¥0.111** |
 
 **结论**：单局成本约 ¥0.07 ~ ¥0.15，可接受。
+
+### Embedding 成本（AI 长期记忆）
+
+按 50 回合典型局的 embedding 调用拆分（design.md D10）：
+
+| 场景 | 次数 | 单次 tokens | 小计 |
+|---|---|---|---|
+| 事件向量化（写入，generate-event 成功后） | 50 | ~150 | 7,500 |
+| NPC 行动记忆写入（npc-actions 成功后） | ~100（2 NPC × 50 回合） | ~80 | 8,000 |
+| 玩家行动记忆写入（resolve-decision 含 factionEffects 时） | ~30 | ~80 | 2,400 |
+| 事件去重检索（generate-event LLM 路径前） | 50 | ~100 | 5,000 |
+| 军师记忆检索（advisor-chat search-memory 工具） | ~50 | ~50 | 2,500 |
+| NPC 记忆检索（npc-actions 决策前，正/负/中 3 路） | ~100 | ~30 | 3,000 |
+| **合计** | | | **~26K tokens/局** |
+
+| 计费档位 | 单局成本 | 说明 |
+|---|---|---|
+| 免费档（`BAAI/bge-large-zh-v1.5`，当前选用） | **¥0** | SiliconFlow 免费档 |
+| Pro 档（`Pro/BAAI/bge-m3`，¥0.07/M） | ≈ **¥0.0018/局** | 备选，需检索超长文本时切换 |
+
+**结论**：对比单局 ¥0.11（含军师）的 LLM 成本，embedding 增幅 **< 2%**；免费档下为 ¥0。embedding 不做结果缓存（单次成本 ≈ 0，缓存收益低于复杂度）；`generate-event` 缓存命中时跳过去重检索，不产生 embedding 调用。全链路失败静默降级（写入跳过 / 检索返回空），不重试、不阻断回合。
 
 ### 架构升级对成本的影响（agent-architecture-upgrade）
 

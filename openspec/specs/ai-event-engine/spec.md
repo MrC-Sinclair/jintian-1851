@@ -427,3 +427,27 @@ WHEN 前端 `useTurn.startTurn()` 组装请求
 THEN 请求体包含 `attributeShortfall: calcAttributeShortfall(attributes)`（基于 `CRISIS_THRESHOLD=30` 复用，不另建常量）
 AND `server` zod `bodySchema` 将其定义为可选字段，不阻断老客户端
 
+### Requirement: 事件语义去重与长期记忆写入（2026-09-06-ai-long-term-memory）
+
+`generate-event` 的 LLM 路径 SHALL 在生成前检索同 `saveId` 历史事件（阈值 0.76 / topK 5）做语义去重，命中时在 prompt 注入避重清单；生成成功后 fire-and-forget 写入 `game_events`。
+
+#### Scenario: 命中高度相似事件
+
+WHEN 检索到相似度 > 0.76 的历史事件
+THEN 在 prompt 注入「避免重复」清单（最多 5 条），响应头标记 `X-Dedup-Applied: true`
+
+#### Scenario: 未命中或检索失败
+
+WHEN 无超阈值历史事件，或检索过程抛错
+THEN 未命中走既有 prompt 逻辑；失败时跳过检索并标记 `X-Memory-Skip: true`，事件照常生成（不降级到 fallback 池）
+
+#### Scenario: 非 LLM 路径不检索不写入
+
+WHEN 命中剧情链（`pending-chain` / `time-window`）或 5 分钟缓存（`X-Cache: HIT`）
+THEN 不执行去重检索，也不写入 `game_events`（脚本化/缓存事件无去重价值，避免污染检索池）
+
+#### Scenario: LLM 生成成功后写入记忆
+
+WHEN LLM 路径生成成功（`X-Event-Source: llm`）
+THEN 异步写入 `game_events`（`content` = 事件标题 + 描述，embedding 为 1024 维向量），失败仅记 warn 日志、不影响响应
+

@@ -21,7 +21,7 @@
     "test:unit": "vitest run tests/unit",
     "test:api": "vitest run tests/api",
     "test:watch": "vitest",
-    "db:push": "drizzle-kit push",
+    "db:push": "tsx --env-file=.env server/scripts/ensure-extensions.ts && drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "check-models": "tsx --env-file=.env server/scripts/check-models.ts"

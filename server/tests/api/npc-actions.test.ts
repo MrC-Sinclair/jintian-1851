@@ -21,12 +21,20 @@ vi.mock('ai', async (importOriginal) => {
 vi.mock('../../server/utils/siliconflow-fetch', () => ({
   createSiliconFlowFetch: vi.fn(() => vi.fn())
 }))
+// AI 长期记忆（任务6）：隔离 memory 模块，默认无命中、写入 no-op，避免真实网络/DB 调用
+vi.mock('../../server/utils/memory', () => ({
+  searchFactionMemories: vi.fn(() => Promise.resolve([])),
+  writeFactionMemory: vi.fn(() => Promise.resolve())
+}))
 
 import { streamText } from 'ai'
 import handler from '../../server/api/game/npc-actions'
 import { acquireLock, clearLocks } from '../../server/utils/concurrency-lock'
+import { searchFactionMemories, writeFactionMemory } from '../../server/utils/memory'
 
 const streamTextMock = vi.mocked(streamText)
+const searchFactionMemoriesMock = vi.mocked(searchFactionMemories)
+const writeFactionMemoryMock = vi.mocked(writeFactionMemory)
 const readBodyMock = (globalThis as any).readBody as ReturnType<typeof vi.fn>
 const SAVE_ID = '550e8400-e29b-41d4-a716-446655440000'
 
@@ -185,5 +193,72 @@ describe('POST /api/game/npc-actions（多 Agent）', () => {
     } finally {
       release()
     }
+  })
+
+  // ============ AI 长期记忆：npc-actions 接入（任务6 / D7/D8）============
+
+  it('任务6：记忆命中时注入 system prompt（「你记得」段落出现在 streamText 调用中）', async () => {
+    searchFactionMemoriesMock.mockImplementation((_saveId, _factionId, _query, opts: any) => {
+      if (opts?.sentiment === 'negative') {
+        return Promise.resolve([{ content: '旧怨未雪', turn: 4, similarity: 0.7 }])
+      }
+      return Promise.resolve([])
+    })
+    mockSuccessByRelationship()
+    readBodyMock.mockResolvedValueOnce(makeBody([makeFaction('xiang-jun', '湘军', 0)]))
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    const systemArg = (streamTextMock.mock.calls[0][0] as any).system
+    expect(systemArg).toContain('你记得关于玩家势力的事')
+    expect(systemArg).toContain('第4回合：旧怨未雪')
+  })
+
+  it('任务6：检索失败仍正常决策 + 设 X-Memory-Skip: true（D5 降级）', async () => {
+    searchFactionMemoriesMock.mockRejectedValue(new Error('pg down'))
+    mockSuccessByRelationship()
+    readBodyMock.mockResolvedValueOnce(makeBody([makeFaction('xiang-jun', '湘军', 0)]))
+    const event = makeEvent()
+
+    const res = (await handler(event)) as any
+    expect(res.ok).toBe(true)
+    expect(res.data.actions).toHaveLength(1)
+    expect(res.data.actions[0].factionId).toBe('xiang-jun')
+    expect((globalThis as any).setHeader).toHaveBeenCalledWith(event, 'X-Memory-Skip', 'true')
+  })
+
+  it('任务6：记忆注入不改变 effects 数值（D8：记忆只偏置意图不改结算）', async () => {
+    searchFactionMemoriesMock.mockResolvedValue([{ content: '受其资助', turn: 2, similarity: 0.8 }])
+    // LLM 返回固定 effects，验证记忆存在时 effects 原样透传
+    streamTextMock.mockImplementation(
+      () =>
+        ({
+          text: Promise.resolve(
+            JSON.stringify({ action: '休养', description: '按兵不动', effects: { military: -2 } })
+          )
+        }) as any
+    )
+    readBodyMock.mockResolvedValueOnce(makeBody([makeFaction('xiang-jun', '湘军', 0)]))
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(res.data.actions[0].effects).toEqual({ military: -2 })
+  })
+
+  it('任务6：决策成功后 fire-and-forget 写入 faction_memories（sentiment 按行动类型推导）', async () => {
+    // 敌对关系 → 挑衅 → negative
+    mockSuccessByRelationship()
+    searchFactionMemoriesMock.mockResolvedValue([])
+    readBodyMock.mockResolvedValueOnce(makeBody([makeFaction('taiping', '太平军', -50)]))
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(writeFactionMemoryMock).toHaveBeenCalledTimes(1)
+    const arg = writeFactionMemoryMock.mock.calls[0][0]
+    expect(arg.saveId).toBe(SAVE_ID)
+    expect(arg.factionId).toBe('taiping')
+    expect(arg.source).toBe('npc_action')
+    expect(arg.sentiment).toBe('negative')
+    expect(arg.content).toContain('挑衅')
   })
 })

@@ -67,6 +67,21 @@ export const ALLOWED_MODEL_VALUES = new Set(AVAILABLE_MODELS.map((m) => m.value)
 const MODEL_CONFIG_MAP = new Map(AVAILABLE_MODELS.map((m) => [m.value, m]))
 
 /**
+ * 记忆向量化模型配置（AI 长期记忆提案，design.md D3）
+ *
+ * SiliconFlow `BAAI/bge-large-zh-v1.5`：免费档 ¥0/M tokens、1024 维、512 token 硬上限。
+ * 切换模型仅改 `EMBEDDING_MODEL_ID` 一处（bge-m3 为 8K 上下文备选，见 D3 备注）。
+ */
+export const EMBEDDING_MODEL_ID = 'BAAI/bge-large-zh-v1.5'
+/** embedding 输出维度，必须与 schema.ts 中 vector 列 dimensions 一致 */
+export const EMBEDDING_DIMENSIONS = 1024
+/**
+ * 写入前截断上限（字符）。bge-large-zh-v1.5 的 512 token 为硬上限，超长直接 400，
+ * 故在调用前截断到 750 字符（≈500 token，留安全余量），见 design.md D3。
+ */
+export const EMBEDDING_MAX_CHARS = 750
+
+/**
  * 根据 model 值获取对应能力配置
  * 未匹配时返回默认能力：无视觉、无推理、支持工具调用
  */

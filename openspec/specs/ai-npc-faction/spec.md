@@ -158,3 +158,23 @@ WHEN 玩家对某势力执行 `宣战` 动作（relationship 设为 -100）
 THEN 该势力 `relationship = -100`
 AND 下回合其 NPC Agent 因 `relationship < -30` 倾向「挑衅/备战/扩张」针对玩家
 
+### Requirement: NPC 决策注入历史记忆（2026-09-06-ai-long-term-memory）
+
+每个势力 Agent 决策前 SHALL 检索**本势力自身**的 `faction_memories`（`saveId` + `factionId` 双隔离，阈值 0.45，正/负/中三路混合召回），将记忆注入「你记得关于玩家势力的事」段落；决策成功后 fire-and-forget 写入 `faction_memories`（`source='npc_action'`，`sentiment` 按行动类型推导：`挑衅`/`备战` → negative，`结盟`/`外交` → positive，`扩张`/`休养` → neutral）。
+
+#### Scenario: 记忆注入与作用域隔离
+
+WHEN 某势力存在相似度 > 0.45 的历史记忆
+THEN 其 system prompt 含记忆段落（正负分组呈现恩怨两面）
+AND 其他势力的检索 SHALL 召回不到该势力的任何记忆
+
+#### Scenario: 检索失败不阻断决策
+
+WHEN 记忆检索抛错
+THEN 跳过记忆注入，Agent 按既有逻辑照常决策，响应头标记 `X-Memory-Skip: true`
+
+#### Scenario: 记忆不改变数值结算
+
+WHEN Agent 基于记忆产出 `NpcAction`
+THEN `effects` 仍由 `normalizeNpcAction` 白名单过滤后交给前端结算，记忆只影响 `description` 文案与行动倾向，不参与任何数值计算
+

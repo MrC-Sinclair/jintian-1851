@@ -75,9 +75,10 @@ export function buildAdvisorSystemPrompt(args: AdvisorChatArgs): string {
 - get-recent-events：查询最近 N 回合历史事件（默认 5 条，上限 20）
 - get-relationship：查询两势力关系值（取两者与玩家关系之均值）
 - get-current-date：查询当前游戏内日期与回合
+- search-memory：按语义检索本局全部历史记忆（跨回合往事，含久远旧事；涉及过往事件时优先调用，不要凭空编造历史）
 ${newPlayerGuidance}
 【数据约束】
-未通过工具查询的数据不可凭空编造；如不确定某势力/事件/关系，请调用对应工具核实，或坦诚告知玩家你无法确认。
+未通过工具查询的数据不可凭空编造；如不确定某势力/事件/关系，请调用对应工具核实，或坦诚告知玩家你无法确认。涉及过往事件（尤其是较早回合发生的事）时，优先调用 search-memory 检索核实，不要凭印象编造历史。
 
 【回复风格约束】
 1. 用文言或半文言回复，符合近代幕僚身份${isNewPlayer ? '（新手期可适当用白话降低理解门槛）' : ''}

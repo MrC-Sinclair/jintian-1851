@@ -28,15 +28,23 @@ vi.mock('../../server/tools/get-recent-events', () => ({
     }))
   }))
 }))
+// AI 长期记忆（任务5）：隔离 memory 模块，默认无命中、写入为 no-op，避免真实网络/DB 调用
+vi.mock('../../server/utils/memory', () => ({
+  searchEventMemories: vi.fn(() => Promise.resolve([])),
+  writeEventMemory: vi.fn(() => Promise.resolve())
+}))
 
 import { generateObject } from 'ai'
 import handler from '../../server/api/game/generate-event'
 import { clearCache } from '../../server/utils/ai-cache'
 import { acquireLock, clearLocks } from '../../server/utils/concurrency-lock'
 import { createGetRecentEventsTool } from '../../server/tools/get-recent-events'
+import { searchEventMemories, writeEventMemory } from '../../server/utils/memory'
 
 const generateObjectMock = vi.mocked(generateObject)
 const readBodyMock = (globalThis as any).readBody as ReturnType<typeof vi.fn>
+const searchEventMemoriesMock = vi.mocked(searchEventMemories)
+const writeEventMemoryMock = vi.mocked(writeEventMemory)
 
 const SAVE_ID = '550e8400-e29b-41d4-a716-446655440000'
 
@@ -345,5 +353,65 @@ describe('POST /api/game/generate-event', () => {
     // 降级后 prompt 不含有工具注入内容（recentEvents 为空 → 渲染占位）
     const promptArg = (generateObjectMock.mock.calls[0][0] as any).prompt
     expect(promptArg).not.toContain('工具注入事件')
+  })
+
+  // ============ AI 长期记忆：generate-event 接入（任务5）============
+
+  it('任务5：LLM 路径前检索历史事件命中 → prompt 注入避重清单 + X-Dedup-Applied: true', async () => {
+    searchEventMemoriesMock.mockResolvedValueOnce([
+      { content: '粮价飞涨百姓怨声载道', turn: 2, similarity: 0.82 },
+      { content: '江南水患官府赈灾', turn: 3, similarity: 0.79 }
+    ])
+    generateObjectMock.mockResolvedValueOnce({ object: makeGameEvent() } as any)
+    readBodyMock.mockResolvedValueOnce(makeBody(5))
+    const event = makeEvent()
+    const res = (await handler(event)) as any
+    expect(res.ok).toBe(true)
+    const promptArg = (generateObjectMock.mock.calls[0][0] as any).prompt
+    expect(promptArg).toContain('避免重复')
+    expect(promptArg).toContain('粮价飞涨百姓怨声载道')
+    expect((globalThis as any).setHeader).toHaveBeenCalledWith(event, 'X-Dedup-Applied', 'true')
+  })
+
+  it('任务5：去重检索无命中 → 不注入避重清单且不设 X-Dedup-Applied', async () => {
+    searchEventMemoriesMock.mockResolvedValueOnce([])
+    generateObjectMock.mockResolvedValueOnce({ object: makeGameEvent() } as any)
+    readBodyMock.mockResolvedValueOnce(makeBody(5))
+    const event = makeEvent()
+    const res = (await handler(event)) as any
+    expect(res.ok).toBe(true)
+    const promptArg = (generateObjectMock.mock.calls[0][0] as any).prompt
+    expect(promptArg).not.toContain('避免重复')
+    expect((globalThis as any).setHeader).not.toHaveBeenCalledWith(event, 'X-Dedup-Applied', 'true')
+  })
+
+  it('任务5：去重检索抛错 → 降级跳过不阻断生成 + 设 X-Memory-Skip', async () => {
+    searchEventMemoriesMock.mockRejectedValueOnce(new Error('pg down'))
+    generateObjectMock.mockResolvedValueOnce({ object: makeGameEvent() } as any)
+    readBodyMock.mockResolvedValueOnce(makeBody(5))
+    const event = makeEvent()
+    const res = (await handler(event)) as any
+    expect(res.ok).toBe(true)
+    expect(generateObjectMock).toHaveBeenCalledTimes(1)
+    const promptArg = (generateObjectMock.mock.calls[0][0] as any).prompt
+    expect(promptArg).not.toContain('避免重复')
+    expect((globalThis as any).setHeader).toHaveBeenCalledWith(event, 'X-Memory-Skip', 'true')
+  })
+
+  it('任务5：LLM 成功路径 fire-and-forget 写入 game_events（仅 llm 路径）', async () => {
+    searchEventMemoriesMock.mockResolvedValueOnce([])
+    const gameEvent = makeGameEvent()
+    generateObjectMock.mockResolvedValueOnce({ object: gameEvent } as any)
+    readBodyMock.mockResolvedValueOnce(makeBody(5))
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(writeEventMemoryMock).toHaveBeenCalledTimes(1)
+    const arg = writeEventMemoryMock.mock.calls[0][0]
+    expect(arg.saveId).toBe(SAVE_ID)
+    expect(arg.turn).toBe(5)
+    expect(arg.eventType).toBe(gameEvent.eventType)
+    expect(arg.content).toBe(`${gameEvent.title} ${gameEvent.description}`)
+    expect(typeof arg.eventId).toBe('string')
+    expect(arg.eventId.length).toBeGreaterThan(0)
   })
 })

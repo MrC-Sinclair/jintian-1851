@@ -12,12 +12,18 @@ vi.mock('ai', () => ({ generateObject: vi.fn() }))
 vi.mock('../../server/utils/siliconflow-fetch', () => ({
   createSiliconFlowFetch: vi.fn(() => vi.fn())
 }))
+// AI 长期记忆（任务7）：隔离 memory 模块，写入默认 no-op，避免真实网络/DB 调用
+vi.mock('../../server/utils/memory', () => ({
+  writeFactionMemory: vi.fn(() => Promise.resolve())
+}))
 
 import { generateObject } from 'ai'
 import handler from '../../server/api/game/resolve-decision'
 import { acquireLock, clearLocks } from '../../server/utils/concurrency-lock'
+import { writeFactionMemory } from '../../server/utils/memory'
 
 const generateObjectMock = vi.mocked(generateObject)
+const writeFactionMemoryMock = vi.mocked(writeFactionMemory)
 const readBodyMock = (globalThis as any).readBody as ReturnType<typeof vi.fn>
 const SAVE_ID = '550e8400-e29b-41d4-a716-446655440000'
 
@@ -177,5 +183,62 @@ describe('POST /api/game/resolve-decision', () => {
     } finally {
       release()
     }
+  })
+
+  // ============ AI 长期记忆：resolve-decision 接入（任务7）============
+
+  it('任务7：判定含 factionEffects 时对每个受影响势力写入记忆（关系升/降对应 positive/negative）', async () => {
+    generateObjectMock.mockResolvedValueOnce({
+      object: {
+        effects: { silver: -50 },
+        factionEffects: [
+          { factionId: 'xiang-jun', relationshipDelta: 15 },
+          { factionId: 'qing-ting', relationshipDelta: -8 }
+        ]
+      }
+    } as any)
+    readBodyMock.mockResolvedValueOnce(
+      makeBody({ playerDecision: '我想暗中资助湘军', turn: 6, factions: makeFactions() })
+    )
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(writeFactionMemoryMock).toHaveBeenCalledTimes(2)
+    const [first, second] = writeFactionMemoryMock.mock.calls.map((c) => c[0])
+    expect(first).toMatchObject({
+      saveId: SAVE_ID,
+      factionId: 'xiang-jun',
+      turn: 6,
+      source: 'player_action',
+      sentiment: 'positive'
+    })
+    expect(first.content).toContain('我想暗中资助湘军')
+    expect(second).toMatchObject({
+      factionId: 'qing-ting',
+      source: 'player_action',
+      sentiment: 'negative'
+    })
+  })
+
+  it('任务7：判定无 factionEffects 时不写入记忆', async () => {
+    generateObjectMock.mockResolvedValueOnce({ object: { effects: { people: 5 } } } as any)
+    readBodyMock.mockResolvedValueOnce(makeBody({ factions: makeFactions() }))
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(res.data.factionEffects).toEqual([])
+    expect(writeFactionMemoryMock).not.toHaveBeenCalled()
+  })
+
+  it('任务7：记忆写入失败不影响判定结果（fire-and-forget 静默）', async () => {
+    writeFactionMemoryMock.mockRejectedValueOnce(new Error('embed down'))
+    generateObjectMock.mockResolvedValueOnce({
+      object: { effects: { silver: -30 }, factionEffects: [{ factionId: 'xiang-jun', relationshipDelta: 10 }] }
+    } as any)
+    readBodyMock.mockResolvedValueOnce(makeBody({ factions: makeFactions() }))
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(res.data.factionEffects).toEqual([{ factionId: 'xiang-jun', relationshipDelta: 10 }])
   })
 })

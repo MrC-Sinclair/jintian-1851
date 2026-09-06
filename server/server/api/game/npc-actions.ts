@@ -18,8 +18,9 @@ import { streamText, stepCountIs, type LanguageModel } from 'ai'
 import { z } from 'zod'
 import { getModelCapabilities } from '../../config/models'
 import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
-import { buildNpcAgentPrompt } from '../../utils/prompts/npc-agent'
+import { buildNpcAgentPrompt, type NpcMemories } from '../../utils/prompts/npc-agent'
 import { createNpcTools, type ToolContext } from '../../utils/tool-context'
+import { searchFactionMemories, writeFactionMemory, type MemorySearchResult } from '../../utils/memory'
 import { acquireLock, isLocked } from '../../utils/concurrency-lock'
 import { isE2eTestMode } from '../../utils/e2e-test-mode'
 import { logLlmUsage } from '../../utils/llm-usage'
@@ -165,17 +166,69 @@ function normalizeNpcAction(
 }
 
 /**
+ * 按行动类型推导记忆情感（提案 任务6）：
+ * 结盟/外交=positive，挑衅/备战=negative，扩张/休养=neutral。
+ */
+function deriveSentiment(action: NpcActionType): 'positive' | 'negative' | 'neutral' {
+  switch (action) {
+    case '结盟':
+    case '外交':
+      return 'positive'
+    case '挑衅':
+    case '备战':
+      return 'negative'
+    default:
+      return 'neutral'
+  }
+}
+
+/**
+ * 检索该势力自身的历史记忆（D7 双隔离 + D8 正负混合召回）。
+ * 正/负各 topK 2、中性 topK 1；检索失败返回 null（调用方降级不注入并标记 X-Memory-Skip）。
+ */
+async function recallFactionMemories(
+  factionId: string,
+  factionName: string,
+  ctx: ToolContext,
+  setSkipHeader: () => void
+): Promise<NpcMemories | null> {
+  const query = `${factionName} 与玩家势力${ctx.character.factionName} 的关系与往来`
+  try {
+    const [pos, neg, neu] = await Promise.all([
+      searchFactionMemories(ctx.saveId, factionId, query, { threshold: 0.45, topK: 2, sentiment: 'positive' }),
+      searchFactionMemories(ctx.saveId, factionId, query, { threshold: 0.45, topK: 2, sentiment: 'negative' }),
+      searchFactionMemories(ctx.saveId, factionId, query, { threshold: 0.45, topK: 1, sentiment: 'neutral' })
+    ])
+    const fmt = (m: MemorySearchResult) => `第${m.turn}回合：${m.content}`
+    return {
+      positive: pos.map(fmt),
+      negative: neg.map(fmt),
+      neutral: neu.map(fmt)
+    }
+  } catch (err) {
+    console.warn(`[npc-actions] 势力 ${factionName} 记忆检索失败，降级跳过:`, err)
+    setSkipHeader()
+    return null
+  }
+}
+
+/**
  * 运行单个 NPC 势力的 Agent 决策。
  * 失败（异常 / 无法解析 JSON / 格式非法）返回 { failed, factionId }，由主流程隔离处理。
+ * 决策成功后 fire-and-forget 写入 faction_memories（source='npc_action'）。
  */
 async function runNpcAgent(
   faction: Faction,
   ctx: ToolContext,
   model: LanguageModel,
-  testMode: boolean
+  testMode: boolean,
+  setSkipHeader: () => void
 ): Promise<NpcAgentResult> {
+  // 长期记忆（提案 任务6 / D7/D8）：决策前检索本势力记忆注入 prompt
+  const memories = await recallFactionMemories(faction.id, faction.name, ctx, setSkipHeader)
+
   const tools = createNpcTools(ctx)
-  const system = buildNpcAgentPrompt(faction, ctx)
+  const system = buildNpcAgentPrompt(faction, ctx, memories ?? undefined)
   try {
     // E2E 测试模式：压缩 Agent 步数与超时，避免 6 个并行 Agent 拖垮整轮（~30s→~8s），
     // 生产环境恒关闭（见 e2e-test-mode.ts）。
@@ -203,6 +256,17 @@ async function runNpcAgent(
       console.warn(`[npc-actions] NPC ${faction.name} 决策格式非法`)
       return { failed: true, factionId: faction.id }
     }
+
+    // 决策成功 → fire-and-forget 写入关系记忆（source='npc_action'，sentiment 按行动类型推导；
+    // 内部 try/catch 静默失败，不阻塞响应，D4/D5）
+    void writeFactionMemory({
+      saveId: ctx.saveId,
+      factionId: faction.id,
+      turn: ctx.turn,
+      source: 'npc_action',
+      sentiment: deriveSentiment(action.action),
+      content: `${action.action}${action.target ? `（${action.target}）` : ''}：${action.description}`
+    })
 
     return action
   } catch (err) {
@@ -291,8 +355,16 @@ export default defineEventHandler(async (event) => {
       recentEvents: []
     }
 
+    // 记忆检索失败时统一设 X-Memory-Skip: true（D5，多 Agent 重复设置无害）
+    const setMemorySkipHeader = () => {
+      try {
+        setHeader(event, 'X-Memory-Skip', 'true')
+      } catch {
+        // header 设置失败不影响主流程
+      }
+    }
     const results = await Promise.all(
-      activeFactions.map((f) => runNpcAgent(f, ctx, model, testMode))
+      activeFactions.map((f) => runNpcAgent(f, ctx, model, testMode, setMemorySkipHeader))
     )
 
     const actions: NpcAction[] = []

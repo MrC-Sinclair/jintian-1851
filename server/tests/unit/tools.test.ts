@@ -8,9 +8,17 @@
  * 这里将 tools 断言为 any 以便直接调用 execute（运行时 options 可选）。
  */
 
-import { describe, expect, it } from 'vitest'
-import { createTools, type ToolContext } from '../../server/utils/tool-context'
+import { describe, expect, it, vi } from 'vitest'
+import { createTools, createNpcTools, type ToolContext } from '../../server/utils/tool-context'
 import type { Faction, Character, StateSnapshot, HistoryEvent } from '../../types/game'
+
+// AI 长期记忆（任务8）：search-memory 依赖 memory 模块，mock 隔离避免真实网络/DB 调用
+vi.mock('../../server/utils/memory', () => ({
+  searchEventMemories: vi.fn(() => Promise.resolve([]))
+}))
+import { searchEventMemories } from '../../server/utils/memory'
+
+const searchEventMemoriesMock = vi.mocked(searchEventMemories)
 
 function makeCtx(): ToolContext {
   const factions: Faction[] = [
@@ -171,5 +179,72 @@ describe('工具失败容错', () => {
     const tools = createTools(badCtx) as any
     const r = await tools['get-faction-info'].execute({ factionId: 'x' })
     expect(r.error).toBe('INTERNAL_ERROR')
+  })
+})
+
+// ============ AI 长期记忆：search-memory 工具（任务8）============
+
+describe('search-memory', () => {
+  it('正常返回检索结果', async () => {
+    searchEventMemoriesMock.mockResolvedValueOnce([
+      { content: '玩家暗中资助湘军', turn: 5, similarity: 0.8 }
+    ])
+    const tools = createTools(makeCtx()) as any
+    const r = await tools['search-memory'].execute({ query: '玩家早期对湘军做过什么' })
+    expect(r.events).toEqual([{ content: '玩家暗中资助湘军', turn: 5, similarity: 0.8 }])
+    // 检索走 saveId 全局作用域，阈值 0.45（D9）
+    expect(searchEventMemoriesMock).toHaveBeenCalledWith('s1', '玩家早期对湘军做过什么', {
+      threshold: 0.45,
+      topK: 5
+    })
+  })
+
+  it('空 query 返回 INVALID_PARAMS', async () => {
+    const tools = createTools(makeCtx()) as any
+    const r = await tools['search-memory'].execute({ query: '   ' })
+    expect(r.error).toBe('INVALID_PARAMS')
+  })
+
+  it('超长 query（>200）返回 INVALID_PARAMS', async () => {
+    const tools = createTools(makeCtx()) as any
+    const r = await tools['search-memory'].execute({ query: 'a'.repeat(201) })
+    expect(r.error).toBe('INVALID_PARAMS')
+  })
+
+  it('limit 越界钳制到 1-10（0→1，99→10）', async () => {
+    const tools = createTools(makeCtx()) as any
+    searchEventMemoriesMock.mockResolvedValue([])
+    await tools['search-memory'].execute({ query: '往事', limit: 0 })
+    expect(searchEventMemoriesMock).toHaveBeenLastCalledWith('s1', '往事', {
+      threshold: 0.45,
+      topK: 1
+    })
+    await tools['search-memory'].execute({ query: '往事', limit: 99 })
+    expect(searchEventMemoriesMock).toHaveBeenLastCalledWith('s1', '往事', {
+      threshold: 0.45,
+      topK: 10
+    })
+  })
+
+  it('检索抛错返回 MEMORY_UNAVAILABLE 不 throw（D5 降级）', async () => {
+    searchEventMemoriesMock.mockRejectedValueOnce(new Error('pg down'))
+    const tools = createTools(makeCtx()) as any
+    const r = await tools['search-memory'].execute({ query: '往事' })
+    expect(r.error).toBe('MEMORY_UNAVAILABLE')
+  })
+
+  it('空结果返回空数组 + note', async () => {
+    searchEventMemoriesMock.mockResolvedValueOnce([])
+    const tools = createTools(makeCtx()) as any
+    const r = await tools['search-memory'].execute({ query: '从未发生的事' })
+    expect(r.events).toEqual([])
+    expect(r.note).toBe('未检索到相关历史记忆')
+  })
+
+  it('NPC 工具集不注册 search-memory（D7：NPC 无权回溯全量记忆）', () => {
+    const tools = createTools(makeCtx()) as any
+    expect(tools['search-memory']).toBeDefined()
+    const npcTools = createNpcTools(makeCtx()) as any
+    expect(npcTools['search-memory']).toBeUndefined()
   })
 })
