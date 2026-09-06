@@ -7,9 +7,11 @@
  *   - 属性条颜色类（high/mid/low）
  *   - 属性值颜色类
  *   - 属性条宽度（clampPercent）
- *   - 综合实力模块（overallPower 计算 + 90 阈值刻度 + 胜利态）
- *   - InfoHint 渲染（综合实力 + 5 维属性 + 4 资源）
+ *   - InfoHint 渲染（5 维属性 + 4 资源）
  *   - 危机预警图标（属性 < 30 时显示）
+ *
+ * 注意：P0-2 后综合实力模块已迁移至 FocusPanel，本组件不再渲染综合实力，
+ * 对应断言（power-fill / power-value / 阈值刻度 / 胜利态）已随模块移除。
  *
  * 注意：组件 watch 内部用 setInterval/setTimeout 触发数字动画，
  * 初始挂载不触发 watch（非 immediate），因此本测试只验证初始渲染，
@@ -95,13 +97,13 @@ describe('StatusPanel - props 传递与初始渲染', () => {
     expect(wrapper.text()).toContain('25')
   })
 
-  it('渲染分区标题「综合实力」「五维属性」与「资源」', () => {
+  it('渲染分区标题「五维属性」与「资源」', () => {
     const wrapper = mountPanel()
     const titles = wrapper.findAll('.status-panel__section-title')
-    expect(titles).toHaveLength(3)
-    expect(titles[0].text()).toBe('综合实力')
-    expect(titles[1].text()).toBe('五维属性')
-    expect(titles[2].text()).toBe('资源')
+    // P0-2 后综合实力模块已迁移至 FocusPanel，此处仅 2 个分区
+    expect(titles).toHaveLength(2)
+    expect(titles[0].text()).toBe('五维属性')
+    expect(titles[1].text()).toBe('资源')
   })
 })
 
@@ -194,66 +196,11 @@ describe('StatusPanel - 属性条宽度（clampPercent）', () => {
   })
 })
 
-describe('StatusPanel - 综合实力模块', () => {
-  it('渲染综合实力进度条', () => {
-    const wrapper = mountPanel()
-    expect(wrapper.find('.status-panel__power-fill').exists()).toBe(true)
-  })
-
-  it('全 50 时综合实力=50，进度条 50%', () => {
-    const wrapper = mountPanel()
-    const fill = wrapper.find('.status-panel__power-fill')
-    expect(fill.attributes('style')).toContain('width: 50%')
-  })
-
-  it('渲染综合实力当前值', () => {
-    const wrapper = mountPanel()
-    expect(wrapper.find('.status-panel__power-value').text()).toBe('50')
-  })
-
-  it('综合实力 < 90 时不显示胜利态', () => {
-    const wrapper = mountPanel()
-    expect(wrapper.find('.status-panel__power-fill').classes()).not.toContain('status-panel__power-fill--victory')
-    expect(wrapper.find('.status-panel__power-value').classes()).not.toContain('status-panel__power-value--victory')
-  })
-
-  it('综合实力 ≥ 90 时显示胜利态（绿色）', () => {
-    const attrs: Attributes = { military: 90, economy: 90, politics: 90, people: 90, diplomacy: 90 }
-    const wrapper = mountPanel(attrs)
-    const fill = wrapper.find('.status-panel__power-fill')
-    expect(fill.attributes('style')).toContain('width: 90%')
-    expect(fill.classes()).toContain('status-panel__power-fill--victory')
-    expect(wrapper.find('.status-panel__power-value').classes()).toContain('status-panel__power-value--victory')
-  })
-
-  it('渲染 90 阈值刻度竖线', () => {
-    const wrapper = mountPanel()
-    expect(wrapper.find('.status-panel__power-threshold').exists()).toBe(true)
-  })
-
-  it('渲染 90 阈值标签', () => {
-    const wrapper = mountPanel()
-    expect(wrapper.find('.status-panel__power-threshold-label').text()).toBe('90')
-  })
-
-  it('非等权 (100,100,100,100,50) → 综合=90，胜利态', () => {
-    const attrs: Attributes = { military: 100, economy: 100, politics: 100, people: 100, diplomacy: 50 }
-    const wrapper = mountPanel(attrs)
-    expect(wrapper.find('.status-panel__power-fill').classes()).toContain('status-panel__power-fill--victory')
-  })
-})
-
 describe('StatusPanel - InfoHint 渲染', () => {
-  it('综合实力模块渲染 1 个 InfoHint', () => {
-    const wrapper = mountPanel()
-    const powerSection = wrapper.find('.status-panel__section--power')
-    expect(powerSection.findAll('.info-hint-stub')).toHaveLength(1)
-  })
-
   it('5 维属性各渲染 1 个 InfoHint（共 5 个）', () => {
     const wrapper = mountPanel()
-    // 总 InfoHint = 综合 1 + 属性 5 + 资源 4 = 10
-    expect(wrapper.findAll('.info-hint-stub')).toHaveLength(10)
+    // P0-2 后综合实力 InfoHint 已随模块迁至 FocusPanel，总数 = 属性 5 + 资源 4 = 9
+    expect(wrapper.findAll('.info-hint-stub')).toHaveLength(9)
   })
 
   it('4 资源各渲染 1 个 InfoHint', () => {

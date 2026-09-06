@@ -62,9 +62,15 @@
             :key="action"
             class="diplomacy-panel__action"
             :class="{ 'diplomacy-panel__action--disabled': isActionDisabled(fac, action) }"
+            role="button"
+            :aria-label="DIPLOMACY_ACTION_LABELS[action]"
+            :aria-disabled="isActionDisabled(fac, action)"
+            tabindex="0"
             :hover-class="!isActionDisabled(fac, action) ? 'diplomacy-panel__action--hover' : ''"
             :hover-stay-time="100"
             @click="onAction(fac, action)"
+            @keydown.enter.prevent="onAction(fac, action)"
+            @keydown.space.prevent="onAction(fac, action)"
           >
             <text class="diplomacy-panel__action-text">{{ DIPLOMACY_ACTION_LABELS[action] }}</text>
           </view>
@@ -109,10 +115,12 @@ import {
 } from '@/utils/constants'
 import {
   DIPLOMACY_ACTION_LABELS,
+  DIPLOMACY_DISABLED_TEXT,
+  EFFECT_LABELS,
   formatRelationshipLabel,
   getRelationshipLevel
 } from '@/utils/copywriting'
-import type { Faction, PlayerDiplomacyAction } from '@/types/game'
+import type { Faction, PlayerDiplomacyAction, Resources } from '@/types/game'
 
 const store = useGameStore()
 const toast = useToast()
@@ -161,28 +169,58 @@ function relFillClass(v: number): string {
 }
 
 /**
- * 动作是否禁用（UI 预校验，store 内二次校验）
+ * 计算资源缺口文案（形如"银两 100"或"银两 100、兵员 50"）
+ * 供资源不足禁用原因展示具体缺项。
  */
-function isActionDisabled(fac: Faction, action: PlayerDiplomacyAction): boolean {
-  if (!store.currentSave) return true
-  // 回合处理中禁用（防并发）
-  if (store.isProcessingTurn) return true
-  // 本回合已用尽上限
-  if (store.diplomacyUsedThisTurn) return true
-  // 势力已灭不可外交
-  if (fac.status === 'destroyed') return true
-  const rule = DIPLOMACY_RULES[action]
-  // 关系门槛
-  if (fac.relationship < rule.minRelationship) return true
-  // 资源成本
-  if (!canAfford(rule.cost, store.currentSave.state.resources)) return true
-  return false
+function resourceShortage(cost: Partial<Resources>, resources: Resources): string {
+  const missing = (Object.keys(cost) as (keyof Resources)[])
+    .filter((k) => (resources[k] ?? 0) < Math.abs(cost[k] ?? 0))
+    .map((k) => `${EFFECT_LABELS[k]} ${Math.abs(cost[k] ?? 0)}`)
+  return missing.join('、')
 }
 
-/** 点击动作：调用 store，给出反馈 */
+/**
+ * 动作禁用原因（UI 预校验，store 内二次校验）
+ *
+ * 返回 null 表示可用；返回字符串为具体禁用原因（P0-6 禁用原因提示）。
+ * 判定顺序与 store.applyDiplomacyAction 一致：处理中 → 配额用尽 → 势力已灭 → 关系门槛 → 资源不足。
+ */
+function getActionDisabledReason(fac: Faction, action: PlayerDiplomacyAction): string | null {
+  if (!store.currentSave) return null
+  // 回合处理中禁用（防并发）
+  if (store.isProcessingTurn) return DIPLOMACY_DISABLED_TEXT.turnProcessing
+  // 本回合已用尽上限
+  if (store.diplomacyUsedThisTurn) return DIPLOMACY_DISABLED_TEXT.actionQuotaUsed
+  // 势力已灭不可外交
+  if (fac.status === 'destroyed') return DIPLOMACY_DISABLED_TEXT.factionDestroyed(fac.name)
+  const rule = DIPLOMACY_RULES[action]
+  // 关系门槛
+  if (fac.relationship < rule.minRelationship) {
+    return DIPLOMACY_DISABLED_TEXT.relationshipTooLow(
+      fac.name,
+      DIPLOMACY_ACTION_LABELS[action],
+      rule.minRelationship
+    )
+  }
+  // 资源成本
+  if (!canAfford(rule.cost, store.currentSave.state.resources)) {
+    return DIPLOMACY_DISABLED_TEXT.resourceShortage(
+      resourceShortage(rule.cost, store.currentSave.state.resources)
+    )
+  }
+  return null
+}
+
+/** 动作是否禁用（由禁用原因派生，避免判定逻辑两处漂移） */
+function isActionDisabled(fac: Faction, action: PlayerDiplomacyAction): boolean {
+  return getActionDisabledReason(fac, action) !== null
+}
+
+/** 点击动作：给出禁用原因或调用 store 并反馈结果 */
 function onAction(fac: Faction, action: PlayerDiplomacyAction): void {
-  if (isActionDisabled(fac, action)) {
-    toast.error('该外交行动当前不可用（门槛/资源/本回合已用尽）')
+  const reason = getActionDisabledReason(fac, action)
+  if (reason) {
+    toast.error(reason)
     return
   }
   const ok = store.applyDiplomacyAction(fac.id, action)
@@ -194,21 +232,27 @@ function onAction(fac: Faction, action: PlayerDiplomacyAction): void {
 }
 
 /**
- * 写信按钮禁用判定（faction-negotiation 提案 T6）
+ * 写信按钮禁用原因（faction-negotiation 提案 T6）
  * 回合处理中 / 谈判配额已用 / 势力已灭 时禁用（allied 允许写信维持关系，首版口径）
  */
-function isLetterDisabled(fac: Faction): boolean {
-  if (!store.currentSave) return true
-  if (store.isProcessingTurn) return true
-  if (store.negotiationUsedThisTurn) return true
-  if (fac.status === 'destroyed') return true
-  return false
+function getLetterDisabledReason(fac: Faction): string | null {
+  if (!store.currentSave) return null
+  if (store.isProcessingTurn) return DIPLOMACY_DISABLED_TEXT.turnProcessing
+  if (store.negotiationUsedThisTurn) return DIPLOMACY_DISABLED_TEXT.letterQuotaUsed
+  if (fac.status === 'destroyed') return DIPLOMACY_DISABLED_TEXT.letterFactionDestroyed(fac.name)
+  return null
 }
 
-/** 点击写信：交由上层弹出 NegotiationDialog */
+/** 写信按钮是否禁用（由禁用原因派生） */
+function isLetterDisabled(fac: Faction): boolean {
+  return getLetterDisabledReason(fac) !== null
+}
+
+/** 点击写信：给出禁用原因或交由上层弹出 NegotiationDialog */
 function onWriteLetter(fac: Faction): void {
-  if (isLetterDisabled(fac)) {
-    toast.error(store.negotiationUsedThisTurn ? '本回合谈判次数已用尽' : '该势力已灭，无从通信')
+  const reason = getLetterDisabledReason(fac)
+  if (reason) {
+    toast.error(reason)
     return
   }
   emit('negotiate', fac)

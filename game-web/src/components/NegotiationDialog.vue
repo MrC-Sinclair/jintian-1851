@@ -220,6 +220,7 @@ import {
   scaleNegotiationEffect,
   type NegotiationDealDef
 } from '@/utils/constants'
+import { DIPLOMACY_DISABLED_TEXT } from '@/utils/copywriting'
 import type { Faction } from '@/types/game'
 
 const props = defineProps<{
@@ -294,7 +295,7 @@ function formatDelta(v: number): string {
 /** 发送信件（letter 阶段） */
 async function onSend(): Promise<void> {
   if (!canSend.value) {
-    if (store.negotiationUsedThisTurn) toast.error('本回合谈判次数已用尽')
+    if (store.negotiationUsedThisTurn) toast.error(DIPLOMACY_DISABLED_TEXT.letterQuotaUsed)
     return
   }
   stage.value = 'sending'

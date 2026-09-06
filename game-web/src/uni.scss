@@ -1,18 +1,17 @@
 /**
- * 这里是uni-app内置的常用样式变量
+ * uni-app 全局 SCSS 变量
  *
- * uni-app 官方扩展插件及插件市场（https://ext.dcloud.net.cn）上很多三方插件均使用了这些样式变量
- * 如果你是插件开发者，建议你使用scss预处理，并在插件代码中直接使用这些变量（无需 import 这个文件），方便用户通过搭积木的方式开发整体风格一致的App
+ * 两部分：
+ * 1. $uni-* 内置变量：兼容 uni-app 官方插件（插件市场三方插件可能引用），保持默认值
+ * 2. $jt-* 设计令牌：本项目统一设计系统（色板/字号/圆角/阴影/间距/字体栈）
  *
+ * 使用约定（体验整改 P0-1）：
+ * - 所有组件禁止硬编码颜色/字号/圆角/阴影，一律引用 $jt-* 令牌
+ * - 卡片外框用「背景分层 + 阴影」表达层次，细描边仅用于内部分割
+ * - uni.scss 自动注入每个 scss 块，组件内可直接使用，无需 @import
  */
 
-/**
- * 如果你是App开发者（插件使用者），你可以通过修改这些变量来定制自己的插件主题，实现自定义主题功能
- *
- * 如果你的项目同样使用了scss预处理，你也可以直接在你的 scss 代码中使用如下变量，同时无需 import 这个文件
- */
-
-/* 颜色变量 */
+/* ====================== uni-app 内置变量（插件兼容，勿删） ====================== */
 
 /* 行为相关颜色 */
 $uni-color-primary: #007aff;
@@ -21,56 +20,112 @@ $uni-color-warning: #f0ad4e;
 $uni-color-error: #dd524d;
 
 /* 文字基本颜色 */
-$uni-text-color: #333; // 基本色
-$uni-text-color-inverse: #fff; // 反色
-$uni-text-color-grey: #999; // 辅助灰色，如加载更多的提示信息
+$uni-text-color: #333;
+$uni-text-color-inverse: #fff;
+$uni-text-color-grey: #999;
 $uni-text-color-placeholder: #808080;
 $uni-text-color-disable: #c0c0c0;
 
 /* 背景颜色 */
 $uni-bg-color: #fff;
 $uni-bg-color-grey: #f8f8f8;
-$uni-bg-color-hover: #f1f1f1; // 点击状态颜色
-$uni-bg-color-mask: rgba(0, 0, 0, 0.4); // 遮罩颜色
+$uni-bg-color-hover: #f1f1f1;
+$uni-bg-color-mask: rgba(0, 0, 0, 0.4);
 
 /* 边框颜色 */
 $uni-border-color: #c8c7cc;
 
 /* 尺寸变量 */
-
-/* 文字尺寸 */
 $uni-font-size-sm: 12px;
 $uni-font-size-base: 14px;
 $uni-font-size-lg: 16;
-
-/* 图片尺寸 */
 $uni-img-size-sm: 20px;
 $uni-img-size-base: 26px;
 $uni-img-size-lg: 40px;
-
-/* Border Radius */
 $uni-border-radius-sm: 2px;
 $uni-border-radius-base: 3px;
 $uni-border-radius-lg: 6px;
 $uni-border-radius-circle: 50%;
-
-/* 水平间距 */
 $uni-spacing-row-sm: 5px;
 $uni-spacing-row-base: 10px;
 $uni-spacing-row-lg: 15px;
-
-/* 垂直间距 */
 $uni-spacing-col-sm: 4px;
 $uni-spacing-col-base: 8px;
 $uni-spacing-col-lg: 12px;
+$uni-opacity-disabled: 0.3;
 
-/* 透明度 */
-$uni-opacity-disabled: 0.3; // 组件禁用态的透明度
+/* ====================== 设计令牌（$jt-*，项目统一设计系统） ====================== */
 
-/* 文章场景相关 */
-$uni-color-title: #2c405a; // 文章标题颜色
-$uni-font-size-title: 20px;
-$uni-color-subtitle: #555; // 二级标题颜色
-$uni-font-size-subtitle: 18px;
-$uni-color-paragraph: #3f536e; // 文章段落颜色
-$uni-font-size-paragraph: 15px;
+/* 色板：主色（赭红，1851 历史基调） */
+$jt-primary: #8b1a1a; // 主色：标题栏、主按钮、进度条
+$jt-primary-dark: #6b1313; // 主色深：按压/悬停
+$jt-primary-soft: rgba(139, 26, 26, 0.04); // 主色极浅底（建议行等）
+$jt-primary-light: rgba(139, 26, 26, 0.12); // 主色浅底（hover 块）
+$jt-primary-tint: #a84545; // 主色提亮（小面积强调）
+
+/* 色板：背景（宣纸米黄渐变，页面底色） */
+$jt-bg-page-top: #fdf6e3; // 页面渐变起点
+$jt-bg-page-bottom: #f5e6c8; // 页面渐变终点
+$jt-bg-surface: #fffdf6; // 卡片表面（比页面略亮，配合阴影分层）
+$jt-bg-surface-2: #fbf3df; // 次级表面（势力卡等嵌套块）
+$jt-bg-subtle: #f5e6c8; // 弱化底（缩略 chip、资源格）
+$jt-bg-track: #e8d9b8; // 进度条轨道
+$jt-bg-disabled: #e8e0d0; // 禁用态底
+$jt-bg-selected: #fff8e7; // 选项选中底
+$jt-bg-pending: #fff8e1; // 待续提示底
+$jt-bg-letter: #f6ecd4; // 写信按钮底
+
+/* 色板：边框（浅描边仅用于内部分割，卡片外框用阴影分层） */
+$jt-border: #d4c5a0;
+$jt-border-light: rgba(212, 197, 160, 0.5);
+$jt-border-disabled: #c9bda3;
+
+/* 色板：文字（墨色系） */
+$jt-ink: #2c1810; // 主文字
+$jt-ink-secondary: #5d4037; // 次级文字
+$jt-ink-muted: #8d6e63; // 弱化文字
+$jt-ink-faint: #8a7a66; // 极弱文字（提示小字）
+$jt-ink-disabled: #9e8e76; // 禁用文字
+$jt-ink-inverse: #ffffff; // 反色（深底上的文字）
+
+/* 色板：语义色 */
+$jt-success: #2e7d32; // 上升/胜利/盟友
+$jt-warning: #f9a825; // 警告/中性警示
+$jt-danger: #c62828; // 下降/危机/敌对
+$jt-info: #1565c0; // 信息/链接
+$jt-neutral: #9e9e9e; // 中性（关系条中立段）
+$jt-dead: #616161; // 已灭势力灰
+
+/* 字号（rpx，跟随视口缩放） */
+$jt-font-xs: 20rpx; // 阈值刻度/角标
+$jt-font-sm: 22rpx; // 提示小字/说明
+$jt-font-base: 24rpx; // 常规小字（资源值、次级说明）
+$jt-font-md: 26rpx; // 正文/列表项
+$jt-font-lg: 28rpx; // 强调正文/按钮
+$jt-font-xl: 30rpx; // 分区标题/按钮主字
+$jt-font-title: 36rpx; // 事件标题
+
+/* 圆角 */
+$jt-radius-sm: 6rpx; // 小标签/内嵌块
+$jt-radius-base: 8rpx; // 按钮/输入框/角标
+$jt-radius-lg: 12rpx; // 卡片
+$jt-radius-xl: 16rpx; // 大卡片/汇总卡
+
+/* 阴影（卡片层次用「背景分层 + 阴影」，替代细描边） */
+$jt-shadow-card: 0 2rpx 12rpx rgba(44, 24, 16, 0.06); // 常规卡片
+$jt-shadow-card-hover: 0 4rpx 16rpx rgba(44, 24, 16, 0.1); // 卡片悬停/选中
+$jt-shadow-header: 0 4rpx 12rpx rgba(139, 26, 26, 0.15); // 深色头部
+$jt-shadow-drawer: 0 -8rpx 24rpx rgba(0, 0, 0, 0.18); // 底部抽屉
+
+/* 间距（rpx） */
+$jt-space-xs: 4rpx;
+$jt-space-sm: 8rpx;
+$jt-space-base: 12rpx;
+$jt-space-md: 16rpx;
+$jt-space-lg: 24rpx;
+$jt-space-xl: 32rpx;
+
+/* 字体栈（P0-3：标题衬线 + 正文黑体，营造 1851 史册感） */
+$jt-font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+  'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+$jt-font-serif: 'Songti SC', 'STSong', 'SimSun', 'Noto Serif CJK SC', serif;

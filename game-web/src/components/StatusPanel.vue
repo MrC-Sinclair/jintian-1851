@@ -1,29 +1,5 @@
 <template>
   <view class="status-panel">
-    <!-- 综合实力模块（置顶，含 90 阈值刻度） -->
-    <view class="status-panel__section status-panel__section--power">
-      <view class="status-panel__power-head">
-        <text class="status-panel__section-title">综合实力</text>
-        <InfoHint title="综合实力" :content="TERM_EXPLANATIONS.overallPower" />
-      </view>
-      <view class="status-panel__power-bar">
-        <view class="status-panel__power-track">
-          <view
-            class="status-panel__power-fill"
-            :class="{ 'status-panel__power-fill--victory': isVictory }"
-            :style="{ width: `${overallPower}%` }"
-          />
-          <!-- 90 阈值刻度竖线 -->
-          <view class="status-panel__power-threshold" />
-          <text class="status-panel__power-threshold-label">90</text>
-        </view>
-        <text
-          class="status-panel__power-value"
-          :class="{ 'status-panel__power-value--victory': isVictory }"
-        >{{ overallPower }}</text>
-      </view>
-    </view>
-
     <view class="status-panel__section">
       <text class="status-panel__section-title">五维属性</text>
       <view
@@ -87,22 +63,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { reactive, watch } from 'vue'
 import type { Attributes, Resources } from '@/types/game'
 import InfoHint from '@/components/InfoHint.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { TERM_EXPLANATIONS } from '@/utils/copywriting'
-import { calcOverallPower, VICTORY_THRESHOLD } from '@/utils/goal-hint'
 
 const props = defineProps<{
   attributes: Attributes
   resources: Resources
 }>()
-
-/** 综合实力（0-100，五维属性加权平均，政治/民心权重更高） */
-const overallPower = computed(() => calcOverallPower(props.attributes))
-/** 是否已达胜利阈值（≥90） */
-const isVictory = computed(() => overallPower.value >= VICTORY_THRESHOLD)
 
 /** 动画时长（ms），与 AGENTS.md 微交互 200-300ms 规范一致 */
 const ANIM_DURATION = 300
@@ -267,13 +237,14 @@ function flashClass(key: string): string {
 
 <style lang="scss" scoped>
 .status-panel {
-  padding: 16rpx 24rpx;
-  background-color: #fdf6e3;
-  border: 2rpx solid #d4c5a0;
-  border-radius: 12rpx;
+  // P0-3：卡片层次用「背景分层 + 阴影」替代细描边
+  padding: $jt-space-md $jt-space-lg;
+  background-color: $jt-bg-surface;
+  border-radius: $jt-radius-xl;
+  box-shadow: $jt-shadow-card;
 
   &__section {
-    margin-bottom: 24rpx;
+    margin-bottom: $jt-space-lg;
 
     &:last-child {
       margin-bottom: 0;
@@ -282,85 +253,10 @@ function flashClass(key: string): string {
 
   &__section-title {
     display: block;
-    margin-bottom: 12rpx;
-    font-size: 28rpx;
+    margin-bottom: $jt-space-base;
+    font-size: $jt-font-lg;
     font-weight: 600;
-    color: #5d4037;
-  }
-
-  // 综合实力模块
-  &__section--power {
-    margin-bottom: 24rpx;
-    padding-bottom: 20rpx;
-    border-bottom: 2rpx solid rgba(212, 197, 160, 0.5);
-  }
-
-  &__power-head {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    margin-bottom: 12rpx;
-  }
-
-  &__power-bar {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-  }
-
-  &__power-track {
-    position: relative;
-    flex: 1;
-    height: 16rpx;
-    margin-right: 16rpx;
-    overflow: visible;
-    background-color: #e8d9b8;
-    border-radius: 8rpx;
-  }
-
-  &__power-fill {
-    height: 100%;
-    background-color: #8b1a1a;
-    border-radius: 8rpx;
-    transition: width 300ms ease, background-color 300ms ease;
-
-    &--victory {
-      background-color: #2e7d32;
-    }
-  }
-
-  // 90 阈值刻度竖线（位于 90% 位置）
-  &__power-threshold {
-    position: absolute;
-    top: -4rpx;
-    bottom: -4rpx;
-    left: 90%;
-    width: 2rpx;
-    background-color: #8b1a1a;
-    opacity: 0.6;
-  }
-
-  &__power-threshold-label {
-    position: absolute;
-    top: -28rpx;
-    left: 90%;
-    transform: translateX(-50%);
-    font-size: 20rpx;
-    color: #8b1a1a;
-    opacity: 0.8;
-  }
-
-  &__power-value {
-    width: 60rpx;
-    font-size: 28rpx;
-    font-weight: 600;
-    text-align: right;
-    color: #8b1a1a;
-    transition: color 300ms ease;
-
-    &--victory {
-      color: #2e7d32;
-    }
+    color: $jt-ink-secondary;
   }
 
   // 属性标签行（含图标 + 危机图标 + InfoHint）
@@ -375,13 +271,13 @@ function flashClass(key: string): string {
   &__attr-icon {
     width: 36rpx;
     height: 36rpx;
-    margin-right: 8rpx;
+    margin-right: $jt-space-sm;
     flex-shrink: 0;
   }
 
   &__warning-icon {
     flex-shrink: 0;
-    margin-right: 4rpx;
+    margin-right: $jt-space-xs;
   }
 
   &__resource-label-wrap {
@@ -393,21 +289,21 @@ function flashClass(key: string): string {
   &__row {
     display: flex;
     align-items: center;
-    margin-bottom: 8rpx;
+    margin-bottom: $jt-space-sm;
   }
 
   &__label {
-    font-size: 26rpx;
-    color: #2c1810;
+    font-size: $jt-font-md;
+    color: $jt-ink;
   }
 
   &__bar-track {
     flex: 1;
     height: 12rpx;
-    margin: 0 16rpx;
+    margin: 0 $jt-space-md;
     overflow: hidden;
-    background-color: #e8d9b8;
-    border-radius: 6rpx;
+    background-color: $jt-bg-track;
+    border-radius: $jt-radius-sm;
   }
 
   &__bar-fill {
@@ -415,58 +311,58 @@ function flashClass(key: string): string {
     transition: width 300ms ease, background-color 300ms ease, box-shadow 300ms ease;
 
     &--high {
-      background-color: #2e7d32;
+      background-color: $jt-success;
     }
 
     &--mid {
-      background-color: #f9a825;
+      background-color: $jt-warning;
     }
 
     &--low {
-      background-color: #c62828;
+      background-color: $jt-danger;
     }
   }
 
   &__value {
     width: 60rpx;
-    font-size: 26rpx;
+    font-size: $jt-font-md;
     text-align: right;
-    color: #2c1810;
+    color: $jt-ink;
     transition: color 300ms ease, text-shadow 300ms ease;
 
     &--high {
-      color: #2e7d32;
+      color: $jt-success;
     }
 
     &--low {
-      color: #c62828;
+      color: $jt-danger;
     }
   }
 
   &__resources {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 12rpx;
+    gap: $jt-space-base;
   }
 
   &__resource {
     display: flex;
     justify-content: space-between;
-    padding: 8rpx 12rpx;
-    background-color: #f5e6c8;
-    border-radius: 6rpx;
+    padding: $jt-space-sm $jt-space-base;
+    background-color: $jt-bg-subtle;
+    border-radius: $jt-radius-sm;
     transition: background-color 300ms ease;
   }
 
   &__resource-label {
-    font-size: 24rpx;
-    color: #5d4037;
+    font-size: $jt-font-base;
+    color: $jt-ink-secondary;
   }
 
   &__resource-value {
-    font-size: 24rpx;
+    font-size: $jt-font-base;
     font-weight: 600;
-    color: #2c1810;
+    color: $jt-ink;
     transition: text-shadow 300ms ease;
   }
 

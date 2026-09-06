@@ -69,18 +69,20 @@ defineEmits<{
 
 <style lang="scss" scoped>
 .event-card {
-  padding: 24rpx;
-  background-color: #fdf6e3;
-  border: 2rpx solid #d4c5a0;
-  border-radius: 12rpx;
+  // P0-3：卡片层次用「背景分层 + 阴影」替代细描边；正文黑体、标题衬线
+  padding: $jt-space-lg;
+  background-color: $jt-bg-surface;
+  border-radius: $jt-radius-xl;
+  box-shadow: $jt-shadow-card;
+  font-family: $jt-font-sans;
 
   &__header {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 12rpx;
-    margin-bottom: 16rpx;
+    gap: $jt-space-base;
+    margin-bottom: $jt-space-md;
   }
 
   &__header-main {
@@ -88,72 +90,73 @@ defineEmits<{
     flex-direction: row;
     align-items: center;
     flex-wrap: wrap;
-    gap: 12rpx;
+    gap: $jt-space-base;
   }
 
   &__type {
     display: inline-block;
-    padding: 4rpx 12rpx;
-    margin-bottom: 8rpx;
-    font-size: 22rpx;
-    color: #fff;
-    background-color: #8b1a1a;
-    border-radius: 6rpx;
+    padding: $jt-space-xs $jt-space-base;
+    margin-bottom: $jt-space-sm;
+    font-size: $jt-font-sm;
+    color: $jt-ink-inverse;
+    background-color: $jt-primary;
+    border-radius: $jt-radius-sm;
   }
 
   // T4.1：剧情链名（顶部左侧，区别于普通事件标题黑色）
   &__chain-title {
-    font-size: 28rpx;
+    font-size: $jt-font-lg;
     font-weight: 600;
-    color: #5c4030;
+    color: $jt-ink-secondary;
   }
 
   // T4.1：剧情进度角标（右上角，背景与主色一致）
   &__chain-badge {
     flex-shrink: 0;
-    padding: 8rpx 16rpx;
-    font-size: 24rpx;
+    padding: $jt-space-sm $jt-space-md;
+    font-size: $jt-font-base;
     font-weight: 600;
-    color: #fff;
-    background-color: #8b1a1a;
-    border-radius: 8rpx;
+    color: $jt-ink-inverse;
+    background-color: $jt-primary;
+    border-radius: $jt-radius-base;
   }
 
   &__title {
     display: block;
-    font-size: 36rpx;
+    font-family: $jt-font-serif;
+    font-size: $jt-font-title;
     font-weight: 600;
-    color: #2c1810;
+    color: $jt-ink;
   }
 
   &__description {
     display: block;
-    margin-bottom: 16rpx;
-    font-size: 28rpx;
+    margin-bottom: $jt-space-md;
+    font-size: $jt-font-lg;
     line-height: 1.6;
-    color: #5d4037;
+    color: $jt-ink-secondary;
   }
 
   // 剧情链推进提示（描述下方弱化小字，仅剧情事件显示）
   &__chain-hint {
     display: block;
-    margin-bottom: 24rpx;
-    font-size: 22rpx;
+    margin-bottom: $jt-space-lg;
+    font-size: $jt-font-sm;
     line-height: 1.5;
-    color: #8a7a66;
+    color: $jt-ink-faint;
   }
 
   &__options {
-    padding-top: 16rpx;
-    border-top: 2rpx solid #d4c5a0;
+    padding-top: $jt-space-md;
+    border-top: 2rpx solid $jt-border;
   }
 
   &__options-title {
     display: block;
-    margin-bottom: 12rpx;
-    font-size: 26rpx;
+    margin-bottom: $jt-space-base;
+    font-size: $jt-font-md;
     font-weight: 600;
-    color: #5d4037;
+    color: $jt-ink-secondary;
   }
 }
 </style>

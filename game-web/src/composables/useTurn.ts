@@ -228,37 +228,39 @@ export function useTurn(options: UseTurnOptions = {}) {
       return null
     }
 
+    // P0-5：防重复提交守卫——决策路径（选项/自由行动）整体串行化。
+    // 快速双击「确认决策」时第二次调用直接返回 null，防止 effects 被重复应用。
+    if (store.isProcessingTurn) return null
+    store.setProcessingTurn(true)
+
     const s = store.currentSave
     const evt = store.currentEvent
 
-    // 选项决策：本地直接应用 effects（不调 API）
-    if (optionId) {
-      const option = evt.options.find((o) => o.id === optionId)
-      if (!option) {
-        options.onError?.('makeDecision', `选项 ${optionId} 不存在`)
-        return null
+    try {
+      // 选项决策：本地直接应用 effects（不调 API）
+      if (optionId) {
+        const option = evt.options.find((o) => o.id === optionId)
+        if (!option) {
+          options.onError?.('makeDecision', `选项 ${optionId} 不存在`)
+          return null
+        }
+        store.applyEffects(option.effects)
+        // T3.2：应用选项后处理剧情链入队（非剧情链事件自动无操作）
+        applyEventOption(evt, option)
+        // 决策生效后立即落盘：若等到 endTurn 才保存，期间手动同步会产出
+        // 「效果已应用、事件未解决」的云端存档（换设备重新生成事件可重复获益）
+        try {
+          await save()
+        } catch (err) {
+          // 落盘失败不回滚内存状态（决策已生效），仅提示
+          console.error('[useTurn] 决策后保存失败:', err)
+          options.onError?.('makeDecision', '本地保存失败，请检查存储空间')
+        }
+        return option.effects
       }
-      store.applyEffects(option.effects)
-      // T3.2：应用选项后处理剧情链入队（非剧情链事件自动无操作）
-      applyEventOption(evt, option)
-      // 决策生效后立即落盘：若等到 endTurn 才保存，期间手动同步会产出
-      // 「效果已应用、事件未解决」的云端存档（换设备重新生成事件可重复获益）
-      try {
-        await save()
-      } catch (err) {
-        // 落盘失败不回滚内存状态（决策已生效），仅提示
-        console.error('[useTurn] 决策后保存失败:', err)
-        options.onError?.('makeDecision', '本地保存失败，请检查存储空间')
-      }
-      return option.effects
-    }
 
-    // 自由输入：调用 resolve-decision 让 LLM 解析 effects
-    if (freeInput && freeInput.trim()) {
-      if (store.isProcessingTurn) return null
-      store.setProcessingTurn(true)
-
-      try {
+      // 自由输入：调用 resolve-decision 让 LLM 解析 effects
+      if (freeInput && freeInput.trim()) {
         const res = await post<ResolveDecisionResponse>('/api/game/resolve-decision', {
           saveId: s.saveId,
           turn: s.state.turn,
@@ -284,16 +286,17 @@ export function useTurn(options: UseTurnOptions = {}) {
           options.onError?.('makeDecision', '本地保存失败，请检查存储空间')
         }
         return res.effects
-      } catch (err) {
-        const msg = err instanceof ApiError ? err.message : '决策解析失败'
-        options.onError?.('makeDecision', msg)
-        return null
-      } finally {
-        store.setProcessingTurn(false)
       }
-    }
 
-    return null
+      return null
+    } catch (err) {
+      // 自由输入解析失败（LLM/网络）→ 返回 null，UI 层据此反馈"决策未生效"
+      const msg = err instanceof ApiError ? err.message : '决策解析失败'
+      options.onError?.('makeDecision', msg)
+      return null
+    } finally {
+      store.setProcessingTurn(false)
+    }
   }
 
   // ====================== 谈判（faction-negotiation 提案） ======================

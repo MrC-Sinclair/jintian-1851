@@ -88,9 +88,10 @@ function toggle(): void {
 
 <style lang="scss" scoped>
 .collapsible-section {
-  background-color: #fdf6e3;
-  border: 2rpx solid #d4c5a0;
-  border-radius: 12rpx;
+  // P0-3：卡片层次用「背景分层 + 阴影」替代细描边
+  background-color: $jt-bg-surface;
+  border-radius: $jt-radius-xl;
+  box-shadow: $jt-shadow-card;
   overflow: hidden;
 
   // ====================== 标题栏 ======================
@@ -100,11 +101,11 @@ function toggle(): void {
     align-items: center;
     // 触摸目标 min-h: 88rpx
     min-height: 88rpx;
-    padding: 16rpx 24rpx;
+    padding: $jt-space-md $jt-space-lg;
     transition: background-color 150ms ease;
 
     &:active {
-      background-color: rgba(212, 197, 160, 0.3);
+      background-color: $jt-primary-light;
     }
 
     &--hover {
@@ -117,8 +118,8 @@ function toggle(): void {
     flex-shrink: 0;
     width: 40rpx;
     height: 40rpx;
-    margin-right: 12rpx;
-    color: #5d4037;
+    margin-right: $jt-space-base;
+    color: $jt-ink-secondary;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -129,10 +130,10 @@ function toggle(): void {
     flex-shrink: 0;
     width: 0;
     height: 0;
-    margin-right: 16rpx;
+    margin-right: $jt-space-md;
     border-right: 10rpx solid transparent;
     border-left: 10rpx solid transparent;
-    border-top: 14rpx solid #5d4037;
+    border-top: 14rpx solid $jt-ink-secondary;
     // 折叠态朝下（0deg），展开态旋转 180deg 朝上
     transition: transform 200ms ease;
 
@@ -143,9 +144,9 @@ function toggle(): void {
 
   &__title {
     flex-shrink: 0;
-    font-size: 30rpx;
+    font-size: $jt-font-xl;
     font-weight: 600;
-    color: #5d4037;
+    color: $jt-ink-secondary;
   }
 
   // 标题旁附加内容（slot #title-extra）
@@ -155,7 +156,7 @@ function toggle(): void {
     flex-direction: row;
     align-items: center;
     justify-content: flex-end;
-    margin-left: 16rpx;
+    margin-left: $jt-space-md;
   }
 
   // ====================== 展开内容（max-height transition 折叠动画） ======================
@@ -172,8 +173,8 @@ function toggle(): void {
   }
 
   &__expand-inner {
-    padding: 16rpx 24rpx;
-    border-top: 2rpx dashed rgba(212, 197, 160, 0.5);
+    padding: $jt-space-md $jt-space-lg;
+    border-top: 2rpx dashed $jt-border-light;
   }
 }
 </style>

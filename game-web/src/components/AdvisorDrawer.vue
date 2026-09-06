@@ -316,14 +316,35 @@ watch(
       input.value = ''
       maybeInsertBriefing()
       void scrollToBottom()
+      // H5 键盘无障碍：打开时挂 Esc 关闭监听（小程序端无全局键盘事件，条件编译剔除）
+      // #ifdef H5
+      document.addEventListener('keydown', onKeydown)
+      // #endif
     } else {
       unlock()
+      // #ifdef H5
+      document.removeEventListener('keydown', onKeydown)
+      // #endif
     }
   }
 )
 
+// H5 键盘无障碍：Esc 关闭抽屉（须在 watch 前声明，避免函数提升顺序歧义）
+// #ifdef H5
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    onClose()
+  }
+}
+// #endif
+
 // 组件卸载时确保解锁（防止异常卸载导致滚动永久锁定）
-onUnmounted(unlock)
+onUnmounted(() => {
+  unlock()
+  // #ifdef H5
+  document.removeEventListener('keydown', onKeydown)
+  // #endif
+})
 </script>
 
 <style lang="scss" scoped>

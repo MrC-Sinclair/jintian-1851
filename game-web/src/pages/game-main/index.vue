@@ -2,24 +2,60 @@
   <view class="game-main">
     <!-- 顶部状态栏 -->
     <view class="game-main__header">
+      <!-- 返回（自定义导航无原生返回键，需自绘） -->
+      <TooltipView :content="TOOLTIP_TEXT.back" placement="bottom">
+        <view
+          class="game-main__back"
+          role="button"
+          aria-label="返回"
+          tabindex="0"
+          :hover-class="'game-main__back--hover'"
+          :hover-stay-time="100"
+          @click="onBack"
+          @keydown.enter.prevent="onBack"
+          @keydown.space.prevent="onBack"
+        >
+          <AppIcon name="arrow-back" :size="22" color="#fff" />
+        </view>
+      </TooltipView>
+
       <view class="game-main__header-info">
         <text class="game-main__turn">第 {{ currentTurn }} 回合</text>
         <text class="game-main__date">{{ gameDate }}</text>
       </view>
-      <TooltipView :content="TOOLTIP_TEXT.sync" placement="bottom">
-        <view
-          class="game-main__sync-btn"
-          :class="{ 'game-main__sync-btn--disabled': isSyncing || isProcessingTurn }"
-          :hover-class="!isSyncing && !isProcessingTurn ? 'game-main__sync-btn--hover' : ''"
-          :hover-stay-time="100"
-          @click="onSync"
-        >
-          <view v-if="isSyncing" class="game-main__sync-spinner">
-            <view class="game-main__sync-dot" />
+
+      <view class="game-main__header-actions">
+        <!-- P0-6 帮助入口：跳转「如何游戏」页 -->
+        <TooltipView :content="TOOLTIP_TEXT.help" placement="bottom">
+          <view
+            class="game-main__help-btn"
+            role="button"
+            aria-label="如何游戏"
+            tabindex="0"
+            :hover-class="'game-main__help-btn--hover'"
+            :hover-stay-time="100"
+            @click="onOpenHelp"
+            @keydown.enter.prevent="onOpenHelp"
+            @keydown.space.prevent="onOpenHelp"
+          >
+            <text class="game-main__help-text">?</text>
           </view>
-          <text v-else class="game-main__sync-text">同步</text>
-        </view>
-      </TooltipView>
+        </TooltipView>
+        <TooltipView :content="TOOLTIP_TEXT.sync" placement="bottom">
+          <view
+            class="game-main__sync-btn"
+            :class="{ 'game-main__sync-btn--disabled': isSyncing || isProcessingTurn }"
+            :hover-class="!isSyncing && !isProcessingTurn ? 'game-main__sync-btn--hover' : ''"
+            :hover-stay-time="100"
+            @click="onSync"
+          >
+            <view v-if="isSyncing" class="game-main__sync-spinner">
+              <view class="game-main__sync-dot" />
+            </view>
+            <text v-else class="game-main__sync-text">同步</text>
+          </view>
+        </TooltipView>
+      </view>
     </view>
 
     <!-- T1.15: FocusPanel 顶部固定（在状态栏下、滚动区上，始终可见）
@@ -104,22 +140,36 @@
         </view>
       </view>
 
-      <!-- 阶段提示（无事件时显示当前阶段建议） -->
+      <!-- 阶段提示（无事件时显示当前阶段建议；推演失败时展示重试按钮 P0-4） -->
       <view v-if="!currentEvent && !isProcessingTurn" class="game-main__section game-main__hint">
-        <text class="game-main__hint-text">{{ phaseHint }}</text>
+        <text class="game-main__hint-text">{{ eventFailed ? ERROR_TEXT.eventRetryFailed : phaseHint }}</text>
+        <view
+          v-if="eventFailed"
+          class="game-main__retry-btn"
+          role="button"
+          :aria-label="BUTTON_TEXT.retryEvent"
+          tabindex="0"
+          :hover-class="'game-main__retry-btn--hover'"
+          :hover-stay-time="100"
+          @click="onRetryEvent"
+          @keydown.enter.prevent="onRetryEvent"
+          @keydown.space.prevent="onRetryEvent"
+        >
+          <text class="game-main__retry-text">{{ BUTTON_TEXT.retryEvent }}</text>
+        </view>
       </view>
 
       <!-- 阶段 spinner（推演中显示进度） -->
       <view v-if="isProcessingTurn" class="game-main__section game-main__loading">
         <view class="game-main__loading-dot" />
-        <text class="game-main__loading-text">{{ processingStage }}</text>
+        <text class="game-main__loading-text">{{ processingStage || PAGE_TEXT.gameMain.processingFallback }}</text>
       </view>
 
-      <!-- T2.2: 状态区（CollapsibleSection 包裹，默认展开，玩家可查看属性资源） -->
+      <!-- T2.2: 状态区（CollapsibleSection 包裹，默认折叠，玩家可查看属性资源） -->
       <view v-if="save" class="game-main__section game-main__section--status">
         <CollapsibleSection
           :title="PAGE_TEXT.sections.status"
-          :default-expanded="true"
+          :default-expanded="false"
         >
           <StatusPanel
             :attributes="save.state.attributes"
@@ -152,9 +202,9 @@
       </view>
 
       <!-- T1.15: GoalPanel 滚动区底部（可折叠，默认折叠）
-           长期目标 + 胜利/失败条件 + 综合实力进度条（90 阈值刻度） -->
+           长期目标 + 胜利/失败条件（综合实力进度条已在 FocusPanel 顶部单处展示） -->
       <view v-if="save" class="game-main__section game-main__goal-panel">
-        <GoalPanel :attributes="save.state.attributes" :default-expanded="false" />
+        <GoalPanel :default-expanded="false" />
       </view>
 
       <!-- 底部留白（避免被固定底栏遮挡） -->
@@ -322,6 +372,7 @@ import FocusPanel from '@/components/FocusPanel.vue'
 import GoalPanel from '@/components/GoalPanel.vue'
 import CollapsibleSection from '@/components/CollapsibleSection.vue'
 import TooltipView from '@/components/TooltipView.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import DiplomacyPanel from '@/components/DiplomacyPanel.vue'
 import NegotiationDialog from '@/components/NegotiationDialog.vue'
 import OnboardingOverlay, {
@@ -339,6 +390,12 @@ const { isOnboarding, checkAndStart, markDone, skip } = useOnboarding()
 
 /** 处理阶段文案（用于 spinner 提示） */
 const processingStage = ref('')
+
+/**
+ * P0-4：事件推演失败标志（无事件且为 true 时，阶段提示区展示「重新推演」按钮）
+ * 事件成功加载或新回合开始时复位为 false。
+ */
+const eventFailed = ref(false)
 
 /**
  * T1.15 AI 军师简报（由 useTurn.startTurn 内调 /api/game/advisor-briefing 获取）
@@ -596,10 +653,19 @@ async function refreshAndStartTurn(): Promise<void> {
     const event = await startTurn()
     processingStage.value = ''
     if (!event) {
-      // T3.4：文案白话化（ERROR_TEXT.eventFailed）
+      // P0-4：推演失败 → 置失败标志（阶段提示区展示重试按钮）+ toast 提示
+      eventFailed.value = true
       toast.info(ERROR_TEXT.eventFailed)
+    } else {
+      eventFailed.value = false
     }
   }
+}
+
+/** P0-4：推演失败后点击「重新推演」重试 */
+async function onRetryEvent(): Promise<void> {
+  if (isProcessingTurn.value) return
+  await refreshAndStartTurn()
 }
 
 // ====================== 决策处理 ======================
@@ -694,8 +760,11 @@ async function onNextTurn(): Promise<void> {
   const event = await startTurn()
   processingStage.value = ''
   if (!event) {
-    // T3.4：文案白话化（ERROR_TEXT.eventRetryFailed）
+    // P0-4：新回合推演失败 → 置失败标志（展示重试按钮）+ toast 提示
+    eventFailed.value = true
     toast.info(ERROR_TEXT.eventRetryFailed)
+  } else {
+    eventFailed.value = false
   }
 }
 
@@ -715,6 +784,21 @@ async function onSync(): Promise<void> {
       toast.error(result.message)
       break
   }
+}
+
+// ====================== 导航（自定义导航栏 P0-2） ======================
+/** 返回上一页；无页面栈时回首页（存档自动持久化，不会丢进度） */
+function onBack(): void {
+  uni.navigateBack({
+    fail: () => {
+      uni.redirectTo({ url: '/pages/index/index' })
+    }
+  })
+}
+
+/** P0-6 帮助入口：跳转「如何游戏」页 */
+function onOpenHelp(): void {
+  uni.navigateTo({ url: '/pages/help/index' })
 }
 
 // ====================== 军师抽屉 ======================
@@ -760,34 +844,89 @@ function onCloseNegotiation(): void {
   min-height: 100vh;
   // 横向溢出兜底：防止子元素固定最小宽度（如下方按钮 min-width）在窄屏撑破视口
   overflow-x: hidden;
-  background: linear-gradient(180deg, #fdf6e3 0%, #f5e6c8 100%);
+  background: linear-gradient(180deg, $jt-bg-page-top 0%, $jt-bg-page-bottom 100%);
 
-  // ====================== 顶部状态栏 ======================
+  // ====================== 顶部导航栏（P0-2 自定义导航） ======================
   &__header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 24rpx 32rpx;
-    background-color: #8b1a1a;
-    box-shadow: 0 4rpx 12rpx rgba(139, 26, 26, 0.15);
+    gap: $jt-space-base;
+    padding: $jt-space-lg $jt-space-xl;
+    background-color: $jt-primary;
+    box-shadow: $jt-shadow-header;
+  }
+
+  &__back {
+    flex-shrink: 0;
+    // 触摸目标 ≥ 36px（用 rpx 跟随视口缩放，避免窄屏下固定 px 撑破宽度）
+    min-width: 72rpx;
+    min-height: 72rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: $jt-ink-inverse;
+    transition: background-color 150ms ease, transform 150ms ease;
+
+    &:active {
+      transform: scale(0.95);
+    }
+
+    &--hover {
+      background-color: rgba(255, 255, 255, 0.15);
+    }
   }
 
   &__header-info {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 4rpx;
+    align-items: center;
+    gap: $jt-space-xs;
+  }
+
+  &__header-actions {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: $jt-space-base;
   }
 
   &__turn {
-    font-size: 30rpx;
+    font-size: $jt-font-xl;
     font-weight: 600;
-    color: #fff;
+    color: $jt-ink-inverse;
     letter-spacing: 2rpx;
   }
 
   &__date {
-    font-size: 24rpx;
+    font-size: $jt-font-base;
     color: rgba(255, 255, 255, 0.8);
+  }
+
+  // P0-6 帮助入口（"?" 按钮，跳转「如何游戏」页）
+  &__help-btn {
+    min-width: 72rpx;
+    min-height: 72rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.15);
+    border-radius: $jt-radius-base;
+    transition: background-color 150ms ease, transform 150ms ease;
+
+    &:active {
+      transform: scale(0.95);
+    }
+
+    &--hover {
+      background-color: rgba(255, 255, 255, 0.25);
+    }
+  }
+
+  &__help-text {
+    font-size: $jt-font-lg;
+    font-weight: 600;
+    color: $jt-ink-inverse;
   }
 
   &__sync-btn {
@@ -797,9 +936,9 @@ function onCloseNegotiation(): void {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 8rpx 20rpx;
+    padding: $jt-space-sm 20rpx;
     background-color: rgba(255, 255, 255, 0.15);
-    border-radius: 8rpx;
+    border-radius: $jt-radius-base;
     transition: background-color 150ms ease, transform 150ms ease;
 
     &:active {
@@ -812,13 +951,13 @@ function onCloseNegotiation(): void {
 
     &--disabled {
       opacity: 0.65;
-      background-color: #e8e0d0;
+      background-color: $jt-bg-disabled;
     }
   }
 
   &__sync-text {
-    font-size: 24rpx;
-    color: #fff;
+    font-size: $jt-font-base;
+    color: $jt-ink-inverse;
   }
 
   &__sync-spinner {
@@ -833,7 +972,7 @@ function onCloseNegotiation(): void {
     width: 24rpx;
     height: 24rpx;
     border: 3rpx solid rgba(255, 255, 255, 0.3);
-    border-top-color: #fff;
+    border-top-color: $jt-ink-inverse;
     border-radius: 50%;
     animation: game-main-spin 0.8s linear infinite;
   }
@@ -842,11 +981,11 @@ function onCloseNegotiation(): void {
   &__body {
     flex: 1;
     min-height: 0;
-    padding: 16rpx 24rpx;
+    padding: $jt-space-md $jt-space-lg;
   }
 
   &__section {
-    margin-bottom: 24rpx;
+    margin-bottom: $jt-space-lg;
   }
 
   &__body-pad {
@@ -856,110 +995,139 @@ function onCloseNegotiation(): void {
   // ====================== T1.15: FocusPanel 顶部固定容器 ======================
   &__focus-panel {
     flex-shrink: 0;
-    padding: 16rpx 24rpx 8rpx;
+    padding: $jt-space-md $jt-space-lg $jt-space-sm;
     background-color: rgba(253, 246, 227, 0.95);
-    border-bottom: 2rpx solid #d4c5a0;
-    box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+    border-bottom: 2rpx solid $jt-border;
+    box-shadow: $jt-shadow-card;
   }
 
   // ====================== T1.15: GoalPanel 底部容器 ======================
   &__goal-panel {
-    margin-top: 16rpx;
+    margin-top: $jt-space-md;
   }
 
   // ====================== 自由行动输入 ======================
   &__free-input {
-    padding: 24rpx;
-    background-color: #fdf6e3;
-    border: 2rpx solid #d4c5a0;
-    border-radius: 12rpx;
+    padding: $jt-space-lg;
+    background-color: $jt-bg-surface;
+    border: 2rpx solid $jt-border;
+    border-radius: $jt-radius-lg;
   }
 
   &__free-input-title {
     display: block;
-    margin-bottom: 16rpx;
-    font-size: 28rpx;
+    margin-bottom: $jt-space-md;
+    font-size: $jt-font-lg;
     font-weight: 600;
-    color: #5d4037;
+    color: $jt-ink-secondary;
   }
 
   &__free-input-area {
     width: 100%;
     min-height: 120rpx;
     max-height: 400rpx;
-    padding: 16rpx;
-    font-size: 28rpx;
+    padding: $jt-space-md;
+    font-size: $jt-font-lg;
     line-height: 1.5;
-    color: #2c1810;
+    color: $jt-ink;
     background-color: #fff;
-    border: 2rpx solid #d4c5a0;
-    border-radius: 8rpx;
+    border: 2rpx solid $jt-border;
+    border-radius: $jt-radius-base;
   }
 
   &__free-input-actions {
     display: flex;
-    gap: 16rpx;
-    margin-top: 16rpx;
+    gap: $jt-space-md;
+    margin-top: $jt-space-md;
   }
 
   // ====================== 决策应用势力反馈（T4） ======================
   &__faction-feedback {
-    background: rgba(139, 26, 26, 0.04);
-    border: 1rpx solid rgba(139, 26, 26, 0.12);
-    border-radius: 16rpx;
-    padding: 24rpx;
+    background: $jt-primary-soft;
+    border: 1rpx solid $jt-primary-light;
+    border-radius: $jt-radius-xl;
+    padding: $jt-space-lg;
   }
 
   &__faction-feedback-title {
     display: block;
-    font-size: 26rpx;
+    font-size: $jt-font-md;
     font-weight: 600;
-    color: #5d4037;
-    margin-bottom: 12rpx;
+    color: $jt-ink-secondary;
+    margin-bottom: $jt-space-base;
   }
 
   &__faction-feedback-item {
     display: flex;
     align-items: center;
-    gap: 16rpx;
-    margin-top: 8rpx;
+    gap: $jt-space-md;
+    margin-top: $jt-space-sm;
   }
 
   &__faction-feedback-name {
-    font-size: 26rpx;
-    color: #4e342e;
+    font-size: $jt-font-md;
+    color: $jt-ink;
     font-weight: 500;
   }
 
   &__faction-feedback-delta {
-    font-size: 24rpx;
+    font-size: $jt-font-base;
     font-weight: 600;
   }
 
   &__faction-feedback--up {
-    color: #2e7d32;
+    color: $jt-success;
   }
 
   &__faction-feedback--down {
-    color: #c62828;
+    color: $jt-danger;
   }
 
-  // ====================== 阶段提示与 spinner ======================
+  // ====================== 阶段提示、失败重试与 spinner ======================
   &__hint {
     padding: 48rpx 24rpx;
     text-align: center;
   }
 
   &__hint-text {
-    font-size: 26rpx;
-    color: #8d6e63;
+    font-size: $jt-font-md;
+    color: $jt-ink-muted;
     font-style: italic;
+  }
+
+  // P0-4：推演失败后的「重新推演」按钮
+  &__retry-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    // 触摸目标 ≥ 44px
+    min-height: 88rpx;
+    margin-top: $jt-space-lg;
+    padding: $jt-space-md 48rpx;
+    background-color: $jt-primary;
+    border-radius: $jt-radius-base;
+    box-shadow: $jt-shadow-card;
+    transition: background-color 150ms ease, transform 150ms ease;
+
+    &:active {
+      transform: scale(0.95);
+    }
+
+    &--hover {
+      background-color: $jt-primary-dark;
+    }
+  }
+
+  &__retry-text {
+    font-size: $jt-font-lg;
+    font-weight: 500;
+    color: $jt-ink-inverse;
   }
 
   &__loading {
     display: flex;
     flex-direction: column;
-    gap: 16rpx;
+    gap: $jt-space-md;
     align-items: center;
     padding: 48rpx 24rpx;
   }
@@ -967,15 +1135,15 @@ function onCloseNegotiation(): void {
   &__loading-dot {
     width: 36rpx;
     height: 36rpx;
-    border: 4rpx solid rgba(139, 26, 26, 0.2);
-    border-top-color: #8b1a1a;
+    border: 4rpx solid $jt-primary-light;
+    border-top-color: $jt-primary;
     border-radius: 50%;
     animation: game-main-spin 0.8s linear infinite;
   }
 
   &__loading-text {
-    font-size: 26rpx;
-    color: #5d4037;
+    font-size: $jt-font-md;
+    color: $jt-ink-secondary;
   }
 
   // ====================== 通用按钮 ======================
@@ -988,9 +1156,9 @@ function onCloseNegotiation(): void {
     align-items: center;
     justify-content: center;
     padding: 20rpx 0;
-    background-color: #fdf6e3;
-    border: 2rpx solid #8b1a1a;
-    border-radius: 8rpx;
+    background-color: $jt-bg-surface;
+    border: 2rpx solid $jt-primary;
+    border-radius: $jt-radius-base;
     transition: background-color 150ms ease, transform 150ms ease, opacity 150ms ease;
 
     &:active {
@@ -998,41 +1166,41 @@ function onCloseNegotiation(): void {
     }
 
     &--hover {
-      background-color: #f5e6c8;
+      background-color: $jt-bg-subtle;
     }
 
     &--primary {
-      background-color: #8b1a1a;
+      background-color: $jt-primary;
 
       .game-main__btn-text {
-        color: #fff;
+        color: $jt-ink-inverse;
       }
     }
 
     &--ghost {
       background-color: transparent;
-      border-color: #d4c5a0;
+      border-color: $jt-border;
 
       .game-main__btn-text {
-        color: #5d4037;
+        color: $jt-ink-secondary;
       }
     }
 
     &--disabled {
       opacity: 0.65;
-      background-color: #e8e0d0;
-      border-color: #c9bda3;
+      background-color: $jt-bg-disabled;
+      border-color: $jt-border-disabled;
 
       .game-main__btn-text {
-        color: #9e8e76;
+        color: $jt-ink-disabled;
       }
     }
   }
 
   &__btn-text {
-    font-size: 28rpx;
+    font-size: $jt-font-lg;
     font-weight: 500;
-    color: #2c1810;
+    color: $jt-ink;
   }
 
   &__btn-spinner {
@@ -1047,7 +1215,7 @@ function onCloseNegotiation(): void {
     width: 28rpx;
     height: 28rpx;
     border: 4rpx solid rgba(255, 255, 255, 0.3);
-    border-top-color: #fff;
+    border-top-color: $jt-ink-inverse;
     border-radius: 50%;
     animation: game-main-spin 0.8s linear infinite;
   }
@@ -1055,11 +1223,11 @@ function onCloseNegotiation(): void {
   // ====================== 底部操作栏 ======================
   &__footer {
     display: flex;
-    gap: 16rpx;
-    padding: 16rpx 24rpx;
+    gap: $jt-space-md;
+    padding: $jt-space-md $jt-space-lg;
     // 比内容区略深的米色，拉开与滚动区的层次，强化固定底栏分隔感
-    background-color: #f5e6c8;
-    border-top: 2rpx solid #d4c5a0;
+    background-color: $jt-bg-subtle;
+    border-top: 2rpx solid $jt-border;
     box-shadow: 0 -6rpx 16rpx rgba(139, 26, 26, 0.12);
   }
 
@@ -1071,12 +1239,12 @@ function onCloseNegotiation(): void {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8rpx;
+    gap: $jt-space-sm;
     padding: 20rpx 0;
-    background-color: #fdf6e3;
-    border: 2rpx solid #8b1a1a;
-    border-radius: 8rpx;
-    color: #8b1a1a;
+    background-color: $jt-bg-surface;
+    border: 2rpx solid $jt-primary;
+    border-radius: $jt-radius-base;
+    color: $jt-primary;
     transition: background-color 150ms ease, transform 150ms ease, opacity 150ms ease;
 
     &:active {
@@ -1084,17 +1252,17 @@ function onCloseNegotiation(): void {
     }
 
     &--hover {
-      background-color: #f5e6c8;
+      background-color: $jt-bg-subtle;
     }
 
     &--disabled {
       opacity: 0.65;
-      background-color: #e8e0d0;
-      color: #9e8e76;
-      border-color: #c9bda3;
+      background-color: $jt-bg-disabled;
+      color: $jt-ink-disabled;
+      border-color: $jt-border-disabled;
 
       .game-main__footer-btn-text {
-        color: #9e8e76;
+        color: $jt-ink-disabled;
       }
     }
 
@@ -1106,25 +1274,25 @@ function onCloseNegotiation(): void {
 
     &--confirm,
     &--next {
-      background-color: #8b1a1a;
+      background-color: $jt-primary;
 
       .game-main__footer-btn-text {
-        color: #fff;
+        color: $jt-ink-inverse;
       }
     }
 
     &--free {
-      background-color: #fdf6e3;
+      background-color: $jt-bg-surface;
     }
 
     &--diplomacy {
-      background-color: #fdf6e3;
+      background-color: $jt-bg-surface;
     }
 
     &-text {
-      font-size: 28rpx;
+      font-size: $jt-font-lg;
       font-weight: 500;
-      color: #2c1810;
+      color: $jt-ink;
     }
 
     // 圆形裁切的军师图片图标（36×36 容器，aspectFill 居中裁切）
@@ -1137,7 +1305,7 @@ function onCloseNegotiation(): void {
       &--advisor {
         width: 48rpx;
         height: 48rpx;
-        border: 2rpx solid #8b1a1a;
+        border: 2rpx solid $jt-primary;
       }
     }
   }
@@ -1159,10 +1327,10 @@ function onCloseNegotiation(): void {
   &__diplomacy-drawer {
     width: 100%;
     max-height: 80vh;
-    background-color: #fdf6e3;
+    background-color: $jt-bg-surface;
     border-top-left-radius: 24rpx;
     border-top-right-radius: 24rpx;
-    box-shadow: 0 -8rpx 24rpx rgba(0, 0, 0, 0.18);
+    box-shadow: $jt-shadow-drawer;
   }
 
   // 谈判弹窗（faction-negotiation 提案 T6）：居中弹窗，盖在外交抽屉之上

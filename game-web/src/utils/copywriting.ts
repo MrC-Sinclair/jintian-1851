@@ -44,7 +44,9 @@ export const BUTTON_TEXT = {
   freeAction: '自由行动',
   back: '返回',
   close: '关闭',
-  diplomacy: '外交'
+  diplomacy: '外交',
+  /** P0-4：事件推演失败后的重试按钮 */
+  retryEvent: '重新推演'
 } as const
 
 /** 阶段提示（phaseHint，带目标版） */
@@ -68,7 +70,9 @@ export const TOOLTIP_TEXT = {
   collapse: '折叠',
   expand: '展开',
   close: '关闭',
-  send: '发送'
+  send: '发送',
+  /** P0-6 帮助入口 tooltip */
+  help: '如何游戏'
 } as const
 
 /**
@@ -133,6 +137,30 @@ export const DIPLOMACY_ACTION_LABELS: Record<PlayerDiplomacyAction, string> = {
   离间: '离间',
   质子: '质子'
 }
+
+/**
+ * 外交动作禁用原因文案（P0-6：禁用原因提示）
+ *
+ * 点击禁用按钮时按具体原因给出针对性提示，替代笼统的"不可用"。
+ * 判定顺序与 store.applyDiplomacyAction 二次校验一致，避免 UI 与后端口径漂移。
+ */
+export const DIPLOMACY_DISABLED_TEXT = {
+  /** 回合推演中（防并发） */
+  turnProcessing: '回合推演中，请稍候再试',
+  /** 本回合外交次数已用尽 */
+  actionQuotaUsed: '本回合外交次数已用尽，下回合可再次发动',
+  /** 势力已灭 */
+  factionDestroyed: (name: string) => `「${name}」已灭，无从外交`,
+  /** 关系门槛不足（action 用中文动作名） */
+  relationshipTooLow: (name: string, action: string, required: number) =>
+    `与「${name}」关系不足，需达到 ${required} 才能发动「${action}」`,
+  /** 资源不足（shortage 形如"银两 100"或"银两 100、兵员 50"） */
+  resourceShortage: (shortage: string) => `资源不足：还差${shortage}`,
+  /** 写信：本回合谈判次数已用尽 */
+  letterQuotaUsed: '本回合谈判次数已用尽，下回合可再写信',
+  /** 写信：势力已灭 */
+  letterFactionDestroyed: (name: string) => `「${name}」已灭，无从通信`
+} as const
 
 /**
  * 玩家主动外交动作解释（供按钮 tooltip，帮助新手理解门槛与效果）
@@ -246,7 +274,8 @@ export const CHAIN_EXPAND_LABEL = '点击查看详情'
 
 /** 错误文案（白话化，技术错误码仅 console.error） */
 export const ERROR_TEXT = {
-  eventFailed: '局势推演出错，正在重试…',
+  // P0-4：推演失败 toast 与阶段区提示文案区分（toast 即时提示，提示区带重试按钮）
+  eventFailed: '局势推演未成功，请重试',
   eventRetryFailed: '局势推演失败，请检查网络后重试',
   networkError: '网络连接失败，请检查网络',
   advisorFailed: '军师暂时无法回应，可重新提问',
@@ -276,7 +305,9 @@ export const PAGE_TEXT = {
     freeActionCancel: '取消',
     freeActionSubmit: '提交',
     decisionApplied: '决策已应用',
-    factionEffectTitle: '势力动向'
+    factionEffectTitle: '势力动向',
+    /** 处理中 spinner 兜底文案（选项决策等未设置具体阶段时显示） */
+    processingFallback: '推演中…'
   },
   /** EventCard 文案 */
   eventCard: {

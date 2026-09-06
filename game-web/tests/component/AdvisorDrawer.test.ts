@@ -472,3 +472,46 @@ describe('AdvisorDrawer - T2.5 工具调用气泡', () => {
     expect(tool.find('.advisor-tool__detail').exists()).toBe(false)
   })
 })
+
+// ====================== H5 键盘无障碍：Esc 关闭抽屉 ======================
+describe('AdvisorDrawer - H5 键盘无障碍（Esc 关闭）', () => {
+  it('抽屉打开时按 Esc → 触发 close 事件', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    const wrapper = mountDrawer({ visible: false })
+    // 切换 visible=true 触发 watch → 挂载 document keydown 监听
+    await wrapper.setProps({ visible: true })
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(wrapper.emitted('close')).toBeTruthy()
+    expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
+  it('按非 Esc 键 → 不触发 close', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    const wrapper = mountDrawer({ visible: false })
+    await wrapper.setProps({ visible: true })
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    expect(wrapper.emitted('close')).toBeFalsy()
+  })
+
+  it('抽屉关闭后监听已移除 → 再按 Esc 不触发 close', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    const wrapper = mountDrawer({ visible: false })
+    await wrapper.setProps({ visible: true })
+    await wrapper.setProps({ visible: false }) // 触发 watch → 移除监听
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(wrapper.emitted('close')).toBeFalsy()
+  })
+
+  it('组件卸载后监听已移除 → 再按 Esc 不触发 close', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    const wrapper = mountDrawer({ visible: false })
+    await wrapper.setProps({ visible: true })
+    wrapper.unmount() // 触发 onUnmounted → 移除监听
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(wrapper.emitted('close')).toBeFalsy()
+  })
+})

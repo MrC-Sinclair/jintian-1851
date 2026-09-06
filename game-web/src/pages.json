@@ -15,7 +15,8 @@
 		{
 			"path": "pages/game-main/index",
 			"style": {
-				"navigationBarTitleText": "回合"
+				"navigationBarTitleText": "回合",
+				"navigationStyle": "custom"
 			}
 		},
 		{
