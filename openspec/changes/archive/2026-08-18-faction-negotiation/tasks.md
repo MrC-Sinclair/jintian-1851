@@ -59,5 +59,5 @@
 - 验证：人工评审对照代码字段名一致性
 
 ## 9. spec 合并（归档时）
-- [ ] 将本提案 `specs/ai-faction-negotiation/spec.md` delta 合并入 `openspec/specs/ai-faction-negotiation/spec.md` master（新建），proposal.md 顶部追加状态块，目录移入 `archive/`
+- [x] 将本提案 `specs/ai-faction-negotiation/spec.md` delta 合并入 `openspec/specs/ai-faction-negotiation/spec.md` master（新建），proposal.md 顶部追加状态块，目录移入 `archive/`
 - 验证：对照 `openspec/config.yaml` 规则逐条检查

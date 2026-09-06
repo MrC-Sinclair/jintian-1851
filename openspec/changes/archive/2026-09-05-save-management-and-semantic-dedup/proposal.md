@@ -27,3 +27,12 @@
 ### New Capabilities
 - `save-management` - 多存档管理：按设备列表、摘要展示、多槽切换与删除、导出导入
 - `event-semantic-dedup` - 基于 pgvector 的历史事件语义去重（降本 + 防重复体验损伤）
+  - ⚠️ **已被 `2026-09-06-ai-long-term-memory` 提案承接**（2026-09-06 更新）：该能力与本提案无关的「势力关系记忆」合并设计，共用 `game_events` 向量表与 embedding 封装。实施以新提案 tasks.md 为准，本提案 tasks.md 第 3 节不再单独执行。
+
+---
+
+## 状态：拆分归档（2026-09-06）
+
+- **语义去重部分：已完成**。由 `2026-09-06-ai-long-term-memory` 提案以超集实现承接并已上线：模型实测改为 `BAAI/bge-large-zh-v1.5`（本提案原计划的 `bge-m8-zh` 在 SiliconFlow 不存在、`bge-m3` 为备选），去重阈值实测校准 0.9 → **0.76**，dev 环境端到端实测通过（写入/检索/降级全链路）。master spec 见 `openspec/specs/ai-long-term-memory/spec.md`。
+- **存档管理部分：迁出**。按 openspec「一个提案一个主题」惯例拆分至新提案 `openspec/changes/2026-09-06-save-management/`（后端 `GET /api/game/saves` 已交付；前端多存档槽 UI 待做），后续在该提案下执行。
+- 本提案随之归档，不再单独执行任何任务。

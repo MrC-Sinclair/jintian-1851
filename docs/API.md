@@ -970,6 +970,42 @@ x-device-id: {设备指纹}
 
 ---
 
+## DELETE /api/game/saves
+
+删除云端存档（多存档管理收尾能力）。源码：[saves.delete.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/saves.delete.ts)。
+
+> 属主校验与 sync-save 同口径：`save_id + device_id` 双条件原子删除，0 行命中返回 404（与「不存在」同响应，不泄漏他人存档存在性）。同时顺带清理该 `saveId` 的 `game_events` / `faction_memories` 记忆行（best-effort，失败不阻断存档删除）。
+
+### 请求
+
+```http
+DELETE /api/game/saves?saveId=550e8400-e29b-41d4-a716-446655440000&deviceId=device-abc123
+x-device-id: {设备指纹}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `saveId` (query) | string (uuid) | 是 | 待删除存档 ID |
+| `deviceId` (query) | string (≥1) | 是 | 设备指纹（属主校验） |
+
+### 响应（成功）
+
+```json
+{ "ok": true, "data": { "saveId": "550e8400-e29b-41d4-a716-446655440000", "deleted": true } }
+```
+
+### 错误
+
+| HTTP | code | 触发场景 |
+|---|---|---|
+| 400 | `INVALID_PARAMS` | `saveId` 非 UUID / `deviceId` 缺失 |
+| 404 | `SAVE_NOT_FOUND` | 云端未找到此存档，或存档不属于该 `deviceId`（不区分，防存在性泄漏） |
+| 500 | `DB_ERROR` | 数据库删除失败 |
+
+> saves DELETE **不受频率限制**、不使用并发锁（与 saves GET 同口径）。
+
+---
+
 ## 错误码表
 
 | code | HTTP | 含义 | 触发接口 |
@@ -977,7 +1013,7 @@ x-device-id: {设备指纹}
 | `INVALID_PARAMS` | 400 | 请求参数校验失败（body 解析失败、zod 校验失败、UUID 格式错误等） | 全部 |
 | `RATE_LIMITED` | 429 | 频率超限（>10 次/分钟/deviceId） | 7 个 AI 端点（init-factions / generate-event / resolve-decision / npc-actions / advisor-chat / advisor-briefing / faction-negotiate） |
 | `CONCURRENT_REQUEST` | 429 | 同 `saveId` 已有进行中请求 | generate-event / resolve-decision / npc-actions / advisor-chat / faction-negotiate |
-| `SAVE_NOT_FOUND` | 404 | 云端未找到此存档（或 deviceId 属主校验不通过，不区分） | GET sync-save |
+| `SAVE_NOT_FOUND` | 404 | 云端未找到此存档（或 deviceId 属主校验不通过，不区分） | GET sync-save / DELETE saves |
 | `SAVE_FORBIDDEN` | 403 | 存档归属于其他 deviceId，禁止覆盖 | POST sync-save |
 | `DB_ERROR` | 500 | 数据库读写失败 | sync-save |
 | `METHOD_NOT_ALLOWED` | 405 | 非 POST/GET 方法 | sync-save |
@@ -998,6 +1034,11 @@ x-device-id: {设备指纹}
 > **其它非错误响应头（agent 化新增）**：
 > - `X-Partial-Failure: true`：`npc-actions` 部分 NPC 决策失败时设置（成功部分仍返回，区别于全部失败的 `X-Fallback`）。
 > - `X-Tool-Fallback: true`：`generate-event` 的 `get-recent-events` 工具调用失败时设置（降级使用请求体 `recentEvents`），与 `X-Fallback` 相互独立、可并存。
+
+> **记忆降级标识（AI 长期记忆新增，均非错误、仍 200 OK）**：
+> - `X-Dedup-Applied: true`：`generate-event` LLM 路径生成**前**检索到同 `saveId` 的相似历史事件（相似度 > 0.76，topK 5），已在 prompt 注入「避免重复」清单。命中才设置，与 `X-Fallback` / `X-Tool-Fallback` 相互独立、可并存。
+> - `X-Memory-Skip: true`：记忆向量检索失败时设置——`generate-event`（去重检索失败，跳过避重清单）与 `npc-actions`（势力记忆检索失败，跳过记忆注入）。检索为增益而非必需，失败不影响事件生成与 NPC 决策。
+> - 记忆写入（`game_events` / `faction_memories`）为 fire-and-forget，失败**静默跳过**（仅服务端 warn 日志），响应头无任何标识。
 
 ### 缓存标识（非错误）
 

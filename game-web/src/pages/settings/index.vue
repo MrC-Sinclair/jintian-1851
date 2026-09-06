@@ -73,6 +73,114 @@
         </view>
       </view>
 
+      <!-- 云端存档列表（多存档管理） -->
+      <view class="settings__section">
+        <view class="settings__section-header">
+          <text class="settings__section-title">{{ SAVE_LIST_TEXT.title }}</text>
+          <view
+            class="settings__refresh-btn"
+            role="button"
+            :aria-label="SAVE_LIST_TEXT.refresh"
+            :aria-disabled="isLoadingList"
+            tabindex="0"
+            :hover-class="'settings__refresh-btn--hover'"
+            :hover-stay-time="100"
+            @click="onRefreshList"
+            @keydown.enter.prevent="onRefreshList"
+            @keydown.space.prevent="onRefreshList"
+          >
+            <text class="settings__refresh-text">{{ SAVE_LIST_TEXT.refresh }}</text>
+          </view>
+        </view>
+
+        <view v-if="isLoadingList" class="settings__list-hint">
+          <text class="settings__list-hint-text">加载中…</text>
+        </view>
+        <view v-else-if="saveItems.length === 0" class="settings__list-hint">
+          <text class="settings__list-hint-text">{{ SAVE_LIST_TEXT.empty }}</text>
+        </view>
+        <view v-else class="settings__save-list">
+          <view
+            v-for="item in saveItems"
+            :key="item.saveId"
+            class="settings__save-item"
+          >
+            <view class="settings__save-info">
+              <view class="settings__save-name-row">
+                <text class="settings__save-name">
+                  {{ item.summary.factionName || '未命名势力' }}·{{ item.summary.background || '未知出身' }}
+                </text>
+                <text
+                  v-if="isCurrentSave(item.saveId)"
+                  class="settings__save-badge settings__save-badge--current"
+                >当前</text>
+                <text
+                  class="settings__save-badge"
+                  :class="item.summary.ended ? 'settings__save-badge--ended' : 'settings__save-badge--active'"
+                >{{ item.summary.ended ? SAVE_LIST_TEXT.endedBadge : SAVE_LIST_TEXT.inProgressBadge }}</text>
+              </view>
+              <text class="settings__save-meta">
+                {{ SAVE_LIST_TEXT.turnLabel(item.summary.turn) }} · {{ formatDate(item.updatedAt) }}
+              </text>
+            </view>
+            <view class="settings__save-actions">
+              <view
+                class="settings__save-btn"
+                role="button"
+                :aria-label="SAVE_LIST_TEXT.switch"
+                tabindex="0"
+                :hover-class="'settings__save-btn--hover'"
+                :hover-stay-time="100"
+                @click="onSwitchSave(item)"
+                @keydown.enter.prevent="onSwitchSave(item)"
+                @keydown.space.prevent="onSwitchSave(item)"
+              >
+                <text class="settings__save-btn-text">{{ SAVE_LIST_TEXT.switch }}</text>
+              </view>
+              <view
+                class="settings__save-btn"
+                role="button"
+                :aria-label="SAVE_LIST_TEXT.export"
+                tabindex="0"
+                :hover-class="'settings__save-btn--hover'"
+                :hover-stay-time="100"
+                @click="onExportSave(item)"
+                @keydown.enter.prevent="onExportSave(item)"
+                @keydown.space.prevent="onExportSave(item)"
+              >
+                <text class="settings__save-btn-text">{{ SAVE_LIST_TEXT.export }}</text>
+              </view>
+              <view
+                class="settings__save-btn settings__save-btn--danger"
+                role="button"
+                :aria-label="SAVE_LIST_TEXT.delete"
+                tabindex="0"
+                :hover-class="'settings__save-btn--hover'"
+                :hover-stay-time="100"
+                @click="onDeleteSave(item)"
+                @keydown.enter.prevent="onDeleteSave(item)"
+                @keydown.space.prevent="onDeleteSave(item)"
+              >
+                <text class="settings__save-btn-text settings__save-btn-text--danger">{{ SAVE_LIST_TEXT.delete }}</text>
+              </view>
+            </view>
+          </view>
+          <view
+            class="settings__save-import"
+            role="button"
+            aria-label="导入存档"
+            tabindex="0"
+            :hover-class="'settings__save-btn--hover'"
+            :hover-stay-time="100"
+            @click="onImportSave"
+            @keydown.enter.prevent="onImportSave"
+            @keydown.space.prevent="onImportSave"
+          >
+            <text class="settings__save-import-text">导入存档（JSON）</text>
+          </view>
+        </view>
+      </view>
+
       <!-- 数据区 -->
       <view class="settings__section">
         <text class="settings__section-title">本地数据</text>
@@ -129,9 +237,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useSaveSync } from '@/composables/useSaveSync'
+import { useSaveList, type SaveListItem } from '@/composables/useSaveList'
 import { useGameState } from '@/composables/useGameState'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useToast } from '@/composables/useToast'
+import { useGameStore } from '@/stores/game'
 import { TOOLTIP_TEXT, PAGE_TEXT } from '@/utils/copywriting'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import TooltipView from '@/components/TooltipView.vue'
@@ -216,6 +326,180 @@ async function onClearSave(): Promise<void> {
   } catch {
     toast.error('清除失败，请重试')
   }
+}
+
+// ====================== 云端存档列表（多存档管理） ======================
+
+const SAVE_LIST_TEXT = PAGE_TEXT.saveList
+const store = useGameStore()
+
+const {
+  saves: saveItems,
+  isLoading: isLoadingList,
+  isMutating,
+  fetchList,
+  switchSave,
+  deleteSave,
+  exportSave,
+  importSave
+} = useSaveList()
+
+/** 判断某云端档是否为当前本地存档（列表标记「当前」用） */
+function isCurrentSave(saveId: string): boolean {
+  return store.currentSave?.saveId === saveId
+}
+
+/** 毫秒时间戳 → 本地化日期时间（列表元信息展示用） */
+function formatDate(ts: number): string {
+  return new Date(ts).toLocaleString('zh-CN')
+}
+
+/** 拉取云端存档列表（进入页面与手动刷新共用） */
+async function onRefreshList(): Promise<void> {
+  try {
+    await fetchList()
+  } catch {
+    toast.error(SAVE_LIST_TEXT.loadFailed)
+  }
+}
+
+onMounted(() => {
+  // 静默预取云端存档列表（失败不阻断页面，仅 toast）
+  void onRefreshList()
+})
+
+/** 存档显示名（摘要取不到时兜底） */
+function saveDisplayName(item: SaveListItem): string {
+  const name = item.summary.factionName || '未命名势力'
+  const bg = item.summary.background || '未知出身'
+  return `${name}·${bg}`
+}
+
+/** 切换存档：确认 → 拉全量写本地 → 进游戏页（game-main 对 ended 存档自动跳结局页） */
+async function onSwitchSave(item: SaveListItem): Promise<void> {
+  if (isMutating.value) return
+  const ok = await confirm({
+    title: SAVE_LIST_TEXT.switchConfirm.title,
+    message: SAVE_LIST_TEXT.switchConfirm.message(saveDisplayName(item)),
+    confirmText: SAVE_LIST_TEXT.switch,
+    cancelText: '取消'
+  })
+  if (!ok) return
+
+  const res = await switchSave(item.saveId)
+  if (!res.ok) {
+    toast.error(res.message ?? '切换失败')
+    return
+  }
+  toast.success(SAVE_LIST_TEXT.switchDone)
+  uni.reLaunch({ url: '/pages/game-main/index' })
+}
+
+/** 删除云端存档：二次确认（不可逆）→ 删除 → 刷新列表 */
+async function onDeleteSave(item: SaveListItem): Promise<void> {
+  if (isMutating.value) return
+  const ok = await confirm({
+    title: SAVE_LIST_TEXT.deleteConfirm.title,
+    message: SAVE_LIST_TEXT.deleteConfirm.message(saveDisplayName(item)),
+    confirmText: SAVE_LIST_TEXT.delete,
+    cancelText: '取消'
+  })
+  if (!ok) return
+
+  const res = await deleteSave(item.saveId)
+  if (!res.ok) {
+    toast.error(res.message ?? '删除失败')
+    return
+  }
+  toast.success(SAVE_LIST_TEXT.deleteDone)
+}
+
+/** 导出存档（H5 文件下载 / 小程序剪贴板兜底，见 useSaveList.exportSave） */
+async function onExportSave(item: SaveListItem): Promise<void> {
+  if (isMutating.value) return
+  const res = await exportSave(item.saveId)
+  if (!res.ok) {
+    toast.error(res.message ?? '导出失败')
+    return
+  }
+  // 剪贴板方案需要告知用户去哪找数据；文件下载无需多言
+  if (res.message) toast.info(res.message)
+}
+
+/** 导入存档：H5 动态 file input + FileReader；小程序端 chooseMessageFile（微信聊天文件） */
+function onImportSave(): void {
+  if (isMutating.value) return
+
+  // 运行时平台判断（同 useSaveList.exportSave 惯例）
+  const { uniPlatform } = uni.getSystemInfoSync()
+  const isH5 = uniPlatform === 'web' || uniPlatform === 'h5'
+
+  if (isH5) {
+    // 动态创建 file input（uni-app 模板不支持原生 input[type=file] 跨端编译）
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'application/json,.json'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        void handleImportText(String(reader.result ?? ''))
+      }
+      reader.onerror = () => toast.error(`${SAVE_LIST_TEXT.importFailedPrefix}：文件读取失败`)
+      reader.readAsText(file)
+    }
+    input.click()
+    return
+  }
+
+  // 小程序端：uni.chooseMessageFile 仅微信支持，失败给出明确提示
+  const choose = (
+    uni as unknown as {
+      chooseMessageFile?: (opts: {
+        count: number
+        type: string
+        success: (res: { tempFiles: { path: string }[] }) => void
+        fail: (err: { errMsg?: string }) => void
+      }) => void
+    }
+  ).chooseMessageFile
+  if (typeof choose !== 'function') {
+    toast.error('当前环境不支持文件导入，请使用 H5 端')
+    return
+  }
+  choose({
+    count: 1,
+    type: 'file',
+    success: (res) => {
+      const filePath = res.tempFiles?.[0]?.path
+      if (!filePath) return
+      uni.getFileSystemManager().readFile({
+        filePath,
+        encoding: 'utf8',
+        success: (read) => {
+          // uni 类型定义未声明 result 字段（实际返回 utf8 文本），断言取值
+          void handleImportText(String((read as unknown as { result?: string }).result ?? ''))
+        },
+        fail: () => toast.error(`${SAVE_LIST_TEXT.importFailedPrefix}：文件读取失败`)
+      })
+    },
+    fail: () => {
+      // 用户取消选择不提示，仅失败时提示
+      toast.error(`${SAVE_LIST_TEXT.importFailedPrefix}：未选择文件`)
+    }
+  })
+}
+
+/** 导入文本 → 校验写入 → 成功进游戏页 */
+async function handleImportText(jsonText: string): Promise<void> {
+  const res = await importSave(jsonText)
+  if (!res.ok) {
+    toast.error(res.message ?? SAVE_LIST_TEXT.importFailedPrefix)
+    return
+  }
+  toast.success(SAVE_LIST_TEXT.switchDone)
+  uni.reLaunch({ url: '/pages/game-main/index' })
 }
 
 function onBack(): void {
@@ -452,6 +736,176 @@ function onBack(): void {
   // 开关打开时 thumb 右移（uni-app 不支持 SCSS 嵌套父引用 + 修饰符，用显式选择器）
   .settings__switch--on &__switch-thumb {
     transform: translateX(36rpx);
+  }
+
+  // ====================== 云端存档列表（多存档管理） ======================
+
+  &__section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16rpx;
+  }
+
+  &__refresh-btn {
+    // 触摸目标 ≥ 44px
+    min-height: 88rpx;
+    display: flex;
+    align-items: center;
+    padding: 8rpx 24rpx;
+    background-color: rgba(139, 26, 26, 0.08);
+    border: 2rpx solid #d4c5a0;
+    border-radius: 8rpx;
+    transition: background-color 150ms ease, transform 150ms ease;
+
+    &:active {
+      transform: scale(0.95);
+    }
+
+    &--hover {
+      background-color: rgba(139, 26, 26, 0.15);
+    }
+  }
+
+  &__refresh-text {
+    font-size: 24rpx;
+    color: #8b1a1a;
+  }
+
+  &__list-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32rpx 0;
+  }
+
+  &__list-hint-text {
+    font-size: 24rpx;
+    color: #8d6e63;
+    line-height: 1.6;
+    text-align: center;
+  }
+
+  &__save-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__save-item {
+    display: flex;
+    flex-direction: column;
+    padding: 20rpx 0;
+    border-bottom: 2rpx solid rgba(212, 197, 160, 0.5);
+
+    &:last-of-type {
+      border-bottom: none;
+    }
+  }
+
+  &__save-info {
+    margin-bottom: 12rpx;
+  }
+
+  &__save-name-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12rpx;
+  }
+
+  &__save-name {
+    font-size: 28rpx;
+    font-weight: 600;
+    color: #2c1810;
+  }
+
+  &__save-badge {
+    padding: 2rpx 12rpx;
+    font-size: 20rpx;
+    border-radius: 6rpx;
+
+    &--current {
+      color: #fff;
+      background-color: #8b1a1a;
+    }
+
+    &--active {
+      color: #2e7d32;
+      background-color: rgba(46, 125, 50, 0.12);
+    }
+
+    &--ended {
+      color: #8d6e63;
+      background-color: rgba(141, 110, 99, 0.15);
+    }
+  }
+
+  &__save-meta {
+    display: block;
+    margin-top: 6rpx;
+    font-size: 22rpx;
+    color: #8d6e63;
+  }
+
+  &__save-actions {
+    display: flex;
+    align-items: center;
+    gap: 16rpx;
+  }
+
+  &__save-btn {
+    // 触摸目标 ≥ 44px（AGENTS/spec 硬性要求）
+    min-height: 88rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8rpx 28rpx;
+    background-color: rgba(139, 26, 26, 0.08);
+    border: 2rpx solid #d4c5a0;
+    border-radius: 8rpx;
+    transition: background-color 150ms ease, transform 150ms ease;
+
+    &:active {
+      transform: scale(0.95);
+    }
+
+    &--hover {
+      background-color: rgba(139, 26, 26, 0.15);
+    }
+
+    &--danger {
+      background-color: rgba(198, 40, 40, 0.08);
+      border-color: rgba(198, 40, 40, 0.35);
+    }
+  }
+
+  &__save-btn-text {
+    font-size: 24rpx;
+    color: #8b1a1a;
+
+    &--danger {
+      color: #c62828;
+    }
+  }
+
+  &__save-import {
+    min-height: 88rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 16rpx;
+    border: 2rpx dashed #d4c5a0;
+    border-radius: 8rpx;
+    transition: background-color 150ms ease;
+
+    &--hover {
+      background-color: rgba(245, 230, 200, 0.5);
+    }
+  }
+
+  &__save-import-text {
+    font-size: 24rpx;
+    color: #8d6e63;
   }
 
   &__body-pad {

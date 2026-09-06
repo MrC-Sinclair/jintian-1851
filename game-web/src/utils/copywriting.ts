@@ -300,5 +300,32 @@ export const PAGE_TEXT = {
     message: (cloudDate: string) => `云端存档更新时间：${cloudDate}\n是否拉取覆盖本地？`,
     pull: '拉取云端',
     keep: '保留本地'
+  },
+  /** 设置页·云端存档列表（多存档管理） */
+  saveList: {
+    title: '云端存档',
+    refresh: '刷新',
+    empty: '暂无云端存档，可在游戏中手动同步上传',
+    loadFailed: '存档列表拉取失败',
+    switch: '切换',
+    export: '导出',
+    delete: '删除',
+    endedBadge: '已结局',
+    inProgressBadge: '进行中',
+    turnLabel: (turn: number) => `回合 ${turn}`,
+    switchConfirm: {
+      title: '切换存档',
+      message: (name: string) =>
+        `切换到「${name}」将覆盖当前本地进度（云端不受影响）。\n\n确认切换？`
+    },
+    deleteConfirm: {
+      title: '删除云端存档',
+      message: (name: string) =>
+        `将永久删除「${name}」的云端存档${'，'}本地同步副本一并清除。\n\n此操作不可恢复，确认删除？`
+    },
+    switchDone: '存档已切换',
+    deleteDone: '存档已删除',
+    exportHint: '存档 JSON 已复制到剪贴板，可粘贴到聊天/备忘录备份',
+    importFailedPrefix: '导入失败'
   }
 } as const

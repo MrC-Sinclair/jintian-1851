@@ -33,3 +33,10 @@
 
 ### New Capabilities
 - ai-faction-negotiation - 玩家与 NPC 势力 Agent 的自然语言谈判（信件+一次还价，条件兑换制，独立配额）
+
+---
+
+## 状态：已实现并归档（2026-09-06）
+
+- 任务 1-22 已全部完成（22/23），功能上线：`POST /api/game/faction-negotiate` + `NegotiationDialog.vue` 两阶段谈判，16 个 API 测试全绿，`docs/API.md` / `docs/game-design.md` / `docs/ai-cost.md` 已同步。
+- 本目录归档：spec 已合并入 `openspec/specs/ai-faction-negotiation/spec.md`（master 新建），tasks.md 全部勾选。

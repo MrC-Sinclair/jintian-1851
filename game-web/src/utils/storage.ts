@@ -20,8 +20,10 @@ const CORRUPTED_BACKUP_KEY = 'game_save_corrupted'
  *
  * 只校验"缺了必然崩溃"的关键字段**类型**，不校验业务取值（空数组/数值范围是
  * v1 兼容与迁移逻辑的职责，见 useGameState.migrateSaveV1ToV2）。
+ *
+ * 导出：JSON 导入（存档管理）复用同一校验，保证导入与本地读取口径一致。
  */
-function isValidSaveShape(data: unknown): data is GameSave {
+export function isValidSaveShape(data: unknown): data is GameSave {
   if (!data || typeof data !== 'object') return false
   const s = data as Record<string, unknown>
   return (
