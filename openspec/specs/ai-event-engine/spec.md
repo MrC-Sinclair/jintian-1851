@@ -1,7 +1,7 @@
 # ai-event-engine Specification
 
 ## Purpose
-`POST /api/game/generate-event` 生成结构化回合事件（标题/描述/选项/effects），支持历史剧情链三层触发优先级（挂起节点 → 时间窗口 → LLM 自主）与短板导向软偏好。失败降级到 60 条兜底事件池，保证回合不中断。
+`POST /api/game/generate-event` 生成结构化回合事件（标题/描述/选项/effects），支持历史剧情链三层触发优先级（挂起节点 → 下一条剧情链 → LLM 自主）与短板导向软偏好。锚点晚于当前日历时随事件下发 `eventDate` 做时光跳跃，使 1851-1912 的历史内容在约 35 回合的单局内可达。失败降级到 60 条兜底事件池（降级路径同样避开近期已用事件），保证回合不中断。
 ## Requirements
 ### Requirement: 结构化事件生成接口
 
@@ -37,9 +37,9 @@ AND 返回结构：
   ```
 AND 响应 header `X-Event-Source: pending-chain`
 
-#### Scenario: 触发优先级 — 时间窗口匹配
+#### Scenario: 触发优先级 — 下一条剧情链匹配
 
-WHEN `pendingChainNodes` 为空 且 当前游戏内时间 `stateSnapshot.date` 命中某剧情链 `startYear`（如 1851 年 1 月命中"太平天国兴亡"链 `startYear=1851`）
+WHEN `pendingChainNodes` 为空 且 存在剧情链 `startYear` **不早于**当前游戏年份 `stateSnapshot.date.year`
 AND 该剧情链 `chainId` 不在 `completedChainIds` 中
 AND 该剧情链 `chainId` 不在 `activeChainIds` 中
 AND 该剧情链 `prerequisiteChainIds`（若有）全部在 `completedChainIds` 中
@@ -47,20 +47,46 @@ THEN 服务端不调用 LLM
 AND 返回该剧情链首个节点的 event（结构同上）
 AND 响应 header `X-Event-Source: time-window`
 
+> 原判定为 `startYear` **严格等于**当前年，已废弃：日历一旦跨过那一年该链永久丢失，
+> 且时光跳跃没有目标年份可用。改为「不早于」后取最近的一条未来锚点。
+
+#### Scenario: 时光跳跃 — 锚点晚于当前日历
+
+WHEN 被触发链的 `startYear` 晚于当前游戏年份
+THEN 事件携带 `eventDate: { year: startYear, month: 1 }`
+AND 描述改写为 `【{当前年}—{锚点年} 年间】{链概述} {节点描述}`，以交代被跳过的时间
+AND 过场文案由模板拼接，不调用 LLM（零 token、零延迟、无失败面）
+
+#### Scenario: 时光跳跃只在链首判定
+
+WHEN 事件走 `pending-chain` 路径（链内第 2~N 个节点）
+THEN 即使该链 `startYear` 晚于当前日历，也**不下发** `eventDate`
+AND 理由：一条 5 节点链若每节点都跳一次，会把日历往前推 5 次
+
+#### Scenario: 前端按事件时间推进游戏日历
+
+WHEN `useTurn.startTurn` 收到带 `eventDate` 的事件
+AND `eventDate` 晚于当前 `state.date`
+THEN 把游戏日历更新为 `eventDate`
+AND `eventDate` 等于或早于当前日期时保持不变（不回拨）
+AND 事件不含 `eventDate` 时，日历仍由 `endTurn` 逐月推进
+
 #### Scenario: 触发优先级 — LLM 自主生成兜底
 
-WHEN `pendingChainNodes` 为空 且 无剧情链时间窗口匹配
+WHEN `pendingChainNodes` 为空 且 无任何剧情链的 `startYear` 不早于当前年（即全部锚点已过去或链已终结）
 THEN 服务端按既有逻辑调用 `Qwen/Qwen3-8B` + `generateObject()` 生成事件
 AND 返回结构不含 `chainId`/`chainNodeId`/`chainProgress` 字段（普通事件）
 AND `options` 中不包含 `nextChainNodeId` 字段
 AND 响应 header `X-Event-Source: llm`
 
-#### Scenario: 同一年份多个剧情链可触发
+#### Scenario: 多个剧情链候选时的取舍
 
-WHEN 当前游戏内时间命中多个剧情链 `startYear`（示例：某年份同时命中"太平天国兴亡"与另一条链；注：当前种子数据各剧情链 `startYear` 互不相同，本场景演示同年多链时的取舍规则）
+WHEN 有多条链的 `startYear` 均不早于当前年且都满足前置
 THEN 按 `startYear` 升序排序（同年份时按 `chainId` 字典序）
 AND 取第一个满足前置条件的剧情链触发
-AND 其他剧情链在后续回合或重复触发时再判断
+AND 其他剧情链在后续回合再判断
+AND **已知副作用**：若最近一条因前置未完成被过滤，会取更晚的无前置链，导致历史顺序前跳，
+而被关闭掉的链因年份已过去永久不再触发（与改造前"错过即丢失"同构，接受）
 
 #### Scenario: 参数校验 — 新增字段
 

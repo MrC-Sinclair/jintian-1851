@@ -1,4 +1,4 @@
-# story-chain-time-jump 规格
+# ai-event-engine 规格变更（剧情链时光跳跃）
 
 ## MODIFIED Requirements
 

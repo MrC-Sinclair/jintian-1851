@@ -53,4 +53,4 @@
 ## 能力 / Capabilities
 
 ### Modified Capabilities
-- `story-chain-engine` - 剧情链触发由「年份严格相等」改为「取下一条不早于当前年的链」，并新增按锚点推进游戏日历的时光跳跃
+- `ai-event-engine` - 剧情链触发由「年份严格相等」改为「取下一条不早于当前年的链」，并新增按锚点推进游戏日历的时光跳跃（已合并进 `openspec/specs/ai-event-engine/spec.md`）
