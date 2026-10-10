@@ -163,6 +163,8 @@
       <view v-if="isProcessingTurn" class="game-main__section game-main__loading">
         <view class="game-main__loading-dot" />
         <text class="game-main__loading-text">{{ processingStage || PAGE_TEXT.gameMain.processingFallback }}</text>
+        <!-- 流式生成进度：实时展示已生成的事件文本，避免玩家干等无反馈 -->
+        <text v-if="eventStreamText" class="game-main__loading-stream">{{ eventStreamText }}</text>
       </view>
 
       <!-- T2.2: 状态区（CollapsibleSection 包裹，默认折叠，玩家可查看属性资源） -->
@@ -421,6 +423,9 @@ const mounted = ref(false)
  */
 const { setBriefing: setAdvisorBriefing } = useAdvisor()
 
+/** 事件流式生成过程中已收到的文本（空串表示尚未收到或走的非流式） */
+const eventStreamText = ref('')
+
 const { startTurn, makeDecision, endTurn } = useTurn({
   // T3.4：错误文案白话化（技术错误码 console.error 保留，不展示给玩家）
   onError: (stage, message) => {
@@ -453,6 +458,11 @@ const { startTurn, makeDecision, endTurn } = useTurn({
     if (store.currentSave) {
       setAdvisorBriefing(b, store.currentSave.state.turn)
     }
+  },
+  // 流式生成进度：网关慢实例上事件要 40-60s，这里实时展示已生成内容，
+  // 把「无感知干等」变成「看得见的进展」
+  onEventProgress: (partialText) => {
+    eventStreamText.value = partialText
   }
 })
 
@@ -650,7 +660,9 @@ async function refreshAndStartTurn(): Promise<void> {
   // 若无当前回合事件，自动开始新回合
   if (!store.currentEvent) {
     processingStage.value = '事件生成中'
+    eventStreamText.value = ''
     const event = await startTurn()
+    eventStreamText.value = ''
     processingStage.value = ''
     if (!event) {
       // P0-4：推演失败 → 置失败标志（阶段提示区展示重试按钮）+ toast 提示
@@ -757,7 +769,9 @@ async function onNextTurn(): Promise<void> {
 
   // 开启新一回合
   processingStage.value = '事件生成中'
+  eventStreamText.value = ''
   const event = await startTurn()
+  eventStreamText.value = ''
   processingStage.value = ''
   if (!event) {
     // P0-4：新回合推演失败 → 置失败标志（展示重试按钮）+ toast 提示
@@ -839,15 +853,22 @@ function onCloseNegotiation(): void {
   flex-direction: column;
   // 显式 100% 宽度：确保在 uni-app H5 的容器嵌套中铺满视口
   width: 100%;
-  // min-height 而非 height：允许内容超出时扩展，同时保证至少填满视口
-  // 配合 App.vue 中 body/uni-page-body 的同色渐变背景，溢出区域不会显白
-  min-height: 100vh;
+  // 固定视口高度（而非 min-height）：本页是三段式布局（header / 内容滚动区 / footer），
+  // 必须给 flex 容器一个确定高度，中间的 scroll-view 才能被约束成「内部滚动」。
+  // 若用 min-height，容器会被内容撑高到超过视口，而 uni-app H5 的 html/body 是
+  // overflow:hidden，溢出部分既滚不动也点不到 —— 底栏（外交/军师/自由行动/确认决策）
+  // 会被永久推出视口且无法触达（实测：内容撑到 2569px 时滚轮/End/程序化滚动全部失效）。
+  height: 100vh;
+  // dvh 兜底移动端浏览器地址栏伸缩导致的 100vh 虚高；不支持时自动沿用上一行
+  height: 100dvh;
   // 横向溢出兜底：防止子元素固定最小宽度（如下方按钮 min-width）在窄屏撑破视口
   overflow-x: hidden;
   background: linear-gradient(180deg, $jt-bg-page-top 0%, $jt-bg-page-bottom 100%);
 
   // ====================== 顶部导航栏（P0-2 自定义导航） ======================
   &__header {
+    // 高度固定为视口后，header/footer 必须禁止被 flex 压缩，否则内容多时会被挤扁
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: $jt-space-base;
@@ -980,6 +1001,11 @@ function onCloseNegotiation(): void {
   // ====================== 主内容区 ======================
   &__body {
     flex: 1;
+    // min-height:0 让 flex 子项可收缩到内容高度以下（H5 生效）；
+    // height:0 是微信小程序端的稳妥写法：小程序里单靠 flex:1 未必能算出
+    // scroll-view 的高度，显式 0 + flex-grow 才能触发内部滚动。
+    // 两者并存互不影响（flex-basis:0% + grow:1 决定最终高度）
+    height: 0;
     min-height: 0;
     padding: $jt-space-md $jt-space-lg;
   }
@@ -1146,6 +1172,18 @@ function onCloseNegotiation(): void {
     color: $jt-ink-secondary;
   }
 
+  // 流式生成中的事件文本：作为 spinner 下方的「生成进展」，弱化于主文案
+  &__loading-stream {
+    display: block;
+    margin-top: $jt-space-sm;
+    font-size: $jt-font-base;
+    line-height: 1.6;
+    color: $jt-ink-muted;
+    // 长文本限高，避免生成过程中把下方内容顶飞
+    max-height: 240rpx;
+    overflow: hidden;
+  }
+
   // ====================== 通用按钮 ======================
   &__btn {
     flex: 1;
@@ -1222,6 +1260,8 @@ function onCloseNegotiation(): void {
 
   // ====================== 底部操作栏 ======================
   &__footer {
+    // 同 header：固定视口高度下禁止被 flex 压缩，保证底栏触摸目标完整可见
+    flex-shrink: 0;
     display: flex;
     gap: $jt-space-md;
     padding: $jt-space-md $jt-space-lg;

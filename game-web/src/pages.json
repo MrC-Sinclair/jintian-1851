@@ -35,7 +35,8 @@
 		{
 			"path": "pages/help/index",
 			"style": {
-				"navigationBarTitleText": "如何游戏"
+				"navigationBarTitleText": "如何游戏",
+				"navigationStyle": "custom"
 			}
 		}
 	],
