@@ -1,15 +1,15 @@
 /**
  * @file rate-limit 单元测试
  *
- * 覆盖正常/超限/重置
+ * 覆盖正常/超限/重置、路径→桶的映射、以及两个桶互相独立计数。
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   clearRateLimit,
+  getRateBucket,
   getRemaining,
-  isRateLimited,
-  shouldRateLimit
+  isRateLimited
 } from '../../server/utils/rate-limit'
 
 afterEach(() => {
@@ -84,41 +84,56 @@ describe('rate-limit', () => {
   })
 })
 
-describe('shouldRateLimit', () => {
-  it('/api/game/init-factions 应限制', () => {
-    expect(shouldRateLimit('/api/game/init-factions')).toBe(true)
+describe('getRateBucket', () => {
+  it('AI 端点归入 ai 桶', () => {
+    expect(getRateBucket('/api/game/init-factions')).toBe('ai')
+    expect(getRateBucket('/api/game/generate-event')).toBe('ai')
+    expect(getRateBucket('/api/game/resolve-decision')).toBe('ai')
+    expect(getRateBucket('/api/game/npc-actions')).toBe('ai')
+    expect(getRateBucket('/api/game/advisor-chat')).toBe('ai')
+    expect(getRateBucket('/api/game/advisor-briefing')).toBe('ai')
+    expect(getRateBucket('/api/game/faction-negotiate')).toBe('ai')
   })
 
-  it('/api/game/generate-event 应限制', () => {
-    expect(shouldRateLimit('/api/game/generate-event')).toBe(true)
+  it('存档读写也归 ai 桶（能批量读删，不能免限）', () => {
+    expect(getRateBucket('/api/game/saves')).toBe('ai')
+    expect(getRateBucket('/api/game/saves?deviceId=x')).toBe('ai')
+    expect(getRateBucket('/api/game/saves?saveId=x')).toBe('ai')
   })
 
-  it('/api/game/resolve-decision 应限制', () => {
-    expect(shouldRateLimit('/api/game/resolve-decision')).toBe(true)
+  it('sync-save 归独立的 save 桶（此前是完全不限流）', () => {
+    expect(getRateBucket('/api/game/sync-save')).toBe('save')
+    expect(getRateBucket('/api/game/sync-save?saveId=xxx')).toBe('save')
   })
 
-  it('/api/game/npc-actions 应限制', () => {
-    expect(shouldRateLimit('/api/game/npc-actions')).toBe(true)
+  it('非 /api/game/ 前缀不限流', () => {
+    expect(getRateBucket('/api/health')).toBeNull()
+    expect(getRateBucket('/')).toBeNull()
+    expect(getRateBucket('/index.html')).toBeNull()
+  })
+})
+
+describe('save 桶', () => {
+  it('每分钟 30 次：第 31 次才被限制', () => {
+    for (let i = 0; i < 30; i++) {
+      expect(isRateLimited('device-save', undefined, 'save')).toBe(false)
+    }
+    expect(isRateLimited('device-save', undefined, 'save')).toBe(true)
+    expect(getRemaining('device-save', undefined, 'save')).toBe(0)
   })
 
-  it('/api/game/advisor-chat 应限制', () => {
-    expect(shouldRateLimit('/api/game/advisor-chat')).toBe(true)
+  it('两个桶互不影响：save 桶打满不会饿死 ai 桶', () => {
+    // 正常一回合就要发 4-5 个请求（事件/简报/NPC/决策/同步），
+    // 若共用一个 10 次/分钟的桶，玩家两三个回合就会被 429 卡住
+    for (let i = 0; i < 30; i++) isRateLimited('device-mix', undefined, 'save')
+    expect(isRateLimited('device-mix', undefined, 'save')).toBe(true)
+    expect(isRateLimited('device-mix', undefined, 'ai')).toBe(false)
+    expect(getRemaining('device-mix', undefined, 'ai')).toBe(9)
   })
 
-  it('/api/game/sync-save 不应限制', () => {
-    expect(shouldRateLimit('/api/game/sync-save')).toBe(false)
-  })
-
-  it('/api/game/sync-save?saveId=xxx 不应限制', () => {
-    expect(shouldRateLimit('/api/game/sync-save?saveId=xxx')).toBe(false)
-  })
-
-  it('/api/health 不应限制（非 /api/game/ 前缀）', () => {
-    expect(shouldRateLimit('/api/health')).toBe(false)
-  })
-
-  it('非 API 路径不应限制', () => {
-    expect(shouldRateLimit('/')).toBe(false)
-    expect(shouldRateLimit('/index.html')).toBe(false)
+  it('ai 桶打满也不影响 save 桶', () => {
+    for (let i = 0; i < 10; i++) isRateLimited('device-mix2', undefined, 'ai')
+    expect(isRateLimited('device-mix2', undefined, 'ai')).toBe(true)
+    expect(isRateLimited('device-mix2', undefined, 'save')).toBe(false)
   })
 })

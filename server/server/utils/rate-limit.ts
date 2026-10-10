@@ -1,9 +1,15 @@
 /**
  * @file 简易频率限制
  *
- * 进程内 Map<deviceId, { count, resetAt }>，按 deviceId 每分钟最多 10 次 AI 调用。
- * 仅对 /api/game/ 下 AI 端点生效（init-factions、generate-event、resolve-decision、npc-actions、advisor-chat、advisor-briefing、faction-negotiate，共 7 个）。
- * sync-save 不限制（非 AI 调用）。
+ * 进程内 Map<bucketKey, { count, resetAt }>，按 deviceId 分桶计数。
+ *
+ * 两个桶（刻意分开，不共用一个计数器）：
+ *   - 'ai'   ：7 个 AI 端点 + 存档读写，10 次/分钟
+ *   - 'save' ：sync-save，30 次/分钟
+ * 分桶的原因是正常一回合就要发 generate-event / advisor-briefing / npc-actions /
+ * resolve-decision / sync-save 共 4-5 个请求，若把 sync-save 也塞进 10 次/分钟的桶，
+ * 手快的玩家两三个回合就会被 429 卡住；而完全不限 sync-save 又留下真实风险：
+ * 它是唯一无上限的写端点，每次带一个新 saveId 就插一行，可被用来把 44G 的盘写满。
  *
  * 进程内实现：单实例 MVP 足够，多实例需换 Redis。
  */
@@ -13,29 +19,54 @@ interface RateLimitEntry {
   resetAt: number
 }
 
-const MAX_REQUESTS_PER_MINUTE = 10
+/** 限流桶类型 */
+export type RateBucket = 'ai' | 'save'
+
+const LIMITS: Record<RateBucket, number> = { ai: 10, save: 30 }
 const WINDOW_MS = 60 * 1000
 
 const buckets = new Map<string, RateLimitEntry>()
 
-/** 触发频率限制的 AI 端点路径前缀（sync-save 不在其中） */
-const AI_ENDPOINT_PREFIX = '/api/game/'
+const API_GAME_PREFIX = '/api/game/'
 const SYNC_SAVE_PATH = '/api/game/sync-save'
+
+/** 去掉 query 后判断是否 sync-save 路径 */
+function isSyncSavePath(path: string): boolean {
+  return path === SYNC_SAVE_PATH || path.startsWith(SYNC_SAVE_PATH + '?')
+}
+
+/**
+ * 该路径属于哪个限流桶；null 表示不限流（非 /api/game/ 下的路径、静态资源等）
+ *
+ * 注意 /api/game/saves 与 /api/game/saves?saveId= 走的是 'ai' 桶：
+ * 它们同样能批量读删数据，且正常客户端每分钟远不到 10 次。
+ */
+export function getRateBucket(path: string): RateBucket | null {
+  if (!path.startsWith(API_GAME_PREFIX)) return null
+  if (isSyncSavePath(path)) return 'save'
+  return 'ai'
+}
 
 /**
  * 检查请求是否应被频率限制
  * @returns true 表示限制（拒绝），false 表示放行
  */
-export function isRateLimited(deviceId: string, now: number = Date.now()): boolean {
-  const entry = buckets.get(deviceId)
+export function isRateLimited(
+  deviceId: string,
+  now: number = Date.now(),
+  bucket: RateBucket = 'ai'
+): boolean {
+  const key = `${deviceId}::${bucket}`
+  const limit = LIMITS[bucket]
+  const entry = buckets.get(key)
 
   if (!entry || now > entry.resetAt) {
     // 新窗口
-    buckets.set(deviceId, { count: 1, resetAt: now + WINDOW_MS })
+    buckets.set(key, { count: 1, resetAt: now + WINDOW_MS })
     return false
   }
 
-  if (entry.count >= MAX_REQUESTS_PER_MINUTE) {
+  if (entry.count >= limit) {
     return true
   }
 
@@ -44,22 +75,17 @@ export function isRateLimited(deviceId: string, now: number = Date.now()): boole
 }
 
 /**
- * 判断路径是否需要频率限制
- * 仅 /api/game/ 下非 sync-save 的 AI 端点需要
- */
-export function shouldRateLimit(path: string): boolean {
-  if (!path.startsWith(AI_ENDPOINT_PREFIX)) return false
-  if (path === SYNC_SAVE_PATH || path.startsWith(SYNC_SAVE_PATH + '?')) return false
-  return true
-}
-
-/**
  * 获取剩余次数（调试用）
  */
-export function getRemaining(deviceId: string, now: number = Date.now()): number {
-  const entry = buckets.get(deviceId)
-  if (!entry || now > entry.resetAt) return MAX_REQUESTS_PER_MINUTE
-  return Math.max(0, MAX_REQUESTS_PER_MINUTE - entry.count)
+export function getRemaining(
+  deviceId: string,
+  now: number = Date.now(),
+  bucket: RateBucket = 'ai'
+): number {
+  const limit = LIMITS[bucket]
+  const entry = buckets.get(`${deviceId}::${bucket}`)
+  if (!entry || now > entry.resetAt) return limit
+  return Math.max(0, limit - entry.count)
 }
 
 /**

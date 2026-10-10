@@ -44,11 +44,20 @@
 
 ### 频率限制
 
-- 中间件：[server/middleware/rate-limit.ts](file:///d:/code/codeWork/jintian-1851/server/server/middleware/rate-limit.ts)
-- 范围：`init-factions` / `generate-event` / `resolve-decision` / `npc-actions` / `advisor-chat` / `advisor-briefing` / `faction-negotiate` 七个 AI 端点
-- 限制：按 `deviceId`（请求头 `x-device-id`）每分钟最多 10 次
+- 中间件：[server/middleware/rate-limit.ts](file:///d:/code/codeWork/jintian-1851/server/server/middleware/rate-limit.ts)，按 `deviceId`（请求头 `x-device-id`）**分两个桶**独立计数
 - 超限：HTTP 429 + `{ "ok": false, "error": { "code": "RATE_LIMITED", "message": "请求过于频繁，请稍后再试" } }`
-- **`sync-save` 不受频率限制**（非 AI 调用）
+
+| 桶 | 覆盖端点 | 上限 |
+|---|---|---|
+| `ai` | 7 个 AI 端点（`init-factions` / `generate-event` / `resolve-decision` / `npc-actions` / `advisor-chat` / `advisor-briefing` / `faction-negotiate`）+ 存档读写 `GET/DELETE /api/game/saves` | 10 次/分钟 |
+| `save` | `POST /api/game/sync-save` | 30 次/分钟 |
+
+> **为什么分桶而不是把 `sync-save` 也塞进 `ai` 桶**：正常一回合客户端就要发
+> generate-event + advisor-briefing + npc-actions + resolve-decision + sync-save 共 4-5 个请求，
+> 共用 10 次/分钟会让手快的玩家两三个回合就被 429 卡住。
+> **为什么不能再放任 `sync-save` 不限流**：它此前是唯一无上限的写端点，
+> 每次携带一个新 `saveId` 就插入一行，可被用来把 44G 的系统盘写满。
+> 存档读写 `saves` 走 `ai` 桶（它们能批量读删，正常客户端每分钟远不到 10 次）。
 
 ### 并发锁
 
@@ -898,7 +907,10 @@ x-device-id: {设备指纹}
 | 403 | `SAVE_FORBIDDEN` | `saveId` 已存在且归属于其他 `deviceId`（禁止覆盖他人存档） |
 | 500 | `DB_ERROR` | 数据库写入失败 |
 
-> sync-save **不受频率限制**，**不使用并发锁**（无 race 风险，服务端权威方案保证）。
+> sync-save 走**独立的 `save` 桶**（30 次/分钟，不与 AI 端点的 10 次/分钟配额互相挤占），
+> 但**不使用并发锁**（无 race 风险，服务端权威方案保证）。
+> 此前它完全不受任何频率限制，是所有写端点里唯一无上限的一个：
+> 每次携带新 `saveId` 就插入一行，可被用来把服务器磁盘写满。
 
 ---
 
