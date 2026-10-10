@@ -39,6 +39,13 @@ export interface SSECallbacks {
    * @param result 调用结果；工具失败时为 { error, detail }
    */
   onToolResult?: (toolName: string, result: unknown) => void
+  /**
+   * 收到完整结果对象（generate-event 流式模式专用）
+   *
+   * 服务端在生成完成后推送 { event, fallback? } 帧：delta 只用于渐进显示，
+   * 最终可交互的结构化数据靠这一帧交付（选项与效果必须完整后才能渲染）。
+   */
+  onEvent?: (event: unknown, meta?: { fallback?: boolean }) => void
   onDone: () => void
   onError: (code: string) => void
 }
@@ -196,6 +203,9 @@ function processSSEText(
         } else if (obj.type === 'tool-result' && typeof obj.toolName === 'string') {
           // T2.4：工具调用结果（result 透传，工具失败时为 { error, detail }）
           callbacks.onToolResult?.(obj.toolName, obj.result)
+        } else if (obj.event && typeof obj.event === 'object') {
+          // generate-event 流式：完整事件对象（fallback=true 表示走了预置事件降级）
+          callbacks.onEvent?.(obj.event, { fallback: obj.fallback === true })
         }
       }
     } catch {

@@ -14,7 +14,7 @@
  */
 
 import { createOpenAI } from '@ai-sdk/openai'
-import { generateObject } from 'ai'
+import { generateObject, streamText } from 'ai'
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
@@ -26,6 +26,7 @@ import { getRandomFallbackEvent } from '../../runtime/fallback-events'
 import { STORY_CHAINS } from '../../runtime/story-chains'
 import { createTools, type ToolContext } from '../../utils/tool-context'
 import { searchEventMemories, writeEventMemory } from '../../utils/memory'
+import { extractEventJson, extractPartialField } from '../../utils/event-json'
 import type { ChainNode, PendingChainNode, StoryChain } from '../../../types/game'
 
 // 5 分钟 TTL 缓存
@@ -115,6 +116,42 @@ interface ResolvedChain {
   event: z.infer<typeof eventSchema>
   source: 'pending-chain' | 'time-window'
 }
+
+// ====================== 流式（SSE）支持 ======================
+//
+// 背景：网关存在「快实例 / 慢实例」，慢实例上生成 300+ tokens 的事件要 40-60s，
+// 玩家只能干等。实测流式 TTFB 稳定在 0.5-1.1s，因此提供流式模式：
+//   - 生成过程中持续推送 delta（尽力提取出的可读标题/描述片段），前端可渐进显示
+//   - 生成完成后推送 { event } 完整事件对象，再推 [DONE] 结束
+// 协议与 advisor-chat 一致（data: JSON 帧 \n\n），前端 useSSE 消费。
+//
+// 开关：?stream=1 或 Accept: text/event-stream；不开启时行为与改造前完全一致。
+
+/** 流式响应句柄（Nitro 的 node.res，此处只用到 write/end） */
+interface SseStream {
+  write: (chunk: string) => void
+  end: () => void
+}
+
+/** 写一帧 SSE 数据 */
+function writeSseFrame(res: SseStream, payload: unknown): void {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`)
+}
+
+/** 取 Nitro 事件的底层响应流 */
+function getSseStream(event: unknown): SseStream {
+  return (event as { node: { res: SseStream } }).node.res
+}
+
+/** 流式模式：推送完整事件并结束流 */
+function endSseWithEvent(event: unknown, ev: z.infer<typeof eventSchema>): void {
+  const res = getSseStream(event)
+  writeSseFrame(res, { event: ev })
+  res.write('data: [DONE]\n\n')
+  res.end()
+}
+
+// 说明：extractPartialField / extractEventJson 已抽到 utils/event-json.ts（便于单测），在此引入使用
 
 /**
  * 在 STORY_CHAINS 中查找指定 chainId/nodeId 的节点
@@ -225,11 +262,24 @@ export default defineEventHandler(async (event) => {
     attributeShortfall
   } = parseResult.data
 
+  // 流式开关：?stream=1 或 Accept: text/event-stream（未开启时行为与改造前完全一致）
+  const wantStream =
+    getQuery(event)?.stream === '1' || (getHeader(event, 'accept') ?? '').includes('text/event-stream')
+
   // 2. 检查缓存（含剧情链状态）
   const cacheKey = computeCacheKey(saveId, turn, stateSnapshot, pendingChainNodes, completedChainIds, activeChainIds)
   const cached = getCached<z.infer<typeof eventSchema>>(cacheKey)
   if (cached) {
     setHeader(event, 'X-Cache', 'HIT')
+    if (wantStream) {
+      // 缓存命中无需生成：直接推送事件并结束（前端无感知差异）
+      setResponseHeader(event, 'Content-Type', 'text/event-stream')
+      setResponseHeader(event, 'Cache-Control', 'no-cache, no-transform')
+      setResponseHeader(event, 'Connection', 'keep-alive')
+      setResponseHeader(event, 'X-Accel-Buffering', 'no')
+      endSseWithEvent(event, cached)
+      return
+    }
     return { ok: true, data: { event: cached } }
   }
 
@@ -279,6 +329,15 @@ export default defineEventHandler(async (event) => {
       setHeader(event, 'X-Cache', 'MISS')
       setHeader(event, 'X-Event-Source', resolved.source)
       if (chainFallback) setHeader(event, 'X-Fallback', 'true')
+      if (wantStream) {
+        // 剧情链事件是预置内容，无需生成：直接推送
+        setResponseHeader(event, 'Content-Type', 'text/event-stream')
+        setResponseHeader(event, 'Cache-Control', 'no-cache, no-transform')
+        setResponseHeader(event, 'Connection', 'keep-alive')
+        setResponseHeader(event, 'X-Accel-Buffering', 'no')
+        endSseWithEvent(event, resolved.event)
+        return
+      }
       return { ok: true, data: { event: resolved.event } }
     }
 
@@ -365,6 +424,88 @@ export default defineEventHandler(async (event) => {
       attributeShortfall,
       dedupEvents
     })
+
+    // ===== 流式模式（?stream=1 / Accept: text/event-stream）=====
+    // 慢实例上整包等待要 40-60s，流式让前端在 1s 内就开始收到内容。
+    // 非流式请求完全不走这段，行为与改造前一致。
+    if (wantStream) {
+      setResponseHeader(event, 'Content-Type', 'text/event-stream')
+      setResponseHeader(event, 'Cache-Control', 'no-cache, no-transform')
+      setResponseHeader(event, 'Connection', 'keep-alive')
+      // 关闭 Nginx 缓冲，否则 SSE 会被攒着一起发（上线清单里也要求 SSE 关闭缓冲）
+      setResponseHeader(event, 'X-Accel-Buffering', 'no')
+      setHeader(event, 'X-Cache', 'MISS')
+      setHeader(event, 'X-Event-Source', 'llm')
+      if (chainFallback) setHeader(event, 'X-Fallback', 'true')
+      if (toolFallback) setHeader(event, 'X-Tool-Fallback', 'true')
+
+      const res = getSseStream(event)
+      try {
+        const result = streamText({
+          model,
+          prompt,
+          maxOutputTokens: 2000,
+          // 用宽松 JSON 模式而非 structuredOutputs：实测流式下 json_object 解析成功率 5/5，
+          // 且不需要把完整 schema 作为输入 token 发送（省输入、也省慢实例上的排队时间）
+          providerOptions: { openai: { response_format: { type: 'json_object' } } },
+          // 流式超时给到 45s（非流式是 30s×2 次重试）：
+          // 1) 玩家已看到渐进内容，等待容忍度高于「整包干等」，不必急着砍
+          // 2) 实测慢实例上生成常需 30-60s，30s 会让已生成的内容全部作废转为降级事件
+          // 3) 流式分支无法像非流式那样静默重试（流已开始推给前端），只能一次给足时间
+          abortSignal: AbortSignal.timeout(45_000),
+          onFinish: ({ usage }) => logLlmUsage('generate-event-stream', usage, { saveId, turn })
+        })
+
+        let full = ''
+        let sentTitle = ''
+        let sentDesc = ''
+        for await (const part of result.fullStream) {
+          if (part.type !== 'text-delta') continue
+          full += part.text
+          // 尽力提取已生成部分，只把「新增字符」作为 delta 推送（前端即可渐进显示）
+          const title = extractPartialField(full, 'title')
+          const desc = extractPartialField(full, 'description')
+          if (title.length > sentTitle.length) {
+            const delta = title.slice(sentTitle.length)
+            sentTitle = title
+            writeSseFrame(res, { delta })
+          }
+          if (desc.length > sentDesc.length) {
+            const delta = desc.slice(sentDesc.length)
+            sentDesc = desc
+            writeSseFrame(res, { delta })
+          }
+        }
+
+        const parsed = extractEventJson(full)
+        const validated = parsed ? eventSchema.safeParse(parsed) : null
+        if (!validated || !validated.success) {
+          throw new Error(validated ? `schema 校验失败: ${validated.error.issues.length} 项` : 'JSON 解析失败')
+        }
+        const ev = validated.data
+        setCached(cacheKey, ev, CACHE_TTL_MS)
+        void writeEventMemory({
+          saveId,
+          turn,
+          eventId: randomUUID(),
+          eventType: ev.eventType,
+          content: `${ev.title} ${ev.description}`
+        })
+        writeSseFrame(res, { event: ev })
+        res.write('data: [DONE]\n\n')
+        res.end()
+        return
+      } catch (err) {
+        console.error('[generate-event] 流式生成失败，降级返回预置事件:', err)
+        const fb = getRandomFallbackEvent()
+        setCached(cacheKey, fb, CACHE_TTL_MS)
+        // 降级时 header 已发出，改用帧内字段告知前端
+        writeSseFrame(res, { event: fb, fallback: true })
+        res.write('data: [DONE]\n\n')
+        res.end()
+        return
+      }
+    }
 
     // 重试 1 次
     let lastErr: unknown
