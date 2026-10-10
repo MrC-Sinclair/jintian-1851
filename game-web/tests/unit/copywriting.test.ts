@@ -149,7 +149,7 @@ describe('常量文案非空校验', () => {
 
   it('TERM_EXPLANATIONS 包含综合实力解释', () => {
     expect(TERM_EXPLANATIONS.overallPower).toContain('综合实力')
-    expect(TERM_EXPLANATIONS.overallPower).toContain('90')
+    expect(TERM_EXPLANATIONS.overallPower).toContain('85')
   })
 
   it('EMPTY_TEXT 所有值为非空字符串', () => {

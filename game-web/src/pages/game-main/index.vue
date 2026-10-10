@@ -526,7 +526,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     title: '当前焦点',
     content:
-      '顶部常驻 FocusPanel：综合实力进度条（达到 90 胜利）、危机预警（属性 <30 红色高亮）、本回合建议（AI 军师生成）。',
+      '顶部常驻 FocusPanel：综合实力进度条（达到 85 胜利）、危机预警（属性 <30 红色高亮）、本回合建议（AI 军师生成）。',
     targetKey: 'focus-panel'
   },
   {
@@ -542,7 +542,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     title: '游戏目标',
-    content: '底部可折叠 GoalPanel：长期目标是综合实力 ≥ 90（胜利），任一属性 ≤ 0（失败）。点击可展开查看详情。',
+    content: '底部可折叠 GoalPanel：长期目标是综合实力 ≥ 85（胜利），任一属性 ≤ 0（失败）。点击可展开查看详情。',
     targetKey: 'goal-panel'
   }
 ]

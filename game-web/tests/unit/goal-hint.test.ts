@@ -33,8 +33,8 @@ describe('常量', () => {
     expect(CRISIS_THRESHOLD).toBe(30)
   })
 
-  it('VICTORY_THRESHOLD = 90', () => {
-    expect(VICTORY_THRESHOLD).toBe(90)
+  it('VICTORY_THRESHOLD = 85', () => {
+    expect(VICTORY_THRESHOLD).toBe(85)
   })
 })
 
@@ -50,11 +50,11 @@ describe('generateFocusHint - 综合实力计算边界', () => {
     expect(generateFocusHint(makeAttrs()).overallPower).toBe(50)
   })
 
-  it('全 89 时 overallPower = 89（未达胜利）', () => {
+  it('全 84 时 overallPower = 84（未达胜利）', () => {
     const hint = generateFocusHint(
-      makeAttrs({ military: 89, economy: 89, politics: 89, people: 89, diplomacy: 89 })
+      makeAttrs({ military: 84, economy: 84, politics: 84, people: 84, diplomacy: 84 })
     )
-    expect(hint.overallPower).toBe(89)
+    expect(hint.overallPower).toBe(84)
     expect(hint.isVictory).toBe(false)
   })
 
@@ -141,12 +141,12 @@ describe('getCrisis', () => {
 })
 
 describe('generateFocusHint - suggestion 生成规则', () => {
-  it('isVictory 分支：综合 ≥ 90 时 suggestion 提示即将胜利', () => {
+  it('isVictory 分支：综合达阈值时 suggestion 提示即将胜利', () => {
     const hint = generateFocusHint(
       makeAttrs({ military: 95, economy: 95, politics: 95, people: 95, diplomacy: 95 })
     )
     expect(hint.isVictory).toBe(true)
-    expect(hint.suggestion).toContain('90')
+    expect(hint.suggestion).toContain(String(VICTORY_THRESHOLD))
     expect(hint.suggestion).toContain('霸业')
   })
 
@@ -165,7 +165,7 @@ describe('generateFocusHint - suggestion 生成规则', () => {
     expect(hint.suggestion).toContain('稳步发展')
   })
 
-  it('胜利优先于危机（综合 ≥ 90 且某属性 < 30）', () => {
+  it('胜利优先于危机（综合达阈值且某属性 < 30）', () => {
     // military=15 触发危机，但其他 4 项 100 → 综合 = (15+400)/5 = 83 < 90，不胜利
     // 要触发胜利优先于危机，需要综合 ≥ 90 且某属性 < 30
     // 例如：military=20, 其他 4 项都 100 → (20+400)/5 = 84 < 90，仍不胜利
@@ -177,7 +177,7 @@ describe('generateFocusHint - suggestion 生成规则', () => {
     )
     expect(hint.isVictory).toBe(true)
     expect(hint.crisis).toBeNull()
-    expect(hint.suggestion).toContain('90')
+    expect(hint.suggestion).toContain(String(VICTORY_THRESHOLD))
   })
 })
 

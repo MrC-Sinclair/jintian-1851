@@ -75,7 +75,7 @@ describe('GoalPanel - 展开态内容', () => {
     const wrapper = mountPanel(true)
     const text = wrapper.text()
     expect(text).toContain('胜利条件')
-    expect(text).toContain('综合实力 ≥ 90')
+    expect(text).toContain('综合实力 ≥ 85')
   })
 
   it('渲染失败条件', () => {

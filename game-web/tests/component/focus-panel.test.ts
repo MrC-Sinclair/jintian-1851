@@ -2,7 +2,7 @@
  * @file FocusPanel.vue 组件渲染测试
  *
  * 覆盖 T1.7 验证要求：
- *   - 综合实力进度条渲染（数值、90 阈值刻度、胜利态）
+ * *   - 综合实力进度条渲染（数值、胜利阈值刻度、胜利态）
  *   - 危机渲染（属性 < 30 显示危机行）
  *   - 无危机渲染（全 ≥ 30 不显示危机行）
  *   - briefing 覆盖建议（briefing.suggestion 优先于规则 suggestion）
@@ -68,10 +68,10 @@ describe('FocusPanel - 综合实力进度条', () => {
     expect(wrapper.find('.focus-panel__power-value').text()).toBe('50/100')
   })
 
-  it('渲染 90 阈值刻度竖线与标签', () => {
+  it('渲染胜利阈值刻度竖线与标签（阈值 85）', () => {
     const wrapper = mountPanel(safeAttrs)
     expect(wrapper.find('.focus-panel__bar-threshold').exists()).toBe(true)
-    expect(wrapper.find('.focus-panel__bar-threshold-label').text()).toBe('90')
+    expect(wrapper.find('.focus-panel__bar-threshold-label').text()).toBe('85')
   })
 
   it('进度条宽度 = 综合实力百分比（全 50 → 50%）', () => {
@@ -183,7 +183,7 @@ describe('FocusPanel - 建议行（briefing 覆盖规则建议）', () => {
     const attrs: Attributes = { military: 90, economy: 90, politics: 90, people: 90, diplomacy: 90 }
     const wrapper = mountPanel(attrs)
     const text = wrapper.find('.focus-panel__suggestion-text').text()
-    expect(text).toContain('综合实力已达 90')
+    expect(text).toContain('综合实力已达 85')
   })
 
   it('briefing.suggestion 存在时覆盖规则建议', () => {

@@ -160,10 +160,10 @@ describe('checkEndConditions - 胜利', () => {
     expect(checkEndConditions(s)).toBe('victory')
   })
 
-  it('综合实力 < 90 不触发胜利', () => {
-    // 全 90 时 = 90 触发胜利；此处 military 降至 87 使加权 ≈ 89.46，取整 = 89 < 90
+  it('综合实力 < 85 不触发胜利', () => {
+    // 阈值下调到 85 后，用全 84 验证「未达线不判胜」（原用例取 89.46 已落在新阈值之上）
     const s = makeState({
-      attributes: { military: 87, economy: 90, politics: 90, people: 90, diplomacy: 90 }
+      attributes: { military: 84, economy: 84, politics: 84, people: 84, diplomacy: 84 }
     })
     expect(checkEndConditions(s)).toBe('continue')
   })

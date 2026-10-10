@@ -13,6 +13,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import {
+  ATTRIBUTE_MAX,
   DIPLOMACY_RULES,
   NEGOTIATION_LETTER_DELTA_LIMIT,
   canAfford,
@@ -154,6 +155,11 @@ export const useGameStore = defineStore('game', () => {
     if (normalized.troops !== undefined) newRes.troops += normalized.troops
     if (normalized.food !== undefined) newRes.food += normalized.food
     if (normalized.reputation !== undefined) newRes.reputation += normalized.reputation
+    // 五维封顶 100（game-design.md:32 的 0-100 刻度）。只夹上限：负值要原样保留，
+    // 由 checkEndConditions 判 ≤0 崩溃，这是 game-store.test.ts 显式锁住的设计
+    for (const key of Object.keys(newAttrs) as (keyof Attributes)[]) {
+      newAttrs[key] = Math.min(ATTRIBUTE_MAX, newAttrs[key])
+    }
     updateState({ attributes: newAttrs, resources: newRes })
   }
 

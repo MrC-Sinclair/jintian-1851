@@ -80,7 +80,7 @@ export function getCrisis(attributes: Attributes): Crisis | null {
  * 生成焦点提示（综合实力 + 危机 + 规则建议）
  *
  * 建议规则：
- * - 综合实力 ≥ 90：提示即将胜利
+ * - 综合实力 ≥ 胜利阈值：提示即将胜利
  * - 有危机：提示优先应对危机
  * - 无危机：提示稳步发展
  *
@@ -96,7 +96,8 @@ export function generateFocusHint(attributes: Attributes): FocusHint {
 
   let suggestion: string
   if (isVictory) {
-    suggestion = '综合实力已达 90，再坚持数回合即可成就霸业'
+    // 文案取常量，避免阈值调整后这里继续报旧数字
+    suggestion = `综合实力已达 ${VICTORY_THRESHOLD}，再坚持数回合即可成就霸业`
   } else if (crisis) {
     suggestion = `优先应对${crisis.name}危机`
   } else {

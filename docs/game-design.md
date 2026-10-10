@@ -29,7 +29,13 @@
 
 ### 5 维属性（Attributes）
 
-玩家势力以 5 维属性衡量综合实力，每维取值范围 0-100（崩溃阈值 ≤ 0，胜利阈值平均 ≥ 90）。
+玩家势力以 5 维属性衡量综合实力，每维取值范围 0-100（崩溃阈值 ≤ 0，胜利阈值平均 ≥ 85）。
+
+> **值域落地**：上限由 `stores/game.ts` 的 `applyEffects` 用 `ATTRIBUTE_MAX = 100` 夹住。
+> 此前只加不夹，实测军事涨到 129 超出刻度、进度条溢出，且单维堆叠就能把加权平均抬过胜利线
+> ——封顶前 200 局模拟胜率 99.5%，封顶后（阈值仍 90）掉到 48.5%，说明"必胜"其实是这个 bug 撑起来的。
+> **下限刻意不夹**：属性允许累加到负数，由 `checkEndConditions` 判 `≤ 0` 崩溃，
+> 保留真实赤字（`game-store.test.ts` 有断言锁住此行为）。封顶与阈值下调是同一次重新标定。
 
 | 属性 | 字段 | 含义 | 影响维度 |
 |---|---|---|---|
@@ -111,8 +117,12 @@ state = {
 ```
 
 - **时间起点**：1851 年 1 月（咸丰元年），与历史「金田起义」同年，首回合事件可触发历史剧情
-- **回合机制**：每回合推进 1 个月，1851-1 → 1851-2 → ... → 1912-12（时光尽头）
-- **最大回合数**：约 744 回合（62 年 × 12 月），实际单局 30-50 回合即决出胜负
+- **回合机制**：普通回合推进 1 个月；**剧情链锚点触发时做时光跳跃**——下一条链的 `startYear` 晚于当前日历时，
+  服务端随事件下发 `eventDate`（锚点年 1 月），日历直接推过去，并把描述改写为「【当前年—锚点年 年间】+ 链概述 + 节点描述」交代空档
+- **为什么必须跳**：200 局模拟实测单局中位 35 回合、区间 [23,51]，只靠「1 回合 = 1 月」日历只能走到 1853~1855 年，
+  而 14 条剧情链的锚点是 1851/1853/1856/1861/1862/1865/1871/1883/1894/1898/1899/1901/1904/1911——**12 条永不触发**，
+  「成就霸业（1851-1912）」沦为虚假承诺。跳跃只在链首判定，链内后续节点走 `pending-chain` 接续、日历停在链开始年代
+- **最大回合数**：约 744 回合（62 年 × 12 月）是理论值，实际单局 30-50 回合即决出胜负，其余年代由时光跳跃补足
 
 ---
 
@@ -334,8 +344,8 @@ function checkEndConditions(state): EndReason {
   if (attributes.people <= 0) return 'people_collapse'
   if (attributes.diplomacy <= 0) return 'diplomacy_collapse'
 
-  // 2. 综合实力 ≥ 90 —— 胜利
-  if (calcOverallPower(attributes) >= 90) return 'victory'
+  // 2. 综合实力 ≥ 85 —— 胜利
+  if (calcOverallPower(attributes) >= 85) return 'victory'
 
   // 3. 时光尽头 —— 时间硬上限
   if (date.year > 1912) return 'time_up'
@@ -349,13 +359,13 @@ function checkEndConditions(state): EndReason {
 
 | 阈值 | 值 | 含义 |
 |---|---|---|
-| `VICTORY_THRESHOLD` | 90 | 综合实力 ≥ 90 触发胜利 |
+| `VICTORY_THRESHOLD` | 85 | 综合实力 ≥ 85 触发胜利 |
 | `TIME_UP_YEAR` | 1912 | 年份 > 1912 触发时光尽头 |
 | 属性崩溃线 | 0 | 任一属性 ≤ 0 触发对应崩溃 |
 
 ### 优先级设计理由
 
-1. **属性崩溃 > 胜利**：崩溃是不可恢复的失败，应优先于胜利。若玩家属性同时满足「军事崩溃」与「综合实力 ≥ 90」（理论上不可能，因军事 ≤ 0 时综合实力最多 40），崩溃优先
+1. **属性崩溃 > 胜利**：崩溃是不可恢复的失败，应优先于胜利。若玩家属性同时满足「军事崩溃」与「综合实力 ≥ 85」（理论上不可能，因军事 ≤ 0 时综合实力最多 40），崩溃优先
 2. **胜利 > 时光尽头**：胜利是玩家成就，应优先于时间硬上限
 3. **时光尽头 > continue**：时间硬上限是兜底结局，确保游戏必能结束
 
@@ -402,7 +412,7 @@ type EndedReason = Exclude<EndReason, 'continue'>
 | 综合实力进度条 | `Math.round(overallPower)` 显示为 `XX/100`，`overallPercent` 取 `clamp(0, 100, overallPower)` 作为进度条宽度 |
 | 危机行 | 仅当 `getCrisis(attributes)` 非 null 时渲染，红色高亮，文案 `{属性名} {当前值}（濒临崩溃）` |
 | 本回合建议 | 优先用 AI 简报（`advisor-briefing` 返回的 `suggestion`）；AI 失败/降级时回退规则建议（`generateFocusHint` 生成） |
-| 胜利高亮 | `overallPower >= 90` 时进度条变金色（`isVictory` computed） |
+| 胜利高亮 | `overallPower >= VICTORY_THRESHOLD`（当前 85）时进度条变金色（`isVictory` computed） |
 | 剧情待续条 | `pendingChainNodes` 非空时渲染，浅米黄背景 `#FFF8E1` + 书卷图标 + 数量徽标（如「1 条」），点击展开链名/进度/简介/下节标题（`max-height` + `transition` 过渡） |
 
 ### GoalPanel（底部可折叠，默认折叠）
@@ -412,7 +422,7 @@ type EndedReason = Exclude<EndReason, 'continue'>
 | 元素 | 规则 |
 |---|---|
 | 长期目标 | 固定文案「成就霸业（1851-1912）」 |
-| 胜利条件 | 固定文案「综合实力 ≥ 90」 |
+| 胜利条件 | 文案由 `VICTORY_THRESHOLD` 常量渲染（当前 85），不再硬编码 |
 | 失败条件 | 固定文案「任一属性 ≤ 0」 |
 | 综合实力进度条 | 与 FocusPanel 同源 `overallPower`，但额外标注 **90 阈值刻度竖线**（`left: 90%`）+ 顶部「90」数字标签 |
 | InfoHint | 综合实力行附 InfoHint，hover/tap 显示 `TERM_EXPLANATIONS.overallPower` 解释文案 |
@@ -449,7 +459,7 @@ type EndedReason = Exclude<EndReason, 'continue'>
 | 常量 | 值 | 含义 |
 |---|---|---|
 | `CRISIS_THRESHOLD` | 30 | 属性 < 30 触发危机预警 |
-| `VICTORY_THRESHOLD` | 90 | 综合实力 ≥ 90 触发胜利 |
+| `VICTORY_THRESHOLD` | 85 | 综合实力 ≥ 85 触发胜利 |
 
 > 注意：危机阈值 30 与崩溃阈值 0 是两个不同概念。30 是「预警线」（提示玩家优先应对），0 是「崩溃线」（直接失败结局）。
 

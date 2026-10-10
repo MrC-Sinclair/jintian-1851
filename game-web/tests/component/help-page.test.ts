@@ -110,9 +110,9 @@ describe('HelpPage - 游戏背景', () => {
     expect(text).toContain('1851')
   })
 
-  it('提及玩家目标（综合实力 90）', () => {
+  it('提及玩家目标（综合实力 85）', () => {
     const wrapper = mountHelp()
-    expect(wrapper.text()).toContain('90')
+    expect(wrapper.text()).toContain('85')
   })
 })
 
@@ -256,7 +256,7 @@ describe('HelpPage - 胜利与失败', () => {
     const wrapper = mountHelp()
     const text = wrapper.text()
     expect(text).toContain('胜利条件')
-    expect(text).toContain('综合实力 ≥ 90')
+    expect(text).toContain('综合实力 ≥ 85')
   })
 
   it('渲染失败条件', () => {

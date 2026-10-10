@@ -171,6 +171,20 @@ describe('applyEffects', () => {
     expect(store.currentSave!.state.attributes.military).toBe(-50)
   })
 
+  it('属性封顶 100：正向溢出不保留，负向仍照常累加', () => {
+    const store = useGameStore()
+    store.setSave(createMockSave()) // military 起始 50
+
+    store.applyEffects({ military: 80 })
+    expect(store.currentSave!.state.attributes.military).toBe(100)
+
+    // 已在上限时继续给正向增量不再增长（此前可无上限堆到 129+，
+    // 单维堆叠能把综合实力轻松推过 90 胜利线）
+    store.applyEffects({ military: 5, economy: -10 })
+    expect(store.currentSave!.state.attributes.military).toBe(100)
+    expect(store.currentSave!.state.attributes.economy).toBe(40)
+  })
+
   it('同义词 army/soldiers/forces/兵 重命名为 troops（避免 LLM 写错字段名）', () => {
     const store = useGameStore()
     store.setSave(createMockSave())

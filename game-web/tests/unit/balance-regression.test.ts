@@ -10,6 +10,13 @@
  *   - 用兜底事件池 mock 掉 generate-event / npc-actions（真实降级路径），离线可复现
  *   - 连推 50 回合，采集 胜率 / 通关回合分布 / 崩溃维度分布
  *   - 同时作为后续调权重/产出值的「自动化平衡回归」基线
+ *
+ * 基线快照（2026-10-10，五维封顶 0-100 + 胜利阈值 90→85 之后，200 局）：
+ *   baseline    winRate=95.5%  avgTurns=36.2 median=35 range=[23,51] avgPower=85.2 minResource=-600
+ *   simple-npc  winRate=41.0%  avgTurns=46.1 median=47 range=[33,51] avgPower=82.2 minResource=-850
+ *   对比封顶前（属性可无上限堆叠、阈值 90）：baseline 99.5% / simple-npc 64.0%。
+ *   注意 bot 走的是「优先补短板、规避属性归零」的近最优策略，其胜率是**上界**，
+ *   不能直接当作人类玩家的胜率。
  */
 
 import { beforeEach, describe, expect, it } from 'vitest'

@@ -1,6 +1,6 @@
 <template>
   <view class="focus-panel">
-    <!-- 综合实力进度条（含 90 阈值刻度）+ InfoHint -->
+    <!-- 综合实力进度条（含胜利阈值刻度）+ InfoHint -->
     <view class="focus-panel__power">
       <view class="focus-panel__power-head">
         <text class="focus-panel__power-label">综合实力</text>
@@ -16,9 +16,11 @@
           :class="{ 'focus-panel__bar-fill--victory': isVictory }"
           :style="{ width: overallPercent + '%' }"
         />
-        <!-- 90 阈值刻度竖线 -->
-        <view class="focus-panel__bar-threshold" />
-        <text class="focus-panel__bar-threshold-label">90</text>
+        <!-- 胜利阈值刻度竖线（位置与数字都取 VICTORY_THRESHOLD，不能写死 90） -->
+        <view class="focus-panel__bar-threshold" :style="{ left: thresholdPercent }" />
+        <text class="focus-panel__bar-threshold-label" :style="{ left: thresholdPercent }">
+          {{ VICTORY_THRESHOLD }}
+        </text>
       </view>
     </view>
 
@@ -102,7 +104,7 @@
  * @file FocusPanel 当前焦点区块（置顶始终展开）
  *
  * 用途：游戏主界面顶部常驻信息条，让玩家一眼掌握当前局势焦点：
- *   1. 综合实力进度条（与 GoalPanel 同款，含 90 阈值刻度）
+ *   1. 综合实力进度条（与 GoalPanel 同款，含胜利阈值刻度）
  *   2. 危机提示行（属性 < 30 时显示，红色高亮）
  *   3. 建议行（AI 简报返回时覆盖规则建议）
  *
@@ -150,6 +152,14 @@ const overallPercent = computed(() => Math.max(0, Math.min(100, overallPower.val
 
 /** 是否已达胜利阈值 */
 const isVictory = computed(() => overallPower.value >= VICTORY_THRESHOLD)
+
+/**
+ * 胜利阈值在进度条上的刻度位置
+ *
+ * 进度条是 0-100 线性刻度，所以阈值数值直接就是百分比。
+ * 此前 CSS 里写死 left: 90%，阈值一改刻度就指错位置。
+ */
+const thresholdPercent = computed(() => `${VICTORY_THRESHOLD}%`)
 
 /** InfoHint 解释文案：综合实力（复用 copywriting.ts 统一术语解释） */
 const overallPowerHint = TERM_EXPLANATIONS.overallPower
@@ -257,12 +267,11 @@ function nextNodeTitleOf(node: PendingChainNode): string {
     }
   }
 
-  // 90 阈值刻度竖线
+  // 胜利阈值刻度竖线（left 由模板内联绑定 thresholdPercent，不写死数值）
   &__bar-threshold {
     position: absolute;
     top: -4rpx;
     bottom: -4rpx;
-    left: 90%;
     width: 2rpx;
     background-color: #5d4037;
     transform: translateX(-1rpx);
@@ -271,7 +280,6 @@ function nextNodeTitleOf(node: PendingChainNode): string {
   &__bar-threshold-label {
     position: absolute;
     top: -24rpx;
-    left: 90%;
     font-size: 20rpx;
     color: #5d4037;
     transform: translateX(-50%);

@@ -3,7 +3,7 @@
  *
  * 设计依据：design.md D5 + D10
  *   - 任一属性 ≤ 0 触发对应「势力崩溃」结局
- *   - 综合实力 ≥ 90 触发「胜利」结局
+ *   - 综合实力 ≥ 85 触发「胜利」结局
  *   - date.year > 1912 触发「时光尽头」结局
  *   - 否则继续游戏
  *
@@ -33,7 +33,7 @@ export function calcOverallPower(attrs: Attributes): number {
   const keys = Object.keys(POWER_WEIGHTS) as Array<keyof Attributes>
   const totalW = keys.reduce((s, k) => s + POWER_WEIGHTS[k], 0)
   const weighted = keys.reduce((s, k) => s + (attrs[k] ?? 0) * POWER_WEIGHTS[k], 0)
-  // 取整为 0-100 整数，与 5 维属性（整数）及 90 胜利阈值对齐，避免小数显示（如 43.6785）
+  // 取整为 0-100 整数，与 5 维属性（整数）及胜利阈值对齐，避免小数显示（如 43.6785）
   return Math.round(Math.max(0, Math.min(100, weighted / totalW)))
 }
 
@@ -56,7 +56,7 @@ export function checkEndConditions(
   if (attributes.people <= 0) return 'people_collapse'
   if (attributes.diplomacy <= 0) return 'diplomacy_collapse'
 
-  // 2. 综合实力 ≥ 90 胜利
+  // 2. 综合实力 ≥ VICTORY_THRESHOLD 胜利
   if (calcOverallPower(attributes) >= VICTORY_THRESHOLD) return 'victory'
 
   // 3. 时光尽头（年份超过 1912）

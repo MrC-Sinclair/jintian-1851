@@ -21,7 +21,7 @@
         <!-- 胜利条件 -->
         <view class="goal-panel__row">
           <text class="goal-panel__row-label goal-panel__row-label--win">胜利条件</text>
-          <text class="goal-panel__row-value">综合实力 ≥ 90</text>
+          <text class="goal-panel__row-value">综合实力 ≥ {{ VICTORY_THRESHOLD }}</text>
         </view>
 
         <!-- 失败条件 -->
@@ -49,6 +49,8 @@
  */
 
 import { ref } from 'vue'
+// 胜利条件文案直接取常量，避免改阈值时这里说谎（此前硬编码 90）
+import { VICTORY_THRESHOLD } from '@/utils/constants'
 
 const props = withDefaults(
   defineProps<{

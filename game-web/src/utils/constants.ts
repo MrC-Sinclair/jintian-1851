@@ -17,8 +17,24 @@ import type {
 /** 危机/短板阈值：属性 < 30 视为危机（事件权重提案复用此阈值，不另建常量） */
 export const CRISIS_THRESHOLD = 30
 
-/** 胜利阈值：综合实力 ≥ 90 */
-export const VICTORY_THRESHOLD = 90
+/**
+ * 胜利阈值：综合实力 ≥ 85
+ *
+ * 原值 90 是在「属性可无上限堆叠」的前提下标定的——单维冲到 129 就能把加权平均抬过线。
+ * 封顶 0-100 后重跑 200 局：最优策略 bot 胜率从 99.5% 掉到 48.5%，且 avgPower 88.2
+ * 说明大量对局卡在 89 附近撞回合上限。降到 85 是随封顶一起重新标定，不是单独调难度。
+ */
+export const VICTORY_THRESHOLD = 85
+
+/**
+ * 五维属性上限（game-design.md:32「每维取值范围 0-100」）
+ *
+ * 只夹上限、不夹下限：属性可以累加到负数，由 checkEndConditions 判 ≤0 崩溃，
+ * 这是 game-store.test.ts 里显式锁住的设计（负值保留真实赤字，便于展示与判定）。
+ * 此前 applyEffects 完全不夹，实测军事涨到 129 超出 0-100 刻度、进度条溢出，
+ * 且单维堆叠能把综合实力轻松推过胜利线。
+ */
+export const ATTRIBUTE_MAX = 100
 
 /** 事件短板偏好强度：+20% 方向性引导（game-design.md:570 示例） */
 export const SHORTFALL_BONUS = 20

@@ -24,7 +24,7 @@
         <text class="help__paragraph">
           咸丰元年（1851 年），天下动荡。太平军起事于广西，列强虎视于沿海，朝廷财政枯竭、八旗军力衰微。你将扮演一方势力领袖，在 1851-1912 这六十余年间，通过一项项决策与军师对话，尝试成就霸业——或亲眼见证它的终结。
         </text>
-        <text class="help__paragraph">你的目标：让所辖势力的综合实力提升到 90 以上，即可达成胜利结局。</text>
+        <text class="help__paragraph">你的目标：让所辖势力的综合实力提升到 85 以上，即可达成胜利结局。</text>
       </view>
 
       <!-- 2. 五类身份 -->
@@ -50,7 +50,7 @@
           <text class="help__section-title">五维属性</text>
           <InfoHint title="综合实力" :content="TERM_EXPLANATIONS.overallPower" />
         </view>
-        <text class="help__section-desc">综合实力 = 五维属性加权平均（政治、民心权重更高），达到 90 即胜利。任一属性 ≤ 0 即失败。</text>
+        <text class="help__section-desc">综合实力 = 五维属性加权平均（政治、民心权重更高），达到 85 即胜利。任一属性 ≤ 0 即失败。</text>
         <view
           v-for="attr in ATTRIBUTES_HELP"
           :key="attr.key"
@@ -141,7 +141,7 @@
         <text class="help__section-title">胜利与失败</text>
         <view class="help__item">
           <text class="help__item-name help__item-name--victory">胜利条件</text>
-          <text class="help__item-desc">综合实力 ≥ 90，达成霸业结局。</text>
+          <text class="help__item-desc">综合实力 ≥ 85，达成霸业结局。</text>
         </view>
         <view class="help__item">
           <text class="help__item-name help__item-name--defeat">失败条件</text>
@@ -305,7 +305,7 @@ const FAQ_LIST = [
   },
   {
     q: '什么时候会触发结局？',
-    a: '综合实力 ≥ 90 触发胜利结局；任一属性 ≤ 0 触发失败结局；1912 年末仍未达成胜利则触发时光尽头结局。'
+    a: '综合实力 ≥ 85 触发胜利结局；任一属性 ≤ 0 触发失败结局；1912 年末仍未达成胜利则触发时光尽头结局。'
   },
   {
     q: '存档会丢失吗？',
