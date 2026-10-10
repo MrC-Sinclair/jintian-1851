@@ -1,7 +1,9 @@
-# 金田：1851 — 本地开发 / 测试数据库
+# 金田：1851 — 本地开发 / 测试数据库（线上用同一份文件，见 openspec/pre-launch-checklist.md）
 # 启动：docker compose up -d
 # 开发库 sw_game 映射宿主机 5534，测试库 sw_game_test 映射宿主机 5533
 # 镜像：pgvector/pgvector:pg18（PostgreSQL 18 + pgvector 向量扩展，向量能力预留）
+# 卷挂载点：pg18 一律挂 /var/lib/postgresql，本地与线上相同 —— 挂载路径只由 PG 大版本决定，不由环境决定
+#   ⚠️ 禁止改成 /var/lib/postgresql/data（那是 PG17 及以前的写法），否则 pg18 容器直接 exit 1，理由见下方 volumes 注释
 # 默认用户/密码：sw_game / sw_game
 #   如需修改密码，请在仓库根目录 .env 设置 POSTGRES_PASSWORD，并同步 server/.env 的 DATABASE_URL 密码
 
@@ -17,7 +19,14 @@ services:
     ports:
       - "5534:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # ⚠️ PG18 起 PGDATA 变为版本化路径 /var/lib/postgresql/18/docker，镜像声明的 VOLUME 也随之改为父目录
+      # /var/lib/postgresql。若按旧写法挂到 /var/lib/postgresql/data，入口脚本会判定该挂载点「未被使用」
+      # 并直接 exit 1（它检测的是挂载点本身，与目录里有没有数据无关），容器根本起不来。
+      # 若日志报 "old databases"：说明卷内残留 PG17 及更早的数据目录，两种环境的处理完全不同 ——
+      #   本地开发/测试库：docker compose down -v 清卷重建，再到 server/ 执行 pnpm db:push 建表
+      #   线上生产库：⛔ 严禁 down -v（会清空线上数据）。PG17→18 不可直接复用旧数据目录，必须先
+      #     pg_dumpall 导出 → 用新卷启动 pg18 → 再导入（或 pg_upgrade）
+      - pgdata:/var/lib/postgresql
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sw_game} -d sw_game"]
@@ -36,7 +45,8 @@ services:
     ports:
       - "5533:5432"
     volumes:
-      - pgtestdata:/var/lib/postgresql/data
+      # 挂载点要求同上，禁止改回 /var/lib/postgresql/data
+      - pgtestdata:/var/lib/postgresql
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sw_game} -d sw_game_test"]

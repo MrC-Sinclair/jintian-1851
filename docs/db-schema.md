@@ -284,6 +284,7 @@ export type SelectFactionMemory = typeof factionMemories.$inferSelect
 | 问题 | 排查步骤 |
 |---|---|
 | 数据库连接失败 | `docker compose ps` → 端口 5534 是否占用 → `.env` 中 `DATABASE_URL` 是否正确 |
+| PostgreSQL 容器启动即退出（exit 1） | `docker compose logs postgres` 报 `old databases` / `unused mount/volume`：卷挂载点写错，或卷内残留 PG17 及更早的数据目录。PG18 必须挂 `/var/lib/postgresql`（**禁止** `/var/lib/postgresql/data`，理由见 `docker-compose.yml` 注释）；确认卷可丢弃后 `docker compose down -v` 清卷重建，再 `pnpm db:push` 建表 |
 | `pnpm db:push` 失败 | 检查 schema.ts 语法 → 检查 drizzle.config.ts 配置 → 检查数据库连通性 |
 | `pnpm db:push` 报 `42P16 column "id" is in a primary key` | **既有 `game_saves` 表的 pre-existing 工具链问题**（与记忆表无关）：PostgreSQL 18 将 `NOT NULL` 实现为命名约束，drizzle-kit 0.29 尝试 DROP 主键列的 NOT NULL 约束导致中止。记忆表本身的建表与索引已落地；彻底修复需将 drizzle-kit 升级到兼容 PG18 的版本。 |
 | 同步 POST 返回 500 | 检查 saveId 是否为合法 UUID → 检查 saveData 是否符合 zod schema → 查看服务端日志 `[sync-save POST] DB error` |
