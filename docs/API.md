@@ -66,7 +66,7 @@
   - 结构化输出：`generateObject()` + zod schema + `providerOptions.openai.structuredOutputs: false`
   - 流式输出：`streamText()` + 自定义 SSE 协议
 - thinking 控制：通过 [server/utils/siliconflow-fetch.ts](file:///d:/code/codeWork/jintian-1851/server/server/utils/siliconflow-fetch.ts) 的 `createSiliconFlowFetch(enableThinking?)` 在 fetch 层注入 `enable_thinking` 字段（避免被 `providerOptions.openai` zod schema 剥离）
-- 超时：`generateObject` 路径 30 秒（`AbortSignal.timeout(30_000)`），`advisor-briefing` 10 秒（短小简报），`advisor-chat` 流式 60 秒
+- 超时：`generateObject` 路径 30 秒（`AbortSignal.timeout(30_000)`），`advisor-briefing` 20 秒（实测 10s 会 100% 命中超时），`advisor-chat` 流式 60 秒
 
 ---
 
@@ -237,6 +237,30 @@ X-Tool-Fallback: true   # 仅当 get-recent-events 工具调用失败时存在
 
 - **缓存键**：`sha256(saveId + turn + sha256(stateSnapshot JSON) + sha256({ pendingChainNodes, completedChainIds, activeChainIds }))`，5 分钟 TTL，命中时响应头 `X-Cache: HIT` 直接返回。剧情链状态变化（如新挂起节点）会使缓存键变化，确保新回合拿到正确事件
 - **降级**：LLM 2 次重试均失败后返回预置事件（[fallback-events.ts](file:///d:/code/codeWork/jintian-1851/server/server/runtime/fallback-events.ts)），响应头 `X-Fallback: true`，响应体多 `fallback: true`
+
+### 流式模式（`?stream=1`）
+
+网关存在「快实例 / 慢实例」，慢实例上生成 300+ tokens 的事件要 40-60s，整包等待玩家完全无感知。
+请求带 `?stream=1` **或** `Accept: text/event-stream` 时，响应改为 SSE 流（协议与 `advisor-chat` 一致，
+`data: <JSON>\n\n`，结束推 `data: [DONE]`）：
+
+| 帧 | 含义 |
+|---|---|
+| `{ "delta": "…" }` | 已生成部分的**增量**文本。服务端用 `extractPartialField` 从未闭合的 JSON 片段里尽力读出 `title` / `description`，只推新增字符，前端可渐进显示 |
+| `{ "event": { … } }` | 完整事件对象（选项与效果必须完整后才可交互，故只在这一帧给） |
+| `{ "event": { … }, "fallback": true }` | 流式生成失败降级为预置事件。**降级时 header 已发出**，`X-Fallback` 无法补写，改用帧内字段告知前端 |
+| `data: [DONE]` | 流结束 |
+
+实现要点：
+
+- 流式走 `streamText` + `response_format: { type: 'json_object' }`（**不用** structuredOutputs）：
+  实测流式下 json_object 解析成功率 5/5，且不必把完整 schema 作为输入 token 发送，省输入也省排队
+- 超时 45s（非流式是 30s × 2 次重试）。流已开始推送就无法静默重试，只能一次给足时间
+- 缓存命中与剧情链预置事件**也走 SSE**：直接推 `{event}` + `[DONE]`，前端无感知差异
+- 响应头 `X-Accel-Buffering: no` 关闭 Nginx 缓冲；反向代理侧对应 Caddy `flush_interval -1`
+- 非流式请求完全不进这段代码，行为与改造前一致
+- 前端仅 **H5** 走流式（`useTurn.fetchEventWithStream` 判 `uniPlatform`）：小程序 chunked 兼容性不稳定，
+  且流式失败时回退到非流式 `post`，首帧超时放宽到 20s（对齐服务端 30s LLM 超时，避免慢实例被误判失败）
 
 ### 错误
 
@@ -446,6 +470,14 @@ x-device-id: {设备指纹}
 
 > 前端在「天下动静」区块中，成功行动与失败卡片合并计入「共 N 则」（总数 = 成功行动数 + 失败势力数）。
 
+### 末步兜底（空文本修复）
+
+每个 Agent 的步数预算为 `stopWhen: stepCountIs(5)`（E2E 模式 `stepCountIs(1)`）。若模型把步数全花在工具调用上，`streamText` 会以 `finishReason='tool-calls'` 结束且 `text` 为空串——**这不是异常，早期版本会把它直接记成「决策生成失败」**（实测约 10% 触发率，线上曾出现单回合 7 个 NPC 全失败）。
+
+现在检测到空 `text` 后追加一轮兜底：复用「已含工具结果的对话 + 原始用户指令」，但**不再注册 tools**，模型无路可查只能直接输出 JSON。该轮以 `npc-actions-finalize` 标签计入 `[llm-usage]` 日志，超时 15s（E2E 4s）。兜底轮仍无输出时，才计入 `failedFactionIds`。
+
+> 注意 `result.response.messages` 只含生成的 `assistant` / `tool` 消息，**不含 system 与首轮 user**，兜底轮需自行补回，否则请求里丢失玩家意图那一轮。
+
 ### 降级
 
 LLM 2 次重试均失败后返回空数组，响应头 `X-Fallback: true`，响应体多 `fallback: true`：
@@ -468,7 +500,7 @@ LLM 2 次重试均失败后返回空数组，响应头 `X-Fallback: true`，响�
 
 ## POST /api/game/advisor-briefing
 
-每回合开始时由 `useTurn.startTurn` 内部调用（非用户主动触发），让 LLM 给出当前局势总结 + 本回合建议，供 FocusPanel 顶部展示。源码：[advisor-briefing.post.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/advisor-briefing.post.ts)。
+每回合开始时由 `useTurn.startTurn` 内部调用（非用户主动触发，且**不 await**——事件就绪即交还玩家，简报异步后到），让 LLM 给出当前局势总结 + 本回合建议，供 FocusPanel 顶部展示。源码：[advisor-briefing.post.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/advisor-briefing.post.ts)。
 
 > 设计要点：
 > - 与 `advisor-chat` 不同，本接口**非流式**，使用 `generateObject` 一次返回结构化结果
@@ -543,7 +575,7 @@ x-device-id: {设备指纹}
 
 #### 2. 失败降级
 
-LLM 调用失败（含 10s 超时）时，返回空简报 + `X-Fallback: true` 响应头：
+LLM 调用失败（含 20s 超时）时，返回空简报 + `X-Fallback: true` 响应头：
 
 ```json
 {
@@ -557,8 +589,9 @@ LLM 调用失败（含 10s 超时）时，返回空简报 + `X-Fallback: true` �
 
 ### 超时与重试
 
-- **超时**：10 秒（`AbortSignal.timeout(10_000)`），短小简报超时即降级
+- **超时**：20 秒（`AbortSignal.timeout(20_000)`）。原值 10s 画在了实测延迟分布的中位数上（线上连续 8 次调用 8/8 卡在 10.09s 超时、静默返回空简报），等于该功能长期不可用；20s 覆盖实测 P99
 - **重试**：**不重试**（与 `generate-event` 等 2 次重试不同），失败立即降级返回空简报
+- **调用方不得 await 本接口**：`useTurn.startTurn` 发起后立刻返回事件让玩家可操作，简报回来再异步落地 `onBriefing`。慢返回因此不再拖住回合开始；前端用请求序号丢弃迟到的旧回合简报（见 `game-web/src/composables/useTurn.ts` 的 `briefingSeq`）
 - **理由**：简报是辅助信息（非核心玩法），失败降级不影响玩家继续游戏，无需重试浪费 token
 
 ### 错误

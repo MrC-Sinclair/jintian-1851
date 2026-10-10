@@ -211,6 +211,11 @@ describe('startTurn', () => {
     expect(onCrisis).not.toHaveBeenCalled()
   })
 
+  /** 排空微任务：简报已改为非阻塞，回调在 startTurn 返回后的微任务里才落地 */
+  const flushMicrotasks = async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve()
+  }
+
   it('T1.15：advisor-briefing 成功触发 onBriefing 回调', async () => {
     const store = useGameStore()
     store.setSave(createMockSave())
@@ -230,6 +235,7 @@ describe('startTurn', () => {
     const onBriefing = vi.fn()
     const { startTurn } = useTurn({ onBriefing })
     const event = await startTurn()
+    await flushMicrotasks()
 
     expect(onBriefing).toHaveBeenCalledOnce()
     expect(onBriefing).toHaveBeenCalledWith({
@@ -257,11 +263,83 @@ describe('startTurn', () => {
     const onBriefing = vi.fn()
     const { startTurn } = useTurn({ onBriefing })
     const event = await startTurn()
+    await flushMicrotasks()
 
     expect(onBriefing).toHaveBeenCalledWith(null)
     // 事件仍正常返回（briefing 失败不阻断主流程）
     expect(event).not.toBeNull()
     expect(event?.title).toBe('事件')
+  })
+
+  it('简报不阻塞回合开始：事件已返回时简报仍未落地', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    vi.mocked(post).mockResolvedValueOnce({
+      event: {
+        title: '事件',
+        description: '',
+        eventType: '随机',
+        options: [{ id: 'o1', label: '选项', effects: {} }]
+      }
+    })
+    let settleBriefing: (v: unknown) => void = () => {}
+    vi.mocked(post).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settleBriefing = resolve
+        }) as never
+    )
+
+    const onBriefing = vi.fn()
+    const { startTurn } = useTurn({ onBriefing })
+    const event = await startTurn()
+
+    // 关键断言：startTurn 没有等简报
+    expect(event?.title).toBe('事件')
+    expect(onBriefing).not.toHaveBeenCalled()
+
+    settleBriefing({ summary: '稍后到达', suggestion: '稍后建议' })
+    await flushMicrotasks()
+    expect(onBriefing).toHaveBeenCalledWith({ summary: '稍后到达', suggestion: '稍后建议' })
+  })
+
+  it('旧回合的慢简报不得覆盖新简报（briefingSeq 守卫）', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    const settles: Array<(v: unknown) => void> = []
+    // 按 URL 分派：事件立即返回，简报挂起等待手动 resolve
+    // （不用 mockResolvedValueOnce 队列，因为它是按调用顺序消费的，会串台）
+    vi.mocked(post).mockImplementation(((url: string) => {
+      if (url === '/api/game/generate-event') {
+        return Promise.resolve({
+          event: {
+            title: '事件',
+            description: '',
+            eventType: '随机',
+            options: [{ id: 'o1', label: '选项', effects: {} }]
+          }
+        })
+      }
+      return new Promise((resolve) => {
+        settles.push(resolve as (v: unknown) => void)
+      })
+    }) as never)
+
+    const onBriefing = vi.fn()
+    const { startTurn } = useTurn({ onBriefing })
+
+    await startTurn() // 发起简报 #1
+    await startTurn() // 发起简报 #2，#1 作废
+    expect(settles).toHaveLength(2)
+
+    settles[1]({ summary: '新简报', suggestion: '新建议' })
+    await flushMicrotasks()
+    expect(onBriefing).toHaveBeenCalledWith({ summary: '新简报', suggestion: '新建议' })
+
+    // #1 迟到：必须被丢弃，不能再回调
+    settles[0]({ summary: '旧简报', suggestion: '旧建议' })
+    await flushMicrotasks()
+    expect(onBriefing).toHaveBeenCalledTimes(1)
   })
 
   // ====================== T3.3：请求 body 携带剧情链运行时状态 ======================

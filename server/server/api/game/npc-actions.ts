@@ -2,9 +2,10 @@
  * @file POST /api/game/npc-actions — 多 Agent 并行生成 NPC 势力行动
  *
  * 设计文档 D4（G3）：每个活跃 NPC 势力作为独立 Agent 并行决策，
- * 每个 Agent 注册 4 个核心工具（createNpcTools），maxSteps=3（stopWhen: stepCountIs(3)）。
+ * 每个 Agent 注册 4 个核心工具（createNpcTools），stopWhen: stepCountIs(5)。
  * LLM 自主决定调用哪些工具、调用顺序（AGENTS.md「LLM 自主决策 = Agent」）。
  * 最终决策由 Agent 输出 JSON，runNpcAgent 解析为 NpcAction 结构。
+ * 步数被工具调用耗尽导致 text 为空时，走一次「不带 tools」的兜底调用强制出 JSON。
  *
  * 失败隔离（D4 / T3.3）：
  *   - 单个 NPC Agent 失败：不影响其他 NPC，加入 failedFactionIds，响应头 X-Partial-Failure: true
@@ -14,7 +15,7 @@
  */
 
 import { createOpenAI } from '@ai-sdk/openai'
-import { streamText, stepCountIs, type LanguageModel } from 'ai'
+import { streamText, stepCountIs, type LanguageModel, type ModelMessage } from 'ai'
 import { z } from 'zod'
 import { getModelCapabilities } from '../../config/models'
 import { createSiliconFlowFetch } from '../../utils/siliconflow-fetch'
@@ -229,6 +230,8 @@ async function runNpcAgent(
 
   const tools = createNpcTools(ctx)
   const system = buildNpcAgentPrompt(faction, ctx, memories ?? undefined)
+  const prompt = '请决策本回合行动'
+  const providerOptions = { openai: { structuredOutputs: true } }
   try {
     // E2E 测试模式：压缩 Agent 步数与超时，避免 6 个并行 Agent 拖垮整轮（~30s→~8s），
     // 生产环境恒关闭（见 e2e-test-mode.ts）。
@@ -236,15 +239,41 @@ async function runNpcAgent(
       model,
       system,
       tools,
-      stopWhen: testMode ? stepCountIs(1) : stepCountIs(3),
+      // 步数预算要包含「模型终于开口输出 JSON」那一步。只给 3 步时，连续查工具的 Agent
+      // 会在 finishReason='tool-calls' 上耗尽预算、text 为空串（实测约 10% 触发率），
+      // 表现为「NPC 决策生成失败」但没有任何异常。
+      stopWhen: testMode ? stepCountIs(1) : stepCountIs(5),
       maxOutputTokens: 1000,
-      prompt: '请决策本回合行动',
-      providerOptions: { openai: { structuredOutputs: true } },
+      prompt,
+      providerOptions,
       abortSignal: AbortSignal.timeout(testMode ? 8_000 : 30_000),
       onFinish: ({ usage }) => logLlmUsage('npc-actions', usage, { factionId: faction.id })
     })
 
-    const fullText = await result.text
+    let fullText = await result.text
+
+    // 末步兜底：预算被工具调用吃光时模型根本没输出文本。此时复用已含工具结果的对话，
+    // 但不再注册 tools —— 没有工具可调，模型只能直接给结论，比整轮重跑便宜且确定。
+    // 实测该形态下硅基流动接受「assistant(tool_calls)+tool」消息但不带 tools 参数。
+    if (!fullText.trim()) {
+      const { messages: generated } = await result.response
+      // response.messages 只含生成的 assistant/tool，不含 system 与原始 user，
+      // 两者都要补回，否则请求里没有用户意图那一轮
+      const forcedMessages: ModelMessage[] = [{ role: 'user', content: prompt }, ...generated]
+      const forced = streamText({
+        model,
+        system,
+        messages: forcedMessages,
+        maxOutputTokens: 1000,
+        providerOptions,
+        // 兜底轮无工具可查、单步即出，只给一半超时预算
+        abortSignal: AbortSignal.timeout(testMode ? 4_000 : 15_000),
+        onFinish: ({ usage }) =>
+          logLlmUsage('npc-actions-finalize', usage, { factionId: faction.id })
+      })
+      fullText = await forced.text
+    }
+
     const parsed = extractNpcActionJson(fullText)
     if (!parsed) {
       console.warn(`[npc-actions] NPC ${faction.name} 未返回可解析 JSON`)

@@ -132,7 +132,8 @@ agent 化改造改变了两处 AI 调用的形态，整体单局 token 成本上
 |---|---|---|---|
 | `advisor-chat`（纯文本轮） | 单步 `streamText` | 单步 `streamText`（无工具调用时等价） | 不变 |
 | `advisor-chat`（触发工具轮） | — | 军师先调工具（`get-recent-events` 等），工具结果回灌第二步再生成回复；请求额外携带工具定义 | 单轮输入 token **+40%~60%**（两步叠加，仅触发工具的轮次受影响） |
-| `npc-actions` | 单次结构化生成全部 NPC 行动 | 每个 active 势力独立 Agent 并行（`buildNpcAgentPrompt` + `createNpcTools`，`stopWhen: stepCountIs(3)`） | 随 active 势力数**线性上升**（N 个 Agent × 各自 system prompt + 最多 3 步） |
+| `npc-actions` | 单次结构化生成全部 NPC 行动 | 每个 active 势力独立 Agent 并行（`buildNpcAgentPrompt` + `createNpcTools`，`stopWhen: stepCountIs(5)`） | 随 active 势力数**线性上升**（N 个 Agent × 各自 system prompt + 最多 5 步） |
+| `npc-actions-finalize`（空文本兜底） | — | 某 Agent 步数被工具调用吃光导致 `text` 为空时，不带 tools 再跑一轮强制出 JSON | **仅失败时产生**（实测约 10% 的 Agent 触发），单步、输入含已完成的工具结果，约等于该 Agent 的一次额外调用 |
 | `generate-event` | 直接用请求体 `recentEvents` | 改由 `get-recent-events` 工具注入（失败降级回请求体，见 `X-Tool-Fallback`） | 基本不变（工具调用在进程内，无额外 LLM token） |
 
 **混合单回合估算（含工具调用与多 Agent）**：

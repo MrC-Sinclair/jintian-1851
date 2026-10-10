@@ -5,7 +5,8 @@
  *
  * 设计要点（详见 openspec/changes/improve-ux-playability/tasks.md T1.14）：
  *   - 模型：Qwen/Qwen3-8B + generateObject + createSiliconFlowFetch(false)（关闭思考）
- *   - 超时：10s（AbortSignal.timeout）
+ *   - 超时：20s（AbortSignal.timeout，实测线上 10s 会 100% 命中超时）
+ *   - 调用方（useTurn.startTurn）**不 await** 本接口，慢返回不会拖住回合开始
  *   - 失败降级：返回空简报 + X-Fallback: true header，不 throw（不阻断主流程）
  *   - 并发锁：不占用 concurrency-lock（无副作用，可与其他 AI 端点并发）
  *   - rate-limit：复用 server/middleware/rate-limit.ts（/api/game/ 路径自动生效）
@@ -53,8 +54,12 @@ const briefingSchema = z.object({
   suggestion: z.string().max(60)
 })
 
-/** 10s 超时（短小简报，超时即降级） */
-const BRIEFING_TIMEOUT_MS = 10_000
+/**
+ * 简报超时。原值 10s 画在了实测延迟分布的中位数上（线上连续 8 次调用 8/8 卡在 10.09s
+ * 超时、静默返回空简报），等于功能长期不可用。放宽到 20s 覆盖 P99。
+ * 代价由前端消化：advisor-briefing 已改为非阻塞，慢返回不再拖住回合开始。
+ */
+const BRIEFING_TIMEOUT_MS = 20_000
 
 /** 降级返回的空简报 */
 const FALLBACK_BRIEFING = { summary: '', suggestion: '' }

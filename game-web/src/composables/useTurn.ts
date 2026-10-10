@@ -3,7 +3,8 @@
  *
  * 完整回合流程（design.md D3）：
  *   startTurn(): 调用 generate-event 获取本回合事件
- *     - 事件成功后追加：危机检查（属性<30 触发 onCrisis）+ 调 advisor-briefing 获取 AI 简报（onBriefing）
+ *     - 事件成功后追加：危机检查（属性<30 触发 onCrisis）+ 发起 advisor-briefing 获取 AI 简报
+ *       （简报**不阻塞**回合开始，返回后再触发 onBriefing）
  *   makeDecision(optionId?): 选项决策（前端本地应用 effects）或自由输入（resolve-decision）
  *   endTurn(): npc-actions + 状态演化 + turn+1 + 持久化 + 结局判定
  *
@@ -13,6 +14,7 @@
 
 import { useGameStore } from '@/stores/game'
 import { useGameState } from '@/composables/useGameState'
+import { useSSE } from '@/composables/useSSE'
 import { post, postWithMeta, ApiError } from '@/utils/api'
 import { checkEndConditions } from '@/utils/end-conditions'
 import { getCrisis, type Crisis } from '@/utils/goal-hint'
@@ -92,10 +94,20 @@ export interface UseTurnOptions {
   /**
    * 回合开始后 AI 简报回调（T1.15）
    *
-   * 触发时机：startTurn 内 generate-event 成功后，调用 /api/game/advisor-briefing 获取 AI 简报，
-   * 成功传 briefing 对象，失败传 null（上层 FocusPanel 收到 null 时使用规则 suggestion 兜底）。
+   * 触发时机：startTurn 发起 /api/game/advisor-briefing 后**不等待**，请求返回时才触发
+   * （可能晚于玩家开始操作本回合）。成功传 briefing 对象，失败传 null
+   * （上层 FocusPanel 收到 null 时使用规则 suggestion 兜底）。
    */
   onBriefing?: (briefing: AdvisorBriefing | null) => void
+  /**
+   * 事件生成进度回调（流式，T6 优化）
+   *
+   * 网关慢实例上生成 300+ tokens 的事件要 40-60s，玩家只能干等。
+   * 流式模式下服务端边生成边推送已生成的标题/描述片段，这里收到累积文本，
+   * UI 可实时展示「正在生成…」，把不可感知的等待变成可见的进展。
+   * 仅在流式可用时触发（非 H5 端不触发）。
+   */
+  onEventProgress?: (partialText: string) => void
 }
 
 export function useTurn(options: UseTurnOptions = {}) {
@@ -103,11 +115,83 @@ export function useTurn(options: UseTurnOptions = {}) {
   const { save, applyEventOption } = useGameState()
 
   /**
+   * AI 简报请求序号（非阻塞后必需）
+   *
+   * 简报不再 await，玩家可能在它返回前就推进到下一回合；
+   * 若旧请求后到，会把上一回合的建议写进本回合，故每次发起前自增，回调里比对后再落地。
+   */
+  let briefingSeq = 0
+
+  /**
+   * 拉取本回合事件：优先流式，失败降级为非流式
+   *
+   * 为什么做流式：网关存在「快实例 / 慢实例」，慢实例上整包等待要 40-60s，
+   * 玩家完全无感知地干等。实测流式 TTFB 稳定在 0.5-1.1s，前端可边生成边展示。
+   *
+   * 降级策略：
+   *   - 非 H5 端（小程序 chunked 兼容性不稳定）直接走原非流式 post
+   *   - 流式失败（连接错误 / 首帧超时）回退到非流式 post，保持原有可用性
+   */
+  async function fetchEventWithStream(body: unknown): Promise<GenerateEventResponse> {
+    let isH5Env = false
+    try {
+      const p = uni.getSystemInfoSync().uniPlatform
+      isH5Env = p === 'web' || p === 'h5'
+    } catch {
+      isH5Env = false
+    }
+    if (!isH5Env) {
+      return post<GenerateEventResponse>('/api/game/generate-event', body)
+    }
+
+    const { connect } = useSSE()
+    try {
+      return await new Promise<GenerateEventResponse>((resolve, reject) => {
+        let settled = false
+        let received: GenerateEventResponse['event'] | null = null
+        let partial = ''
+        const finish = (fn: () => void): void => {
+          if (settled) return
+          settled = true
+          fn()
+        }
+        connect('/api/game/generate-event?stream=1', body, {
+          // 首帧超时放宽到 20s：服务端 LLM 超时是 30s，3s 默认值会把慢实例误判为失败
+          firstChunkTimeoutMs: 20_000,
+          callbacks: {
+            onChunk: (delta) => {
+              partial += delta
+              options.onEventProgress?.(partial)
+            },
+            onEvent: (ev) => {
+              received = ev as GenerateEventResponse['event']
+            },
+            onDone: () => {
+              finish(() =>
+                received
+                  ? resolve({ event: received })
+                  : reject(new Error('流式结束但未收到事件对象'))
+              )
+            },
+            onError: (code) => {
+              finish(() => reject(new Error(`流式失败: ${code}`)))
+            }
+          }
+        })
+      })
+    } catch (err) {
+      console.warn('[useTurn] 事件流式获取失败，降级为非流式:', err)
+      return post<GenerateEventResponse>('/api/game/generate-event', body)
+    }
+  }
+
+  /**
    * 开始新回合：调用 generate-event 获取事件
    *
    * 事件获取成功后追加（T1.15）：
    *   1. 危机检查：调 getCrisis 检查 5 维属性，存在 <30 的危机则触发 onCrisis 回调
-   *   2. AI 简报：调 /api/game/advisor-briefing 获取本回合建议，成功触发 onBriefing(briefing)，失败 onBriefing(null)
+   *   2. AI 简报：发起 /api/game/advisor-briefing（不 await），返回后触发 onBriefing(briefing)，
+   *      失败触发 onBriefing(null)；本函数不等它，事件就绪即返回，玩家可立刻操作
    *
    * 危机检查和 AI 简报失败均不阻断主流程，事件已写入 store 即视为回合开始成功。
    *
@@ -129,7 +213,7 @@ export function useTurn(options: UseTurnOptions = {}) {
 
     const s = store.currentSave
     try {
-      const res = await post<GenerateEventResponse>('/api/game/generate-event', {
+      const res = await fetchEventWithStream({
         saveId: s.saveId,
         turn: s.state.turn,
         stateSnapshot: s.state,
@@ -180,24 +264,29 @@ export function useTurn(options: UseTurnOptions = {}) {
         console.error('[useTurn] 危机检查失败:', err)
       }
 
-      // 2. AI 简报（异步，失败降级为 null，上层 FocusPanel 使用规则 suggestion 兜底）
-      try {
-        const briefingRes = await post<AdvisorBriefingResponse>(
-          '/api/game/advisor-briefing',
-          {
-            saveId: s.saveId,
-            turn: s.state.turn,
-            stateSnapshot: s.state
-          }
-        )
-        options.onBriefing?.({
-          summary: briefingRes.summary,
-          suggestion: briefingRes.suggestion
+      // 2. AI 简报（非阻塞：事件已就绪就交还给玩家，简报回来后自己落地。
+      //    实测该接口中位耗时 ~10s、P99 ~20s，await 在这里等于把每回合开始硬拖 10-20s，
+      //    与流式优化「让等待可见」的方向相反）
+      // briefingSeq：并发回合下慢返回的旧简报不能覆盖新回合的简报（防旧数据覆盖新数据）
+      const seq = ++briefingSeq
+      post<AdvisorBriefingResponse>('/api/game/advisor-briefing', {
+        saveId: s.saveId,
+        turn: s.state.turn,
+        stateSnapshot: s.state
+      })
+        .then((briefingRes) => {
+          if (seq !== briefingSeq) return
+          options.onBriefing?.({
+            summary: briefingRes.summary,
+            suggestion: briefingRes.suggestion
+          })
         })
-      } catch (err) {
-        console.error('[useTurn] AI 简报获取失败，降级为 null:', err)
-        options.onBriefing?.(null)
-      }
+        .catch((err) => {
+          console.error('[useTurn] AI 简报获取失败，降级为 null:', err)
+          // 已有更新的请求在途/已落地时不再回写 null，避免把新简报清空
+          if (seq !== briefingSeq) return
+          options.onBriefing?.(null)
+        })
 
       return gameEvent
     } catch (err) {

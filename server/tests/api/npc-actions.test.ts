@@ -261,4 +261,69 @@ describe('POST /api/game/npc-actions（多 Agent）', () => {
     expect(arg.sentiment).toBe('negative')
     expect(arg.content).toContain('挑衅')
   })
+
+  it('末步兜底：首轮 text 为空（步数被工具调用耗尽）时不带 tools 再跑一次并采用其结果', async () => {
+    const calls: any[] = []
+    streamTextMock.mockImplementation((opts: any) => {
+      calls.push(opts)
+      if (opts.tools) {
+        // 模拟 finishReason='tool-calls' 吃光步数：text 空串，但对话里已有工具结果
+        return {
+          text: Promise.resolve(''),
+          response: Promise.resolve({
+            messages: [
+              {
+                role: 'assistant',
+                content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'get-faction-info', input: {} }]
+              },
+              {
+                role: 'tool',
+                content: [
+                  {
+                    type: 'tool-result',
+                    toolCallId: 'c1',
+                    toolName: 'get-faction-info',
+                    output: { value: {} }
+                  }
+                ]
+              }
+            ]
+          })
+        } as any
+      }
+      return {
+        text: Promise.resolve(
+          JSON.stringify({ action: '备战', description: '兜底轮产出', effects: { military: 3 } })
+        )
+      } as any
+    })
+    readBodyMock.mockResolvedValueOnce(makeBody([makeFaction('qing-ting', '清廷', 0)]))
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.data.actions).toHaveLength(1)
+    expect(res.data.actions[0].action).toBe('备战')
+
+    const finalize = calls.find((c) => c.tools === undefined)
+    expect(finalize).toBeDefined()
+    // 兜底轮必须补回原始用户意图（response.messages 不含 system 与首轮 user），并复用工具结果
+    expect(finalize.messages[0]).toEqual({ role: 'user', content: '请决策本回合行动' })
+    expect(finalize.messages).toHaveLength(3)
+    expect(finalize.system).toBeTruthy()
+  })
+
+  it('末步兜底：兜底轮仍无输出时该 NPC 记为决策失败', async () => {
+    streamTextMock.mockImplementation(() =>
+      ({
+        text: Promise.resolve(''),
+        response: Promise.resolve({ messages: [] })
+      }) as any
+    )
+    readBodyMock.mockResolvedValueOnce(makeBody([makeFaction('qing-ting', '清廷', 0)]))
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.data.actions).toEqual([])
+    expect(res.data.failedFactionIds).toEqual(['qing-ting'])
+    // 两轮都跑过：首轮带 tools，兜底轮不带
+    expect(streamTextMock).toHaveBeenCalledTimes(2)
+  })
 })
