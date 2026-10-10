@@ -1,0 +1,128 @@
+# 金田：1851 — 线上部署编排（CVM 独立项目，与 mychat 那套互不影响）
+#
+# 用法（在服务器上，项目目录 /root/jintian）：
+#   docker compose -f deploy/docker-compose.deploy.yml --env-file deploy/.env up -d postgres
+#   docker compose -f deploy/docker-compose.deploy.yml --env-file deploy/.env up -d
+# 项目名固定 jintian，卷前缀 jintian_，不会和 mychat 的 deploy_* 撞名。
+#
+# 为什么端口不是 80/443：机器上 mychat 的 Caddy 已独占 80/443，且只有公网 IP 无域名，
+# 客户端按 IP 建 TLS 连接时 ClientHello 不带 SNI，两个具名站点无法在同端口区分。
+# 所以本项目另起一套监听 8443（HTTPS）/ 8081（跳转 HTTPS）。
+#
+# 为什么这里不放构建：2C2G 的机器跑 Nuxt + uni-app 构建会 OOM，
+# 产物一律本机 `pnpm build` / `pnpm build:h5` 后上传到 deploy/dist/。
+#
+# ⚠️ 更新产物的正确姿势：解包覆盖 dist/ 之后必须
+#   docker compose -f docker-compose.deploy.yml --env-file .env up -d --force-recreate app caddy
+# 单纯 `up -d` 不算配置变更、不会重建容器；而若解包前 rm -rf 过 dist/.output 或 dist/h5，
+# 容器的 bind mount 仍指向已删除的旧 inode，结果是新产物完全不生效——
+# 表现为接口仍返回旧版本行为、静态站直接 404（两者都实测踩过）。
+# 更稳的做法是不删目录、原地 tar -xzf 覆盖，可避开 inode 问题。
+
+name: jintian
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: jintian-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # ⚠️ 必须绑 127.0.0.1：写成 "5544:5432" 等于把数据库开放到公网，
+    # 而本机安全组 0.0.0.0/0 放行端口，一旦暴露就会被扫库。
+    # 这里回环映射只服务一个用途：本机 ssh -L 隧道跑 drizzle-kit push（表结构同步）。
+    # 5544 而非 5534/5444：避开 mychat 的 5444 与仓库开发用的 5534。
+    ports:
+      - "127.0.0.1:5544:5432"
+    volumes:
+      # PG18 起挂载点必须是 /var/lib/postgresql（挂 .../data 会让容器 exit 1，
+      # 完整原理与 PG17→18 的数据迁移路径见根目录 docker-compose.yml 注释）
+      - pgdata:/var/lib/postgresql
+      # pgvector 扩展初始化：与开发环境共用同一份 initdb 脚本
+      - ../docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # 2G 内存的机器要给容器设上限，否则 postgres 与 node 争抢时会被 OOM killer 随机杀
+    mem_limit: 512m
+
+  app:
+    # 只跑已构建好的 Nitro 产物，容器内不装依赖、不构建
+    image: node:22-alpine
+    container_name: jintian-api
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "server/index.mjs"]
+    volumes:
+      - ./dist/.output:/app:ro
+    environment:
+      # 运行时以 NUXT_ 前缀覆盖 runtimeConfig：
+      # 构建时 nuxt.config 已把本机 .env 的值烘进默认值，
+      # 不显式覆盖的话线上会拿本机的库地址和 key 去连，属于静默故障。
+      NUXT_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      NUXT_OPENAI_API_KEY: ${NUXT_OPENAI_API_KEY}
+      NUXT_OPENAI_BASE_URL: ${NUXT_OPENAI_BASE_URL}
+      NUXT_LLM_MODEL: ${NUXT_LLM_MODEL}
+      NUXT_ENABLE_BRIEFING: ${NUXT_ENABLE_BRIEFING}
+      # ⚠️ 同一批值还要以「无前缀」形式再给一遍：
+      # server/db/index.ts 读的是 process.env.DATABASE_URL，server/utils/embeddings.ts 读的是
+      # process.env.OPENAI_API_KEY —— runtimeConfig 不会反向写回 process.env，
+      # 只给 NUXT_ 前缀的话这两处会静默落到硬编码兜底（localhost:5534 / 空 key），
+      # 表现为「存档写不进去 + 事件向量记忆全部跳过」，而接口仍返回 200。
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      OPENAI_API_KEY: ${NUXT_OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${NUXT_OPENAI_BASE_URL}
+      LLM_MODEL: ${NUXT_LLM_MODEL}
+      # Nitro node server 默认 3000，显式写出便于排查
+      NUXT_PORT: "3000"
+      NODE_ENV: production
+    # 仅内部网络可达：不对公网暴露明文 HTTP，站点统一走 caddy 的 TLS 前置
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # 产物里没有 /health 路由，这里只判「进程是否已在监听并应答」：
+      # 任何 HTTP 响应（含 404）都算活着，连接失败才算不健康。
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/game/saves').then(()=>process.exit(0)).catch(()=>process.exit(1))"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    mem_limit: 512m
+
+  caddy:
+    image: caddy:2
+    container_name: jintian-web
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+      - "8081:8081"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # H5 静态产物（game-web/dist/build/h5 上传到此）
+      - ./dist/h5:/srv/h5:ro
+      # 自签证书只在服务器上生成，不入库，生成命令见 deploy/.env.example 注释
+      - ./certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: 128m
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

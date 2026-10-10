@@ -1,0 +1,58 @@
+# 金田：1851 — Caddy 站点配置（独立实例，监听 8443/8081）
+#
+# 为什么用自签证书：ACME 不给裸 IP 签发证书，而本项目只有公网 IP 没有域名。
+# 目的不是「证书可信」，而是把站点放进 HTTPS：crypto.randomUUID / navigator.clipboard
+# 只在安全上下文存在，http://IP:PORT 直连时这些 API 全部为 undefined，
+# 存档 ID 生成和复制按钮会整片失效。浏览器证书告警点「继续访问」即可。
+# 生成命令（在服务器 deploy/ 目录执行，certs/ 不入库）：
+#   openssl req -x509 -newkey rsa:2048 -sha256 -days 825 -nodes \
+#     -keyout certs/site.key -out certs/site.crt -subj "/CN=jintian-1851-cvm" \
+#     -addext "subjectAltName=IP:122.51.97.106,DNS:localhost"
+
+{
+	admin off
+	# 关掉自动 HTTPS：证书是自签的，不能让 caddy 去 ACME 抢着签发并改写站点
+	auto_https off
+}
+
+:8443 {
+	tls /etc/caddy/certs/site.crt /etc/caddy/certs/site.key
+
+	# ===== API 反代：必须排在静态 handle 之前 =====
+	# handle 之间互斥且按书写顺序匹配，写反了 /api 会被 try_files 兜成 index.html，
+	# 接口全部返回 200 + HTML 而不是数据。
+	handle /api/* {
+		reverse_proxy app:3000 {
+			# SSE 关键项：-1 表示每个 chunk 立刻刷给客户端，不攒响应体。
+			# generate-event?stream=1 靠这个才能做到首包 <1s 的渐进显示。
+			flush_interval -1
+			# 不设 caddy 侧读超时：generate-event 流式上限 45s 由服务端 abortSignal 控制，
+			# 代理层再叠一个超时会把「已推给玩家的流」中途掐断，比慢更难排查。
+			# 关掉可能干扰流式的传输压缩（gzip 攒块会让 SSE 阶段性卡住）
+			header_down -Content-Encoding
+		}
+	}
+
+	# ===== H5 静态站点 =====
+	handle {
+		root * /srv/h5
+		# 压缩只作用于静态资源，放在这个 handle 内就不影响上面的 API 分支
+		encode zstd gzip
+
+		# 入口不缓存：否则改版后玩家永远拿旧 index.html，引到已删除的 hash 资源上白屏
+		header /index.html Cache-Control "no-cache"
+		# uni-app 产物文件名带内容 hash，可长缓存
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+
+		# H5 走 history 路由（manifest.json 未配 hash 模式），
+		# 刷新 /pages/game-main 之类深链必须回落 index.html，否则 404
+		try_files {path} {path}/ /index.html
+		file_server
+	}
+}
+
+# 明文入口：只做跳转，省得有人停在非安全上下文里用不了 UUID/剪贴板。
+# 目标端口写死 8443 —— {host} 在这种按端口建站点的写法里会带上 :8081，跳过去就死了。
+:8081 {
+	redir https://122.51.97.106:8443{uri} permanent
+}
