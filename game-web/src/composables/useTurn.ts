@@ -20,6 +20,7 @@ import { checkEndConditions } from '@/utils/end-conditions'
 import { getCrisis, type Crisis } from '@/utils/goal-hint'
 import { calcAttributeShortfall } from '@/utils/attribute-shortfall'
 import { calcTurnYield } from '@/utils/turn-yield'
+import { calcResourcePenalty } from '@/utils/resource-penalty'
 import { SYSTEM_EVENT } from '@/utils/copywriting'
 import type {
   Attributes,
@@ -47,6 +48,8 @@ interface GenerateEventResponse {
     chainId?: string
     chainNodeId?: string
     chainProgress?: { current: number; total: number }
+    /** 时光跳跃目标年月：剧情链锚点晚于当前日历时由服务端下发 */
+    eventDate?: { year: number; month: number }
   }
 }
 
@@ -241,9 +244,19 @@ export function useTurn(options: UseTurnOptions = {}) {
         // 也供 makeDecision → applyEventOption 入队下一节点（否则剧情链无法推进）
         chainId: res.event.chainId,
         chainNodeId: res.event.chainNodeId,
-        chainProgress: res.event.chainProgress
+        chainProgress: res.event.chainProgress,
+        eventDate: res.event.eventDate
       }
       store.setEvent(gameEvent)
+
+      // 时光跳跃：剧情链锚点晚于当前日历时，把游戏日历直接推到锚点年月。
+      // 每回合只推进 1 个月、单局约 35 回合（实测中位），日历走不到 1856 年以后，
+      // 14 条剧情链里 12 条将永不触发；跳跃由服务端判定并随事件下发 eventDate。
+      const jump = gameEvent.eventDate
+      const cur = store.currentSave?.state.date
+      if (jump && cur && (jump.year > cur.year || (jump.year === cur.year && jump.month > cur.month))) {
+        store.updateState({ date: { year: jump.year, month: jump.month } })
+      }
 
       // ====================== T1.15+T3.2 事件成功后追加：危机检查 + AI 简报 ======================
       // 注意：这两步失败均不阻断主流程（事件已写入 store），仅在 catch 内 console.error
@@ -603,6 +616,23 @@ export function useTurn(options: UseTurnOptions = {}) {
         playerChoice: '',
         effects: { ...turnYield }
       })
+
+      // 3.6 资源枯竭惩罚（断粮→饥荒、兵员枯竭→溃散）：必须在产出之后算，
+      //     读 store 里的最新存量而不是进入 endTurn 时的快照
+      const liveResources = store.currentSave?.state.resources ?? s.state.resources
+      const penalty = calcResourcePenalty(liveResources)
+      if (penalty.reasons.length > 0) {
+        store.applyEffects(penalty.effects)
+        const note = penalty.reasons.join('；')
+        store.appendEvent({
+          turn: s.state.turn,
+          eventType: '系统',
+          title: note,
+          description: note,
+          playerChoice: '',
+          effects: { ...penalty.effects }
+        })
+      }
 
       // 4. turn+1, date 推进
       const nextMonth = s.state.date.month + 1

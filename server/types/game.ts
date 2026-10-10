@@ -67,6 +67,15 @@ export interface GameEvent {
   chainNodeId?: string
   /** 剧情进度（如 2/5，仅剧情链事件有值） */
   chainProgress?: { current: number; total: number }
+  /**
+   * 事件发生的历史年月（时光跳跃用）
+   *
+   * 仅当剧情链锚点年份晚于当前日历时由服务端下发：玩家可能只打了 12 回合，
+   * 但下一条链的历史节点在 1861 年，此时把日历直接推到该锚点，
+   * 否则「1 回合 = 1 月 + 单局 35 回合」下 14 条链里有 12 条永不触发。
+   * 前端在 startTurn 拿到事件后，若本字段晚于 state.date 则采用它作为新日历。
+   */
+  eventDate?: { year: number; month: number }
 }
 
 /** 剧情链节点 */

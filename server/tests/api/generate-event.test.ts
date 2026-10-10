@@ -48,7 +48,14 @@ const writeEventMemoryMock = vi.mocked(writeEventMemory)
 
 const SAVE_ID = '550e8400-e29b-41d4-a716-446655440000'
 
-function makeStateSnapshot(turn = 1, year = 1850) {
+/**
+ * 默认年份取 1912（全部剧情链锚点都已过去）。
+ *
+ * 旧默认值 1850 的作用是「不命中任何链 → 走 LLM 分支」，因为当时按 `startYear === 当前年`
+ * 严格匹配。改为「取下一条 startYear ≥ 当前年 的链」后，1850~1911 之间任何年份都会命中
+ * 未来锚点并触发时光跳跃，只有晚于最后一条链（1911）的年份才真正落到 LLM 分支。
+ */
+function makeStateSnapshot(turn = 1, year = 1912) {
   return {
     turn,
     date: { year, month: 1 },
@@ -232,8 +239,9 @@ describe('POST /api/game/generate-event', () => {
     expect(generateObjectMock).toHaveBeenCalledTimes(1)
   })
 
-  it('时间窗口前置未满足：甲午战争需洋务运动先完成', async () => {
-    // 1894 年，甲午战争前置 yang-wu-yun-dong 未完成 → 不触发甲午，走 LLM
+  it('前置未满足时跳过该链，取下一条无前置的链并时光跳跃', async () => {
+    // 1894 年，甲午战争前置 yang-wu-yun-dong 未完成 → 不触发甲午；
+    // 改取下一条 startYear ≥ 1894 且无前置的链（戊戌变法 1898），日历随之跳到 1898-01
     readBodyMock.mockResolvedValueOnce(
       makeBody(2, {
         stateSnapshot: {
@@ -242,12 +250,47 @@ describe('POST /api/game/generate-event', () => {
         }
       })
     )
-    const gameEvent = makeGameEvent()
-    generateObjectMock.mockResolvedValueOnce({ object: gameEvent } as any)
-    const res = (await handler(makeEvent())) as any
+    const event = makeEvent()
+    const res = (await handler(event)) as any
     expect(res.ok).toBe(true)
-    expect(res.data.event.chainId).toBeUndefined()
-    expect(generateObjectMock).toHaveBeenCalledTimes(1)
+    expect(res.data.event.chainId).toBe('wu-xu-bian-fa')
+    expect(res.data.event.eventDate).toEqual({ year: 1898, month: 1 })
+    expect((globalThis as any).setHeader).toHaveBeenCalledWith(event, 'X-Event-Source', 'time-window')
+    expect(generateObjectMock).not.toHaveBeenCalled()
+  })
+
+  it('时光跳跃：锚点晚于当前年时下发 eventDate 并补「岁月流逝」过场文案', async () => {
+    // 日历 1853，太平天国与捻军均已完成 → 下一条是第二次鸦片战争（1856）
+    readBodyMock.mockResolvedValueOnce(
+      makeBody(2, {
+        stateSnapshot: makeStateSnapshot(2, 1853),
+        completedChainIds: ['tai-ping-tian-guo', 'nian-jun-zhi-luan']
+      })
+    )
+    const res = (await handler(makeEvent())) as any
+    expect(res.data.event.chainId).toBe('er-ci-ya-pian')
+    expect(res.data.event.eventDate).toEqual({ year: 1856, month: 1 })
+    // 过场文案要交代空档年份与该链大势，不能让玩家觉得回合凭空跳了 3 年
+    // （链名由 EventCard 的角标单独展示，此处只补年代与史实概述）
+    expect(res.data.event.description).toContain('1853—1856')
+    expect(res.data.event.description).toContain('亚罗号事件')
+  })
+
+  it('时光跳跃只在链首触发：pending-chain 路径不下发 eventDate', async () => {
+    // 链内后续节点走 pending-chain 接续，日历应停在链开始的年代，
+    // 否则一条 5 节点的链会把时间往前推 5 次
+    readBodyMock.mockResolvedValueOnce(
+      makeBody(2, {
+        stateSnapshot: makeStateSnapshot(2, 1850),
+        pendingChainNodes: [
+          { chainId: 'tai-ping-tian-guo', nodeId: 'node-2', scheduledTurn: 3 }
+        ]
+      })
+    )
+    const res = (await handler(makeEvent())) as any
+    expect(res.data.event.chainId).toBe('tai-ping-tian-guo')
+    expect(res.data.event.chainNodeId).toBe('node-2')
+    expect(res.data.event.eventDate).toBeUndefined()
   })
 
   it('时间窗口前置满足：洋务运动完成后 1894 命中甲午', async () => {
@@ -292,7 +335,7 @@ describe('POST /api/game/generate-event', () => {
   it('兼容老客户端：不传剧情链字段时按 default([]) 处理', async () => {
     const gameEvent = makeGameEvent()
     generateObjectMock.mockResolvedValueOnce({ object: gameEvent } as any)
-    readBodyMock.mockResolvedValueOnce(makeBody(2, { stateSnapshot: makeStateSnapshot(2, 1850) }))
+    readBodyMock.mockResolvedValueOnce(makeBody(2, { stateSnapshot: makeStateSnapshot(2, 1912) }))
     const res = (await handler(makeEvent())) as any
     expect(res.ok).toBe(true)
     expect(res.data.event.chainId).toBeUndefined()
@@ -303,9 +346,9 @@ describe('POST /api/game/generate-event', () => {
 
   it('缓存键差异：同 turn 不同 pendingChainNodes 时缓存键不同', async () => {
     const gameEvent = makeGameEvent()
-    // 第一次：year=1850 不触发时间窗口，走 LLM 写入缓存
+    // 第一次：year=1912 已过全部锚点，不命中剧情链，走 LLM 写入缓存
     generateObjectMock.mockResolvedValueOnce({ object: gameEvent } as any)
-    readBodyMock.mockResolvedValueOnce(makeBody(2, { stateSnapshot: makeStateSnapshot(2, 1850), pendingChainNodes: [] }))
+    readBodyMock.mockResolvedValueOnce(makeBody(2, { stateSnapshot: makeStateSnapshot(2, 1912), pendingChainNodes: [] }))
     await handler(makeEvent())
 
     // 第二次：year=1851 触发时间窗口匹配（缓存键因 year 不同而不命中），返回剧情链首节点

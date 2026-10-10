@@ -6,7 +6,9 @@
  *
  * 三层触发优先级（D1）：
  *   1. 挂起节点（pendingChainNodes 非空）→ 不调 LLM，返回该节点 event（X-Event-Source: pending-chain）
- *   2. 时间窗口匹配（当前年份命中某剧情链 startYear）→ 不调 LLM，返回首节点（X-Event-Source: time-window）
+ *   2. 下一条剧情链（startYear 不早于当前年份的最早一条）→ 不调 LLM，返回首节点（X-Event-Source: time-window）
+ *      锚点年份晚于当前年份时下发 eventDate 做时光跳跃，否则「1 回合=1 月 + 单局约 35 回合」
+ *      下日历只走到 1853~1855 年，14 条链里 12 条永不触发
  *   3. LLM 自主生成 → 调 Qwen/Qwen3-8B + generateObject()（X-Event-Source: llm）
  *
  * 失败重试 1 次后降级 fallback-events.ts（池已扩充到 60 条）。
@@ -27,7 +29,7 @@ import { STORY_CHAINS } from '../../runtime/story-chains'
 import { createTools, type ToolContext } from '../../utils/tool-context'
 import { searchEventMemories, writeEventMemory } from '../../utils/memory'
 import { extractEventJson, extractPartialField } from '../../utils/event-json'
-import type { ChainNode, PendingChainNode, StoryChain } from '../../../types/game'
+import type { ChainNode, GameEvent, PendingChainNode, StoryChain } from '../../../types/game'
 
 // 5 分钟 TTL 缓存
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -108,7 +110,9 @@ const eventSchema = z.object({
     .max(4),
   chainId: z.string().optional(),
   chainNodeId: z.string().optional(),
-  chainProgress: z.object({ current: z.number(), total: z.number() }).optional()
+  chainProgress: z.object({ current: z.number(), total: z.number() }).optional(),
+  // 时光跳跃目标年月：剧情链锚点晚于当前日历时由服务端下发，前端据此推进日历
+  eventDate: z.object({ year: z.number().int(), month: z.number().int().min(1).max(12) }).optional()
 })
 
 /** 三层触发解析结果 */
@@ -167,31 +171,46 @@ function findChainNode(chainId: string, nodeId: string): { chain: StoryChain; no
 /**
  * 构造剧情链事件（注入 chainId/chainNodeId/chainProgress）
  */
-function buildChainEvent(chain: StoryChain, node: ChainNode, source: 'pending-chain' | 'time-window'): ResolvedChain {
+function buildChainEvent(
+  chain: StoryChain,
+  node: ChainNode,
+  source: 'pending-chain' | 'time-window',
+  currentYear: number
+): ResolvedChain {
   const current = chain.nodes.findIndex((n) => n.nodeId === node.nodeId) + 1
-  return {
-    event: {
-      ...node.event,
-      chainId: chain.chainId,
-      chainNodeId: node.nodeId,
-      chainProgress: { current, total: chain.nodes.length }
-    },
-    source
+  const event: GameEvent = {
+    ...node.event,
+    chainId: chain.chainId,
+    chainNodeId: node.nodeId,
+    chainProgress: { current, total: chain.nodes.length }
   }
+
+  // 时光跳跃：链的锚点年份晚于当前日历时，把日历推到锚点并补一段过场文案。
+  // 只在 time-window（链首节点按年表触发）这条路径判定；链内后续节点走 pending-chain 接续，
+  // 日历应停在链开始的年代，否则一条 5 节点的链会把时间往前推 5 次。
+  const jumpYears = source === 'time-window' ? chain.startYear - currentYear : 0
+  if (jumpYears > 0) {
+    event.eventDate = { year: chain.startYear, month: 1 }
+    event.description = `【${currentYear}—${chain.startYear} 年间】${chain.description} ${node.event.description}`
+  }
+  return { event, source }
 }
 
 /**
- * 时间窗口匹配：当前年份命中某剧情链 startYear 且满足前置/状态过滤
- * 同年份多链按 startYear 升序 + chainId 字典序选第一条
+ * 下一条可触发的剧情链：startYear **不早于**当前年份的最早一条
+ *
+ * 原实现要求 `startYear === 当前年`，日历一旦跨过那一年，该链就永久错过。
+ * 时光跳跃机制依赖「允许未来锚点」才能成立：跳跃的目标就是下一条链的 startYear。
+ * 同年份多链按 startYear 升序 + chainId 字典序取第一条。
  */
-function matchTimeWindow(
+function matchNextChain(
   year: number,
   completedChainIds: string[],
   activeChainIds: string[]
 ): { chain: StoryChain; node: ChainNode } | null {
   const candidates = STORY_CHAINS.filter(
     (c) =>
-      c.startYear === year &&
+      c.startYear >= year &&
       !completedChainIds.includes(c.chainId) &&
       !activeChainIds.includes(c.chainId) &&
       (c.prerequisiteChainIds ?? []).every((pre) => completedChainIds.includes(pre))
@@ -298,7 +317,7 @@ export default defineEventHandler(async (event) => {
   // 4. 获取锁
   const release = await acquireLock(saveId)
   try {
-    // ===== 三层触发优先级（挂起 > 时间窗口 > LLM）=====
+    // ===== 三层触发优先级（挂起 > 下一条剧情链 > LLM）=====
     let resolved: ResolvedChain | null = null
     let chainFallback = false
 
@@ -307,7 +326,7 @@ export default defineEventHandler(async (event) => {
       const pcn = pendingChainNodes[0]
       const found = findChainNode(pcn.chainId, pcn.nodeId)
       if (found) {
-        resolved = buildChainEvent(found.chain, found.node, 'pending-chain')
+        resolved = buildChainEvent(found.chain, found.node, 'pending-chain', stateSnapshot.date.year)
       } else {
         // 挂起节点 ID 找不到 → 告警 + 标记降级 + 继续走时间窗口/LLM
         console.error(`[generate-event] 挂起节点未找到：${pcn.chainId}/${pcn.nodeId}，降级到时间窗口/LLM`)
@@ -315,11 +334,11 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // 2) 时间窗口匹配
+    // 2) 下一条剧情链（锚点年份不早于当前年，晚于当前年时触发时光跳跃）
     if (!resolved) {
-      const tw = matchTimeWindow(stateSnapshot.date.year, completedChainIds, activeChainIds)
+      const tw = matchNextChain(stateSnapshot.date.year, completedChainIds, activeChainIds)
       if (tw) {
-        resolved = buildChainEvent(tw.chain, tw.node, 'time-window')
+        resolved = buildChainEvent(tw.chain, tw.node, 'time-window', stateSnapshot.date.year)
       }
     }
 

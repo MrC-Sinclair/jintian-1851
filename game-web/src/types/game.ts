@@ -104,6 +104,13 @@ export interface GameEvent {
   chainNodeId?: string
   /** 剧情进度（如 2/5，仅剧情链事件有值） */
   chainProgress?: { current: number; total: number }
+  /**
+   * 事件发生的历史年月（时光跳跃用，仅服务端下发剧情链锚点晚于当前日历时有值）
+   *
+   * startTurn 拿到事件后，若本字段晚于 state.date，则用它作为新的游戏日历，
+   * 使 1851-1912 的历史节点在 35 回合左右的单局内可达。
+   */
+  eventDate?: { year: number; month: number }
 }
 
 /** 历史事件记录（GameSave.events 数组元素） */

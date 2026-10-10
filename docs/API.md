@@ -207,15 +207,23 @@ x-device-id: {设备指纹}
 | `chainNodeId` | string | 当前节点 ID（如 `node-1`） |
 | `chainProgress` | `{ current, total }` | 第 `current`/`total` 节（如 `{1, 5}`） |
 | `options[].nextChainNodeId` | string（仅首节点选项携带） | 选择该选项后入队的下个节点 ID，供前端推进剧情链 |
+| `eventDate` | `{ year, month }`（**仅时光跳跃时返回**） | 该链锚点年份晚于当前游戏日历时的目标年月（恒为锚点年 1 月）。前端 `useTurn.startTurn` 据此把日历直接推到该年月 |
 
-> 普通（`LLM` 生成）事件不返回 `chainId`/`chainNodeId`/`chainProgress`；`options` 也不含 `nextChainNodeId`。
+**时光跳跃**：每回合只推进 1 个月，而实测单局中位 35 回合（通关模拟 200 局），日历只能走到
+1853~1855 年——14 条剧情链里 12 条永不触发。为此链的锚点年份若晚于当前年份，服务端下发
+`eventDate` 并把描述改写成 `【{当前年}—{锚点年} 年间】{链概述} {节点描述}`，交代这段空档。
+只在链首（`time-window` 路径）判定；链内后续节点走 `pending-chain` 接续，日历停在链开始的年代，
+否则一条 5 节点的链会把时间往前推 5 次。
+
+> 普通（`LLM` 生成）事件不返回 `chainId`/`chainNodeId`/`chainProgress`/`eventDate`；`options` 也不含 `nextChainNodeId`。
 
 ### 三层触发与响应 Header
 
 `generate-event` 按以下优先级决定事件来源，并在响应头 `X-Event-Source` 标注（源码见 [generate-event.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/generate-event.ts)）：
 
 1. **`pending-chain`（挂起节点优先）**：`pendingChainNodes` 非空时，直接返回其中首个节点的事件，**不调 LLM**，零额外 token 成本。节点 ID 找不到时降级到后续优先级并设 `X-Fallback: true`。
-2. **`time-window`（时间窗口匹配）**：当前年份 `stateSnapshot.date.year` 命中某剧情链 `startYear`，且未 `completed`/`active`、前置链已 `completed` → 返回该链首节点，**不调 LLM**。同年份多链按 `startYear` 升序 + `chainId` 字典序选第一条。
+2. **`time-window`（下一条剧情链）**：取 `startYear` **不早于**当前年份 `stateSnapshot.date.year` 的第一条链，且未 `completed`/`active`、前置链已 `completed` → 返回该链首节点，**不调 LLM**。多条候选按 `startYear` 升序 + `chainId` 字典序取第一条；锚点晚于当前年时附带 `eventDate` 触发时光跳跃。
+   > 旧实现要求 `startYear === 当前年`，日历一旦跨过那一年，该链就永久错过。改为「取下一条」是时光跳跃成立的前提。
 3. **`llm`（LLM 自主生成）**：以上都不满足时调 `generateObject()` 生成普通事件。
 
 > 剧情链事件（前两层）完全不消耗 LLM 额度，是扩充事件引擎"零成本增加历史沉浸"的核心设计。

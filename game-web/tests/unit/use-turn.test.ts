@@ -127,6 +127,68 @@ describe('startTurn', () => {
     expect(store.currentEvent?.title).toBe('事件1')
   })
 
+  it('时光跳跃：事件带 eventDate 且晚于当前日历时，把游戏年月推到锚点', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave()) // state.date = 1851-01
+    vi.mocked(post).mockResolvedValueOnce({
+      event: {
+        title: '定都天京',
+        description: '太平军攻陷江宁。',
+        eventType: '历史剧情',
+        options: [{ id: 'o1', label: '选项', effects: {} }],
+        chainId: 'tai-ping-tian-guo',
+        chainNodeId: 'node-2',
+        eventDate: { year: 1853, month: 1 }
+      }
+    })
+    vi.mocked(post).mockResolvedValueOnce({ summary: '', suggestion: '' })
+
+    const { startTurn } = useTurn()
+    const event = await startTurn()
+
+    expect(event?.eventDate).toEqual({ year: 1853, month: 1 })
+    expect(store.currentSave?.state.date).toEqual({ year: 1853, month: 1 })
+  })
+
+  it('时光跳跃：eventDate 早于或等于当前日历时不回拨时间', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave()) // state.date = 1851-01
+    vi.mocked(post).mockResolvedValueOnce({
+      event: {
+        title: '金田起义',
+        description: '桂平举旗。',
+        eventType: '历史剧情',
+        options: [{ id: 'o1', label: '选项', effects: {} }],
+        eventDate: { year: 1850, month: 6 }
+      }
+    })
+    vi.mocked(post).mockResolvedValueOnce({ summary: '', suggestion: '' })
+
+    const { startTurn } = useTurn()
+    await startTurn()
+
+    expect(store.currentSave?.state.date).toEqual({ year: 1851, month: 1 })
+  })
+
+  it('普通事件无 eventDate 时日历保持不变', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    vi.mocked(post).mockResolvedValueOnce({
+      event: {
+        title: '事件',
+        description: '',
+        eventType: '随机',
+        options: [{ id: 'o1', label: '选项', effects: {} }]
+      }
+    })
+    vi.mocked(post).mockResolvedValueOnce({ summary: '', suggestion: '' })
+
+    const { startTurn } = useTurn()
+    await startTurn()
+
+    expect(store.currentSave?.state.date).toEqual({ year: 1851, month: 1 })
+  })
+
   it('无存档返回 null', async () => {
     const { startTurn } = useTurn()
     const event = await startTurn()
