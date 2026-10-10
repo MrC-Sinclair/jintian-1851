@@ -32,3 +32,12 @@ Desktop.ini
 .env
 .env.*
 !.env.example
+
+# ===== AI 助手 / 手工测试的本地产物（只忽略、不删除：磁盘上仍有参考价值） =====
+# .workbuddy/memory 里是历次会话的决策笔记（如 PG18 挂载点为何不能改回 .../data），
+# 属于本地上下文而非源码，入库会与 docs/、openspec/ 重复且随工具版本漂移
+.workbuddy/
+# GUI 走查截图（19 张 / 1.6MB 二进制），验证结论已写进各提案 tasks.md，图本身不需要版本化
+gui-test-screenshots/
+# 某次工具导出的绝对路径文件清单，对本仓库无任何语义
+.files.txt
