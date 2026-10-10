@@ -1,0 +1,7 @@
+# Shell 脚本必须以 LF 入库
+#
+# 在 Windows 工作副本上写出的脚本常带 CRLF，git 默认不做转换就会把 CRLF 存进对象库；
+# 别人（或线上容器 / CI）在 Linux 上 checkout 后，shebang 行会变成 `#!/bin/sh\r`，
+# 执行时报 `No such file or directory` 这类完全看不出根因的错误。
+# 这里只对 .sh 强制 LF，不碰其他文件，避免给整仓库带来一次性的大规模行尾改写。
+*.sh text eol=lf

@@ -35,6 +35,19 @@
 - [x] `pnpm db:push` 同步 schema：经 SSH 隧道执行，建 `game_saves` / `game_events` / `faction_memories`
       + pgvector 扩展 + 13 索引；玩家存档与事件向量记忆均已实测落库
 
+### 数据库备份（2026-10-11 建立）
+
+- [x] 备份脚本 `deploy/backup-db.sh`：容器内 `pg_dump`（走本地 socket 的 trust 认证，
+      **不把密码写进脚本或命令行**）→ gzip → `/root/jintian/backups/`，按文件名时间戳轮转保留 14 份
+- [x] 每日 cron：`17 3 * * * …/backup-db.sh >> backups/backup.log 2>&1`（`crond` active；
+      安装时保留了机器原有的腾讯云 stargate 条目，未覆盖整个 crontab）
+- [x] **恢复已演练**：把 dump 导入临时库 `restore_drill` 验证通过——3 张表、1 存档、1 事件，
+      `game_events.embedding`（pgvector 列）也完整回来；演练库已删除，未触碰线上数据。
+      只验证「能备份」而不验证「能恢复」的备份等于没有备份
+- [ ] ⚠️ **未解决的局限**：备份与数据库在**同一块系统盘**上，整机丢失 / 误删卷会同时带走数据和备份。
+      真正可靠需要以下任一：腾讯云 COS 异地转储、CVM 自动快照策略、或独立云硬盘挂载给 `/root/jintian/backups`
+- [ ] 备份尚未纳入任何监控：cron 连续失败不会有人知道（`backup.log` 需人工查看）
+
 > ⚠️ 踩坑记录（务必保留）：`server/db/index.ts` 读 `process.env.DATABASE_URL`、
 > `server/utils/embeddings.ts` 读 `process.env.OPENAI_API_KEY`，而 **runtimeConfig 不会反向写回
 > `process.env`**（`db/index.ts` 顶部注释的假设是错的）。只注入 `NUXT_` 前缀时接口全部返回 200，
