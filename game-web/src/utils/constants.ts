@@ -51,8 +51,20 @@ export const POWER_WEIGHTS: Record<keyof Attributes, number> = {
   diplomacy: 1
 }
 
-/** 每回合自动产出资源（game-design.md:572） */
-export const TURN_YIELD: Partial<Resources> = { silver: 50 }
+/**
+ * 每回合自动产出资源（game-design.md:572）
+ *
+ * 兵员必须给产出：200 局模拟实测兵员下限会跌到 -115（真实归零），
+ * 而 resource-penalty 规定兵员 ≤ 0 每回合掉军事——没有产出的话就是
+ * 一旦打光就永久下滑的死亡螺旋。+15/回合的含义是「归零后一回合即可喘过来」，
+ * 惩罚变成刹车而非绞索。
+ *
+ * 粮草刻意**不给**产出：模拟实测全局粮草最低值 770（起始 800），
+ * 说明现有内容里根本没有粮草消耗压力，给它加产出只是把一个死数字涨得更快。
+ * 「断粮→饥荒」惩罚保留（长局与后续内容补充粮草消耗时才会触发），
+ * 真正的缺口在内容侧：需要更多以粮草为代价的事件，而不是靠数值掩盖。
+ */
+export const TURN_YIELD: Partial<Resources> = { silver: 50, troops: 15 }
 
 /**
  * 数值夹紧工具（store/组件共用，避免各组件重复实现 clampPercent）

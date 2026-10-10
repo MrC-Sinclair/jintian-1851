@@ -11,10 +11,15 @@
  *   - 连推 50 回合，采集 胜率 / 通关回合分布 / 崩溃维度分布
  *   - 同时作为后续调权重/产出值的「自动化平衡回归」基线
  *
- * 基线快照（2026-10-10，五维封顶 0-100 + 胜利阈值 90→85 之后，200 局）：
- *   baseline    winRate=95.5%  avgTurns=36.2 median=35 range=[23,51] avgPower=85.2 minResource=-600
- *   simple-npc  winRate=41.0%  avgTurns=46.1 median=47 range=[33,51] avgPower=82.2 minResource=-850
- *   对比封顶前（属性可无上限堆叠、阈值 90）：baseline 99.5% / simple-npc 64.0%。
+ * 基线快照（2026-10-11，五维封顶 0-100 + 胜利阈值 85 + 资源托底 0 + 兵员每回合 +15 之后，200 局）：
+ *   baseline    winRate=95.5%  avgTurns=36.2 median=35 range=[23,51] avgPower=85.2
+ *               逐资源下限=银两0/兵员15/粮草180/名望9
+ *   simple-npc  winRate=40.5%  avgTurns=46.3 median=47 range=[35,51] avgPower=82.5
+ *               逐资源下限=银两0/兵员15/粮草160/名望9
+ *   对比历史：属性封顶前（阈值 90、资源可为负）baseline 99.5% / simple-npc 64.0%。
+ *   银两普遍触底 0 但无任何后果、粮草与兵员在最优打法下几乎不归零——
+ *   「断粮→饥荒」「兵溃」两条惩罚在模拟里接近休眠，缺口在内容侧
+ *   （以粮草/兵员为代价的事件太少），不靠近似数值掩盖。
  *   注意 bot 走的是「优先补短板、规避属性归零」的近最优策略，其胜率是**上界**，
  *   不能直接当作人类玩家的胜率。
  */
@@ -50,6 +55,8 @@ function logReport(label: string, r: SimReport): void {
       `wins=${r.wins} avgTurns=${r.avgTurns.toFixed(1)} medianTurns=${r.medianTurns.toFixed(1)} ` +
       `turnRange=[${r.minTurns},${r.maxTurns}] avgPower=${r.avgPower.toFixed(1)} ` +
       `avgDiplomacy=${r.avgDiplomacyActions.toFixed(1)} minResource=${Number.isFinite(r.minResource) ? r.minResource.toFixed(0) : 'NaN'} ` +
+      `逐资源下限=银两${r.minResources.silver.toFixed(0)}/兵员${r.minResources.troops.toFixed(0)}` +
+      `/粮草${r.minResources.food.toFixed(0)}/名望${r.minResources.reputation.toFixed(0)} ` +
       `nonVictory=${JSON.stringify(Object.fromEntries(collapse))}`
   )
 }

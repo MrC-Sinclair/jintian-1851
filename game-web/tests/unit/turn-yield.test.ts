@@ -10,8 +10,8 @@ import { calcTurnYield } from '../../src/utils/turn-yield'
 import { TURN_YIELD } from '../../src/utils/constants'
 
 describe('calcTurnYield', () => {
-  it('返回固定产出值（初版 silver +50）', () => {
-    expect(calcTurnYield()).toEqual({ silver: 50 })
+  it('返回固定产出值（银两 +50、兵员 +15）', () => {
+    expect(calcTurnYield()).toEqual({ silver: 50, troops: 15 })
   })
 
   it('返回副本，外部修改不影响常量 TURN_YIELD', () => {
@@ -19,6 +19,6 @@ describe('calcTurnYield', () => {
     result.silver = 999
     expect(TURN_YIELD.silver).toBe(50)
     // 再次调用仍返回初始值
-    expect(calcTurnYield()).toEqual({ silver: 50 })
+    expect(calcTurnYield()).toEqual({ silver: 50, troops: 15 })
   })
 })

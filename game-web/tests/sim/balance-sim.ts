@@ -447,6 +447,8 @@ export interface SimOutcome {
   power: number
   attributes: Attributes
   minResource: number
+  /** 逐资源下限：聚合值分不清是银两还是兵员见底，而「谁归零」决定断粮/兵溃惩罚是否真会触发 */
+  minResources: Resources
   diplomacyActions: number
 }
 
@@ -466,6 +468,7 @@ export function runSingleGame(
 
   let diplomacyActions = 0
   let minResource = Infinity
+  const minResources: Resources = { silver: Infinity, troops: Infinity, food: Infinity, reputation: Infinity }
   let reason: SimReason = 'continue'
   let crashed = false
 
@@ -503,6 +506,10 @@ export function runSingleGame(
       // 6. 资源下限追踪
       const r = store.currentSave!.state.resources
       minResource = Math.min(minResource, r.silver, r.troops, r.food, r.reputation)
+      minResources.silver = Math.min(minResources.silver, r.silver)
+      minResources.troops = Math.min(minResources.troops, r.troops)
+      minResources.food = Math.min(minResources.food, r.food)
+      minResources.reputation = Math.min(minResources.reputation, r.reputation)
 
       // 7. 推进回合（turn+1，date 月份+1）
       const cur = store.currentSave!
@@ -536,6 +543,7 @@ export function runSingleGame(
     power,
     attributes: { ...finalSave.state.attributes },
     minResource: crashed ? NaN : minResource,
+    minResources: crashed ? { silver: NaN, troops: NaN, food: NaN, reputation: NaN } : minResources,
     diplomacyActions
   }
 }
@@ -559,6 +567,8 @@ export interface SimReport {
   avgDiplomacyActions: number
   /** 全局资源下限（NaN 表示有崩溃局） */
   minResource: number
+  /** 逐资源下限：聚合值分不清是银两还是兵员见底，而「谁归零」决定断粮/兵溃惩罚是否真会触发 */
+  minResources: Resources
 }
 
 function quantile(sorted: number[], q: number): number {
@@ -592,11 +602,22 @@ export function runBatch(
   const avg = (arr: number[]) => (arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0)
 
   const minResourceVals = outcomes.map((o) => o.minResource).filter((v) => Number.isFinite(v))
+  // 逐资源全局下限（跳过崩溃局的 NaN）：用于判断断粮/兵溃惩罚到底会不会在真实对局中触发
+  const finite = outcomes.filter((o) => Number.isFinite(o.minResources.silver))
+  const pick = (key: keyof Resources) =>
+    finite.length ? Math.min(...finite.map((o) => o.minResources[key])) : NaN
+  const minResources: Resources = {
+    silver: pick('silver'),
+    troops: pick('troops'),
+    food: pick('food'),
+    reputation: pick('reputation')
+  }
   return {
     total,
     wins: victories.length,
     winRate: victories.length / total,
     reasonCounts,
+    minResources,
     victoryTurns,
     avgTurns: avg(victoryTurns),
     medianTurns: quantile(victoryTurns, 0.5),

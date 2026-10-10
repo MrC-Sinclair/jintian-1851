@@ -738,7 +738,7 @@ describe('endTurn', () => {
     const systemEvt = store.currentSave?.events[1]
     expect(systemEvt?.eventType).toBe('系统')
     expect(systemEvt?.playerChoice).toBe('')
-    expect(systemEvt?.effects).toEqual({ silver: 50 })
+    expect(systemEvt?.effects).toEqual({ silver: 50, troops: 15 })
     // 银两自动 +50（1000 → 1050）
     expect(store.currentSave?.state.resources.silver).toBe(1050)
     // turn +1
@@ -901,7 +901,7 @@ describe('endTurn', () => {
     const last = events[events.length - 1]
     expect(last?.eventType).toBe('系统')
     expect(last?.playerChoice).toBe('')
-    expect(last?.effects).toEqual({ silver: 50 })
+    expect(last?.effects).toEqual({ silver: 50, troops: 15 })
   })
 
   it('endTurn 接线势力存亡判定：power ≤ 0 的势力在结算时转 destroyed', async () => {

@@ -161,6 +161,12 @@ export const useGameStore = defineStore('game', () => {
     for (const key of Object.keys(newAttrs) as (keyof Attributes)[]) {
       newAttrs[key] = Math.min(ATTRIBUTE_MAX, newAttrs[key])
     }
+    // 资源托底 0（只托下限）：士兵、粮草、银两、名望为负在物理上不成立，
+    // 而模拟实测银两会跌到 -850、兵员 -115，UI 显示「粮草 -350」既荒谬又无法回收。
+    // 属性不托底（负值是崩溃判定的依据），资源托底（负值没有任何下游语义）。
+    for (const key of Object.keys(newRes) as (keyof Resources)[]) {
+      newRes[key] = Math.max(0, newRes[key])
+    }
     updateState({ attributes: newAttrs, resources: newRes })
   }
 

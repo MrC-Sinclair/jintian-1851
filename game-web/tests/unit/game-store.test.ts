@@ -171,6 +171,18 @@ describe('applyEffects', () => {
     expect(store.currentSave!.state.attributes.military).toBe(-50)
   })
 
+  it('资源托底 0：不会扣成负数（士兵/粮草/银两为负不成立）', () => {
+    const store = useGameStore()
+    store.setSave(createMockSave()) // silver 1000 / troops 500 / food 800
+
+    store.applyEffects({ silver: -9999, troops: -5000, food: -100 })
+
+    const r = store.currentSave!.state.resources
+    expect(r.silver).toBe(0)
+    expect(r.troops).toBe(0)
+    expect(r.food).toBe(700) // 未触底时照常累加
+  })
+
   it('属性封顶 100：正向溢出不保留，负向仍照常累加', () => {
     const store = useGameStore()
     store.setSave(createMockSave()) // military 起始 50
