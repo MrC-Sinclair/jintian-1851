@@ -87,18 +87,32 @@ test('写信谈判：还价 → 接受条件 → 资源扣减与配额用尽（�
 
   // 6. 遣使送信（compose 阶段唯一主按钮）
   await mouseClick(page, '.negotiation-dialog__btn--primary')
+  // 先确认已离开 compose 阶段（加载态出现），避免后续等待命中「尚未发出」的旧按钮
+  await expect(page.locator('.negotiation-dialog__loading')).toBeVisible({ timeout: 15_000 })
 
-  // 7. 等回信：要么出现条件卡片（counter），要么直接结束（accept/reject）
+  // 7. 等回信：三种都是合法结局
+  //    ① 条件卡片（counter）② 直接结束（accept/reject）③ 服务端降级 → 回到写信页（可重试）
+  //    ③ 的成因：LLM 异常/JSON 不可解析时服务端返回 { ok:true, fallback:true }，
+  //    前端 toast「信使途中受阻」并回到 compose（不消耗配额）。
+  //    此前只 race 前两种结局，降级时必然等到超时抛错 —— 属用例缺口，此处补上第三种并软跳过成交断言。
   const dealCard = page.locator('.negotiation-dialog__deal-card')
   const endBtn = page.locator('.negotiation-dialog__btn', { hasText: '结束谈判' })
+  const composeTextarea = page.locator('.negotiation-dialog__textarea')
   await Promise.race([
     dealCard.first().waitFor({ state: 'visible', timeout: 90000 }),
-    endBtn.first().waitFor({ state: 'visible', timeout: 90000 })
+    endBtn.first().waitFor({ state: 'visible', timeout: 90000 }),
+    composeTextarea.first().waitFor({ state: 'visible', timeout: 90000 })
   ])
-  test.skip(
-    !(await dealCard.first().isVisible()),
-    'Agent 未还价（直接应允/拒绝），无成交路径可断言，软跳过'
-  )
+  const gotDeal = await dealCard
+    .first()
+    .isVisible()
+    .catch(() => false)
+  const backToCompose = await composeTextarea
+    .first()
+    .isVisible()
+    .catch(() => false)
+  test.skip(backToCompose && !gotDeal, '服务端降级（fallback：未消耗配额、已回到写信页），无成交路径可断言，软跳过')
+  test.skip(!gotDeal, 'Agent 未还价（直接应允/拒绝），无成交路径可断言，软跳过')
 
   // 8. 从条件卡片解析定价（代价：银两 N）
   const dealText = (await dealCard.first().textContent()) ?? ''
@@ -107,10 +121,15 @@ test('写信谈判：还价 → 接受条件 → 资源扣减与配额用尽（�
   const price = Number.parseInt(priceMatch![1], 10)
 
   // 9. 接受条件 → settle 裁定 → done 阶段出现成交摘要
+  //    settle 同样可能降级：此时前端以「对方未有回音」收尾且不置位谈判配额，
+  //    因此先等「成交 / 无回音」任一收尾文案出现，再按实际结局决定是否软跳过
   await page.locator('.negotiation-dialog__actions .negotiation-dialog__btn', { hasText: '接受条件' }).click()
-  await expect(page.locator('.negotiation-dialog__reply-card', { hasText: '谈判成交' })).toBeVisible({
-    timeout: 90000
-  })
+  const replyCard = page.locator('.negotiation-dialog__reply-card')
+  await expect
+    .poll(async () => (await replyCard.textContent()) ?? '', { timeout: 90000, intervals: [500] })
+    .toMatch(/谈判成交|对方未有回音/)
+  const settleText = (await replyCard.textContent()) ?? ''
+  test.skip(!settleText.includes('谈判成交'), 'settle 阶段降级（对方未有回音、未消耗配额），无成交路径可断言，软跳过')
 
   // 10. 银两按定价精确扣减（StatusPanel 数值有过渡动画，用 poll 等待终值）
   await expect
