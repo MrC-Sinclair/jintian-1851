@@ -1,7 +1,8 @@
 /**
  * @file fallback-events 单元测试
  *
- * 验证总数 = 60 与 5 类型各 12 条；兜底事件不携带 chainId
+ * 验证总数 = 60 与 5 类型各 12 条；兜底事件不携带 chainId；
+ * 以及 getRandomFallbackEvent 的 avoidTitles 避重与「剔空回退全池」行为
  */
 
 import { describe, expect, it } from 'vitest'
@@ -91,6 +92,40 @@ describe('fallback-events', () => {
   it('getRandomFallbackEvent 不存在的类型返回全池随机', () => {
     // @ts-expect-error 故意传不存在的类型测试兜底
     const e = getRandomFallbackEvent('不存在的类型')
+    expect(e).toBeDefined()
+    expect(e.options.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('avoidTitles 命中的标题不会被再次返回（兜底路径避重）', () => {
+    // 避开除一条外的全部标题，多次采样只能得到剩下那条
+    const avoid = FALLBACK_EVENTS.slice(0, -1).map((e) => e.title)
+    const expected = FALLBACK_EVENTS[FALLBACK_EVENTS.length - 1].title
+    for (let i = 0; i < 10; i++) {
+      expect(getRandomFallbackEvent(undefined, avoid).title).toBe(expected)
+    }
+  })
+
+  it('整池都被 avoid 时回退全池，绝不返回不了事件', () => {
+    const all = FALLBACK_EVENTS.map((e) => e.title)
+    const e = getRandomFallbackEvent(undefined, all)
+    expect(e).toBeDefined()
+    expect(e.title.length).toBeGreaterThan(0)
+    expect(e.options.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('avoidTitles 与类型筛选叠加：只在同类型子池内避重', () => {
+    const military = FALLBACK_EVENTS.filter((e) => e.type === '军事')
+    const avoid = military.slice(0, -1).map((e) => e.title)
+    const left = military[military.length - 1].title
+    for (let i = 0; i < 8; i++) {
+      const e = getRandomFallbackEvent('军事', avoid)
+      expect(e.eventType).toBe('军事')
+      expect(e.title).toBe(left)
+    }
+  })
+
+  it('不传 avoidTitles 时行为与改造前一致（全池随机，仍能出事件）', () => {
+    const e = getRandomFallbackEvent()
     expect(e).toBeDefined()
     expect(e.options.length).toBeGreaterThanOrEqual(2)
   })

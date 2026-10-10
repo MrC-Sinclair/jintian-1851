@@ -691,11 +691,28 @@ export const FALLBACK_EVENTS: readonly FallbackEvent[] = [
  * 从兜底事件池中随机返回一条
  * @param type 指定类型时从该类型中随机，未指定则全池随机
  */
-export function getRandomFallbackEvent(type?: Exclude<EventType, 'npc'>): GameEvent {
+/**
+ * 随机取一条兜底事件
+ *
+ * @param type 限定事件类型（缺省则全池随机）
+ * @param avoidTitles 近期已出现的事件标题，尽量避开。
+ *   此前兜底路径是纯 Math.random()，完全不记忆用过什么——而语义避重只实现在 LLM 路径
+ *   （generate-event 的 dedupEvents），于是「LLM 挂了走兜底」的长局会在 60 条里
+ *   反复抽到同一条事件。传该参数后从池中先剔除这些标题；若整池被剔空（长局必然发生），
+ *   仍回退到全池，绝不因为避重而返回不了事件。
+ */
+export function getRandomFallbackEvent(
+  type?: Exclude<EventType, 'npc'>,
+  avoidTitles: readonly string[] = []
+): GameEvent {
   const pool = type ? FALLBACK_EVENTS.filter((e) => e.type === type) : FALLBACK_EVENTS
-  const actualPool = pool.length > 0 ? pool : FALLBACK_EVENTS
-  const idx = Math.floor(Math.random() * actualPool.length)
+  const basePool = pool.length > 0 ? pool : FALLBACK_EVENTS
+  const fresh = avoidTitles.length
+    ? basePool.filter((e) => !avoidTitles.includes(e.title))
+    : basePool
+  const candidates = fresh.length > 0 ? fresh : basePool
+  const idx = Math.floor(Math.random() * candidates.length)
   // 剔除 type 字段，返回纯 GameEvent
-  const { type: _omit, ...event } = actualPool[idx]
+  const { type: _omit, ...event } = candidates[idx]
   return event
 }

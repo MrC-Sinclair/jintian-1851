@@ -407,6 +407,12 @@ export default defineEventHandler(async (event) => {
       toolFallback = true
     }
 
+    // 兜底路径的避重清单：取已确定的近期事件标题（工具结果为权威来源）。
+    // 语义去重只存在于 LLM 路径，兜底路径此前是纯随机、长局必然重复同一条事件。
+    const recentTitles = effectiveRecentEvents
+      .map((e: any) => (typeof e?.title === 'string' ? e.title : ''))
+      .filter(Boolean)
+
     // ===== AI 长期记忆：LLM 路径生成前检索历史事件做语义去重（提案 任务5 / design D9）=====
     // 仅在 LLM 路径执行；缓存命中 / 剧情链 / fallback 路径不检索不写入。
     // 检索失败降级为不注入（不阻断生成），阈值 0.76 / topK 5。
@@ -516,7 +522,7 @@ export default defineEventHandler(async (event) => {
         return
       } catch (err) {
         console.error('[generate-event] 流式生成失败，降级返回预置事件:', err)
-        const fb = getRandomFallbackEvent()
+        const fb = getRandomFallbackEvent(undefined, recentTitles)
         setCached(cacheKey, fb, CACHE_TTL_MS)
         // 降级时 header 已发出，改用帧内字段告知前端
         writeSseFrame(res, { event: fb, fallback: true })
@@ -567,7 +573,7 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'X-Event-Source', 'fallback')
     setHeader(event, 'X-Fallback', 'true')
     if (toolFallback) setHeader(event, 'X-Tool-Fallback', 'true') // T4.2：工具降级标识
-    const fallback = getRandomFallbackEvent()
+    const fallback = getRandomFallbackEvent(undefined, recentTitles)
     // 短暂缓存 fallback：同 cache key 下一请求直接命中，不再白打 2 次 LLM
     setCached(cacheKey, fallback, CACHE_TTL_MS)
     return { ok: true, data: { event: fallback }, fallback: true }

@@ -254,6 +254,9 @@ X-Tool-Fallback: true   # 仅当 get-recent-events 工具调用失败时存在
 
 - **缓存键**：`sha256(saveId + turn + sha256(stateSnapshot JSON) + sha256({ pendingChainNodes, completedChainIds, activeChainIds }))`，5 分钟 TTL，命中时响应头 `X-Cache: HIT` 直接返回。剧情链状态变化（如新挂起节点）会使缓存键变化，确保新回合拿到正确事件
 - **降级**：LLM 2 次重试均失败后返回预置事件（[fallback-events.ts](file:///d:/code/codeWork/jintian-1851/server/server/runtime/fallback-events.ts)），响应头 `X-Fallback: true`，响应体多 `fallback: true`
+- **降级路径避重**：`getRandomFallbackEvent(type?, avoidTitles?)` 会先剔除 `recentEvents` 里已出现过的标题再随机。
+  此前兜底是纯 `Math.random()`，而语义去重只实现在 LLM 路径，导致「LLM 挂了走兜底」的长局会在 60 条里反复抽到同一条事件。
+  若整池被剔空（长局必然发生），回退全池随机——**避重永远不能导致返回不了事件**
 
 ### 流式模式（`?stream=1`）
 
