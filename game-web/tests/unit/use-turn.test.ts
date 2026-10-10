@@ -903,6 +903,31 @@ describe('endTurn', () => {
     expect(last?.playerChoice).toBe('')
     expect(last?.effects).toEqual({ silver: 50 })
   })
+
+  it('endTurn 接线势力存亡判定：power ≤ 0 的势力在结算时转 destroyed', async () => {
+    // 锁住接线：store.applyFactionSurvival 单测通过不代表 endTurn 真的调了它，
+    // 而「实现了却没人调用」正是这个状态此前不存在的原因
+    const store = useGameStore()
+    const save = createMockSave()
+    save.factions = [
+      { id: 'f2', name: '太平天国', summary: '', power: 0, relationship: -50, status: 'active' }
+    ]
+    store.setSave(save)
+    store.setEvent({
+      title: '事件',
+      description: '',
+      eventType: '随机',
+      options: [{ id: 'o1', label: '选项', effects: {} }]
+    })
+    vi.mocked(post).mockResolvedValueOnce({ actions: [] })
+
+    const spy = vi.spyOn(store, 'applyFactionSurvival')
+    const { endTurn } = useTurn()
+    await endTurn('选项')
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(store.currentSave?.factions[0].status).toBe('destroyed')
+  })
 })
 
 describe('endTurn - 结局判定', () => {

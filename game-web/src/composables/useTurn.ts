@@ -634,6 +634,9 @@ export function useTurn(options: UseTurnOptions = {}) {
         })
       }
 
+      // 3.7 势力存亡：本回合内被打到 power ≤ 0 的势力转为 destroyed，下回合起不再进 NPC 决策
+      store.applyFactionSurvival()
+
       // 4. turn+1, date 推进
       const nextMonth = s.state.date.month + 1
       const nextDate =

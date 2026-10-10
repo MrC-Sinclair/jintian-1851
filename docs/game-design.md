@@ -176,8 +176,18 @@ state = {
 | 状态 | 含义 | 触发条件 |
 |---|---|---|
 | `active` | 活跃中，每回合 LLM 决策行动 | 初始状态 |
-| `destroyed` | 已被消灭 | `power ≤ 0` 时由 NPC 行动结果触发 |
-| `allied` | 已结盟 | LLM 决策 `action: '结盟'` 且对方接受 |
+| `destroyed` | 已被消灭 | `power ≤ 0` 时由 `store.applyFactionSurvival()` 在回合结算末尾判定（`useTurn.endTurn` 3.7 步） |
+| `allied` | 已结盟 | 玩家侧确定性外交按钮写入（`DIPLOMACY_RULES.setStatus`）；~~LLM 决策 `action: '结盟'` 且对方接受~~ **未实现** |
+
+> **关于 destroyed 的触发源**：原设计写的是「由 NPC 行动结果触发」，但 NPC 行动的 `effects`
+> 只作用于**玩家**的五维与资源，全链路没有任何地方修改其它势力的 `power`，所以那条路径无法落地。
+> 现改为对**所有 power 来源**统一收口判定：玩家的外交按钮 / 离间（`powerDelta`，已 `Math.max(0,…)` 夹底）
+> 与自由行动软性微调（±30）。此前 power 能被夹到 0 却无人判 destroyed，被打光的势力下一回合
+> 照样进 NPC 决策列表、UI 也仍显示活跃——`DiplomacyPanel` 的 destroyed 分支（角标 / 禁用外交 /
+> 禁用谈判信）一直是死代码，现在才真正生效。
+>
+> **只处理 `active`**：`allied` 势力即使实力归零也不判覆灭（结盟关系不应因数值波动单方面瓦解）。
+> 服务端 `npc-actions` 按 `status === 'active'` 过滤，故状态一改，该势力自然不再行动，无需改服务端。
 
 > `npc-actions` 接口仅对 `status === 'active'` 的势力生成行动，`destroyed`/`allied` 势力不参与。
 

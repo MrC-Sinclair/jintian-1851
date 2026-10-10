@@ -12,6 +12,7 @@
 
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { SYSTEM_EVENT } from '@/utils/copywriting'
 import {
   ATTRIBUTE_MAX,
   DIPLOMACY_RULES,
@@ -522,6 +523,48 @@ export const useGameStore = defineStore('game', () => {
     lastFreeFactionEffects.value = []
   }
 
+  /**
+   * 势力存亡判定：`power ≤ 0` 的活跃势力转为 `destroyed`（game-design.md FactionStatus 规则）
+   *
+   * 此前 power 已被 `Math.max(0, …)` 夹到零，却没有任何地方判 destroyed——
+   * 被打光的势力下一回合照样进 NPC 决策列表，UI 也仍显示为活跃，等于打不死人。
+   * 服务端 npc-actions 按 `status === 'active'` 过滤，所以这里改完状态后
+   * 该势力自然不再行动，无需改服务端。
+   *
+   * 在 endTurn 结算末尾调用，覆盖本回合内所有 power 来源（外交按钮 / 离间 / 自由行动）。
+   *
+   * @returns 本回合被消灭的势力名，供调用方决定是否提示
+   */
+  function applyFactionSurvival(): string[] {
+    const save = currentSave.value
+    if (!save) return []
+
+    const doomed = save.factions.filter((f) => f.status === 'active' && f.power <= 0)
+    if (doomed.length === 0) return []
+
+    const doomedIds = new Set(doomed.map((f) => f.id))
+    currentSave.value = {
+      ...save,
+      factions: save.factions.map((f) =>
+        doomedIds.has(f.id) ? { ...f, status: 'destroyed' as const } : f
+      ),
+      updatedAt: Date.now()
+    }
+
+    for (const f of doomed) {
+      appendEvent({
+        turn: save.state.turn,
+        eventType: '系统',
+        title: SYSTEM_EVENT.factionDestroyed,
+        description: `${f.name}实力耗尽而覆灭，不再参与后续回合的行动。`,
+        playerChoice: '',
+        effects: {}
+      })
+    }
+
+    return doomed.map((f) => f.name)
+  }
+
   // ====================== 回合临时态操作 ======================
   /**
    * 设置当前回合事件
@@ -612,6 +655,7 @@ export const useGameStore = defineStore('game', () => {
     applyNegotiationDeal,
     applyFreeFactionEffects,
     clearLastFreeFactionEffects,
+    applyFactionSurvival,
     lastFreeFactionEffects,
     // 回合临时态操作
     setEvent,

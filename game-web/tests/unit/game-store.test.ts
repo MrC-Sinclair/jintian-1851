@@ -444,3 +444,66 @@ describe('applyFreeFactionEffects', () => {
     expect(store.currentSave!.factions.find((f) => f.id === 'f2')!.relationship).toBe(-95)
   })
 })
+
+describe('applyFactionSurvival（势力存亡判定）', () => {
+  /** 三个势力：活跃满血 / 活跃归零 / 活跃剩 1 点 */
+  function makeThreeFactionSave() {
+    const save = createMockSave()
+    save.factions = [
+      { id: 'a', name: '清廷', summary: '', power: 70, relationship: 0, status: 'active' },
+      { id: 'b', name: '湘军', summary: '', power: 0, relationship: -50, status: 'active' },
+      { id: 'c', name: '捻军', summary: '', power: 1, relationship: 20, status: 'active' }
+    ]
+    return save
+  }
+
+  it('power ≤ 0 的活跃势力转 destroyed，并返回其名字', () => {
+    const store = useGameStore()
+    store.setSave(makeThreeFactionSave())
+
+    const names = store.applyFactionSurvival()
+
+    expect(names).toEqual(['湘军'])
+    const factions = store.currentSave!.factions
+    expect(factions.find((f) => f.id === 'b')!.status).toBe('destroyed')
+    // 其余势力不受影响
+    expect(factions.find((f) => f.id === 'a')!.status).toBe('active')
+    expect(factions.find((f) => f.id === 'c')!.status).toBe('active')
+  })
+
+  it('覆灭事件写入时间线（供「近况」展示）', () => {
+    const store = useGameStore()
+    store.setSave(makeThreeFactionSave())
+
+    store.applyFactionSurvival()
+
+    const last = store.currentSave!.events[store.currentSave!.events.length - 1]
+    expect(last.title).toBe('势力覆灭')
+    expect(last.description).toContain('湘军')
+  })
+
+  it('无势力归零时不产生事件、不改任何状态', () => {
+    const store = useGameStore()
+    const save = makeThreeFactionSave()
+    save.factions = save.factions.map((f) => ({ ...f, power: 50 }))
+    store.setSave(save)
+
+    expect(store.applyFactionSurvival()).toEqual([])
+    expect(store.currentSave!.events).toHaveLength(0)
+    expect(store.currentSave!.factions.every((f) => f.status === 'active')).toBe(true)
+  })
+
+  it('已 destroyed / allied 的势力不重复处理（幂等）', () => {
+    const store = useGameStore()
+    const save = makeThreeFactionSave()
+    save.factions = [
+      { id: 'b', name: '湘军', summary: '', power: 0, relationship: 0, status: 'destroyed' },
+      { id: 'd', name: '淮军', summary: '', power: 0, relationship: 80, status: 'allied' }
+    ]
+    store.setSave(save)
+
+    expect(store.applyFactionSurvival()).toEqual([])
+    // 结盟势力即便实力归零也不被判覆灭：只处理 active
+    expect(store.currentSave!.factions.find((f) => f.id === 'd')!.status).toBe('allied')
+  })
+})

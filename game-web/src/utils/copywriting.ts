@@ -223,7 +223,9 @@ export const EMPTY_TEXT = {
  * 每回合自动产出的资源以系统历史事件形式记录于 timeline，文案集中管理避免硬编码。
  */
 export const SYSTEM_EVENT = {
-  turnYield: '本月赋税入库，银两 +50'
+  turnYield: '本月赋税入库，银两 +50',
+  /** 势力实力归零 → 覆灭（game-design.md FactionStatus.destroyed 的触发条件） */
+  factionDestroyed: '势力覆灭'
 } as const
 
 /**
