@@ -23,10 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # pnpm 版本由 server/package.json 的 packageManager 字段决定，
-      # 与本地/线上锁死同一版，避免版本切换导致 lockfile 差异
+      # pnpm 版本由子项目 package.json 的 packageManager 字段决定，
+      # 与本地/线上锁死同一版，避免版本切换导致 lockfile 差异。
+      # 必须显式指 package_json_file：action-setup 未给 version 时读的是**仓库根**的
+      # package.json，而根目录不是 workspace、压根没有 package.json（实测 CI 在此步直接退 1，
+      # defaults.run.working-directory 对 uses: 步骤不生效，兜不住它）。
       - uses: pnpm/action-setup@v4
         with:
+          package_json_file: server/package.json
           run_install: false
 
       - uses: actions/setup-node@v4
@@ -63,8 +67,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 同上：根目录无 package.json，必须显式指到子项目
       - uses: pnpm/action-setup@v4
         with:
+          package_json_file: game-web/package.json
           run_install: false
 
       - uses: actions/setup-node@v4
@@ -98,5 +104,8 @@ jobs:
 #   （job 的 name 就是 status check 名，改了 name 要同步改这里的勾选）
 # 命令行等价操作（需 gh 认证，且属于改动共享状态，请人工确认后再执行）：
 #   gh api -X PUT /repos/MrC-Sinclair/jintian-1851/branches/main/protection   # 需要 --input 传完整 JSON
-# 注意：本仓库当前有若干提交未推送，GitHub 上看不到任何运行结果，
-#       首次 push 之后 CI 才会真正跑起来。
+# 注意：本文件首次真实执行就红了——两个 job 均止步于 pnpm/action-setup，
+#       lint/typecheck/测试一行都没跑到。原因是根目录没有 package.json 可供读取
+#       pnpm 版本（本仓库是两个独立子项目、根目录刻意不是 workspace）。
+#       本地对应 gate 全绿后才补的这次修正：game-web 另有 test:component
+#       （15 文件 / 354 用例），此前不在验证矩阵里。
