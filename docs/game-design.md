@@ -537,7 +537,7 @@ type EndedReason = Exclude<EndReason, 'continue'>
 | 长期目标 | 固定文案「成就霸业（1851-1912）」 |
 | 胜利条件 | 文案由 `VICTORY_THRESHOLD` 常量渲染（当前 85），不再硬编码 |
 | 失败条件 | 固定文案「任一属性 ≤ 0」 |
-| 综合实力进度条 | 与 FocusPanel 同源 `overallPower`，但额外标注 **90 阈值刻度竖线**（`left: 90%`）+ 顶部「90」数字标签 |
+| 综合实力进度条 | 与 FocusPanel 同源 `overallPower`；GoalPanel **不画阈值刻度线**，只列「综合实力 ≥ `VICTORY_THRESHOLD`」文字行（数字取常量） |
 | InfoHint | 综合实力行附 InfoHint，hover/tap 显示 `TERM_EXPLANATIONS.overallPower` 解释文案 |
 
 ### EventCard 剧情进度角标
@@ -557,8 +557,9 @@ type EndedReason = Exclude<EndReason, 'continue'>
 
 ### 进度条阈值刻度设计
 
-- **90 阈值刻度**仅在 GoalPanel 渲染（FocusPanel 顶部空间有限，省略刻度）
-- 刻度位置 `left: 90%`，竖线 + 数字标签，玩家可直观感知「还差多少到胜利」
+- **胜利阈值刻度线只在 `FocusPanel` 渲染**（GoalPanel 不画刻度，只列胜利条件文字行）
+- 刻度位置 `left: thresholdPercent`、数字标签同为 `VICTORY_THRESHOLD`（现值 85），
+  两处都取常量。此前 CSS 写死 `left: 90%`，阈值下调到 85 后刻度就指错了位置，已修
 - FocusPanel 与 GoalPanel 共用 `VICTORY_THRESHOLD=90` 常量，避免硬编码不一致
 
 ---
@@ -666,7 +667,13 @@ function getCrisis(attributes: Attributes): Crisis | null {
 ### 1. 数值张力设计
 
 - **5 维属性 0-100**：单一属性可从 50（起始）波动到 0（崩溃）或 100（满值），跨度 50
-- **综合实力 0-100**：5 维平均，理论上起始 50，需提升 40 点达到胜利阈值 90
+- **综合实力 0-100**：5 维的**加权**平均（`politics` / `people` 权重 1.3，军事/经济/外交 1.0，
+  见 `game-web/src/utils/constants.ts` 的 `POWER_WEIGHTS`；治世之要偏向政治与民心），
+  五维都是起始 50 时加权结果仍为 50。胜利阈值 `VICTORY_THRESHOLD = 85`，即需**净提升 35 点**
+  ——旧版本此处写「40 点达到 90」，是阈值下调到 85 之后没跟着改（那次下调当时没有提案记录）
+- **实测落点**：年钟 200 局严格基线（LLM 完全不可用、含外交、关链）终局 `avgPower = 89.3`，
+  开链组 `= 92.5`；数字出处 `game-web/tests/unit/balance-regression.test.ts`（文件头记录了
+  每组基线与它们各自的适用前提，跨时钟不可直接比较）
 - **单回合 effects ±3~15**：5 回合可累积 ±25~75 点变化，足以改变属性走向
 - **资源 1000/500/800/10**：足够支撑 10-20 回合常规消耗。**资源下限托底 0**（`applyEffects` 里
   `Math.max(0, …)`）——士兵/粮草/银两为负在物理上不成立，此前模拟实测银两可跌到 -850 且毫无后果。

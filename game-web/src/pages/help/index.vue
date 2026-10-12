@@ -141,7 +141,7 @@
         <text class="help__section-title">胜利与失败</text>
         <view class="help__item">
           <text class="help__item-name help__item-name--victory">胜利条件</text>
-          <text class="help__item-desc">综合实力 ≥ 85，达成霸业结局。</text>
+          <text class="help__item-desc">综合实力 ≥ {{ VICTORY_THRESHOLD }}，达成霸业结局。</text>
         </view>
         <view class="help__item">
           <text class="help__item-name help__item-name--defeat">失败条件</text>
@@ -215,6 +215,8 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
 import { TERM_EXPLANATIONS, TOOLTIP_TEXT } from '@/utils/copywriting'
+// 胜利条件文案取常量：此处曾硬编码 85，阈值再变就会对玩家说谎（GoalPanel/FocusPanel 同理）
+import { VICTORY_THRESHOLD } from '@/utils/constants'
 
 /** 五类身份（含偏移说明，与 character-create/index.vue BACKGROUNDS 对齐） */
 const BACKGROUNDS_HELP = [

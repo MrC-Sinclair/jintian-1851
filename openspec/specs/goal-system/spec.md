@@ -1,18 +1,18 @@
 # goal-system Specification
 
 ## Purpose
-在 `game-main` 显著位置展示综合实力进度（5 维加权平均，政治/民心权重更高）与危机预警（属性 < 30），让玩家随时知晓距离胜利（综合实力 ≥ 90）与崩溃的差距，引导注重内政与短板应对。
+在 `game-main` 显著位置展示综合实力进度（5 维加权平均，政治/民心权重更高）与危机预警（属性 < 30），让玩家随时知晓距离胜利（综合实力 ≥ 85）与崩溃的差距，引导注重内政与短板应对。
 ## Requirements
 ### Requirement: 综合实力进度展示
 
-游戏 MUST 在 `game-main` 显著位置展示玩家当前综合实力进度，让玩家随时知晓距离胜利（综合实力≥90）的差距。综合实力 = 5 维属性（军事+经济+政治+民心+外交）加权平均（政治/民心权重更高，见 `utils/constants.ts` 的 `POWER_WEIGHTS`），取值 0-100。
+游戏 MUST 在 `game-main` 显著位置展示玩家当前综合实力进度，让玩家随时知晓距离胜利（综合实力 ≥ `VICTORY_THRESHOLD`，现值 85）的差距。综合实力 = 5 维属性（军事+经济+政治+民心+外交）加权平均（政治/民心权重更高，见 `utils/constants.ts` 的 `POWER_WEIGHTS`），取值 0-100。UI 上的阈值数字 MUST 取常量而非硬编码，否则改阈值时这里会对玩家说谎。
 
 #### Scenario: FocusPanel 置顶展示综合实力
 
 WHEN 玩家进入 `game-main` 且当前回合未结束
 THEN `FocusPanel` 组件渲染在事件区上方（始终展开，置顶）
 AND 显示综合实力进度条：高度 `16rpx`，背景 `#E5D5B7`，填充 `#8B1A1A`，宽度按 `overallPower/100` 比例
-AND 进度条 90 阈值处标记竖线（胜利线）
+AND 进度条在胜利阈值处标记竖线（位置与数字都取 `VICTORY_THRESHOLD`，现值 85，不写死 90）
 AND 进度条右侧显示数值"72/100"
 AND `overallPower` 由 `utils/goal-hint.ts` 的 `calcOverallPower(attributes)` 计算（加权平均，政治/民心权重 1.3，其余 1.0）
 
@@ -27,14 +27,14 @@ AND `TERM_EXPLANATIONS.overallPower` 文案说明加权语义（非"等权平均
 
 WHEN 玩家点击 `GoalPanel` 标题栏
 THEN `GoalPanel` 展开/折叠（`max-height` transition 300ms）
-AND 展开态显示：长期目标"成就霸业（1851-1912）"+ 胜利条件"综合实力 ≥ 90"+ 失败条件"任一属性 ≤ 0"+ 综合实力进度条（标注 90 阈值刻度）+ InfoHint 解释"综合实力"含义
+AND 展开态显示：长期目标"成就霸业（1851-1912）"+ 胜利条件"综合实力 ≥ 85"+ 失败条件"任一属性 ≤ 0"+ 综合实力进度条（阈值刻度取 `VICTORY_THRESHOLD`，现值 85，不写死数字）+ InfoHint 解释"综合实力"含义
 AND 折叠态仅显示标题"游戏目标"+ 缩略进度值
 
 #### Scenario: 综合实力达标提示
 
-WHEN 玩家综合实力 ≥ 90
+WHEN 玩家综合实力 ≥ 85（取 `VICTORY_THRESHOLD`，不写死数字）
 THEN 进度条填充变为绿色
-AND `FocusPanel` 显示"综合实力已达 90，再坚持数回合即可成就霸业"（带"本回合建议："前缀，无 emoji）
+AND `FocusPanel` 显示"综合实力已达 85，再坚持数回合即可成就霸业"（带"本回合建议："前缀，无 emoji）
 
 ### Requirement: 危机属性预警
 
