@@ -203,7 +203,7 @@ export default defineEventHandler(async (event) => {
           providerOptions: { openai: { structuredOutputs: true } },
           abortSignal: AbortSignal.timeout(30_000)
         })
-        logLlmUsage('resolve-decision', usage, { attempt: attempt + 1 })
+        logLlmUsage('resolve-decision', usage, { saveId, turn, attempt: attempt + 1 })
         // 诊断日志：记录 LLM 实际返回的 effects 与 factionEffects，便于排查字段名映射问题
         console.log(
           '[resolve-decision] LLM 返回:',

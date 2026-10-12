@@ -8,10 +8,10 @@
  *   1. 挂起节点（pendingChainNodes 非空）→ 不调 LLM，返回该节点 event（X-Event-Source: pending-chain）
  *   2. 下一条剧情链（startYear 不早于当前年份的最早一条）→ 不调 LLM，返回首节点（X-Event-Source: time-window）
  *      锚点年份晚于当前年份时下发 eventDate 做时光跳跃，否则「1 回合=1 月 + 单局约 35 回合」
- *      下日历只走到 1853~1855 年，14 条链里 12 条永不触发
+ *      下日历只走到 1853~1855 年，绝大多数链（当年锚点之外）永不触发
  *   3. LLM 自主生成 → 调 Qwen/Qwen3-8B + generateObject()（X-Event-Source: llm）
  *
- * 失败重试 1 次后降级 fallback-events.ts（池已扩充到 60 条）。
+ * 失败重试 1 次后降级 fallback-events.ts（池已扩充到 90 条）。
  * 并发锁冲突返回 429 + CONCURRENT_REQUEST。
  */
 
@@ -544,7 +544,7 @@ export default defineEventHandler(async (event) => {
           providerOptions: { openai: { structuredOutputs: true } },
           abortSignal: AbortSignal.timeout(30_000)
         })
-        logLlmUsage('generate-event', usage, { attempt: attempt + 1 })
+        logLlmUsage('generate-event', usage, { saveId, turn, attempt: attempt + 1 })
         // 写入缓存
         setCached(cacheKey, object, CACHE_TTL_MS)
         // 写入长期记忆：事件语义去重基础（fire-and-forget，失败静默，不阻塞响应）

@@ -247,7 +247,13 @@ async function runNpcAgent(
       prompt,
       providerOptions,
       abortSignal: AbortSignal.timeout(testMode ? 8_000 : 30_000),
-      onFinish: ({ usage }) => logLlmUsage('npc-actions', usage, { factionId: faction.id })
+      onFinish: ({ usage }) =>
+        // saveId/turn 进 extra：成本口径要靠它把「总 token」折成单局成本（docs/ai-cost.md）
+        logLlmUsage('npc-actions', usage, {
+          saveId: ctx.saveId,
+          turn: ctx.turn,
+          factionId: faction.id
+        })
     })
 
     let fullText = await result.text
@@ -269,7 +275,11 @@ async function runNpcAgent(
         // 兜底轮无工具可查、单步即出，只给一半超时预算
         abortSignal: AbortSignal.timeout(testMode ? 4_000 : 15_000),
         onFinish: ({ usage }) =>
-          logLlmUsage('npc-actions-finalize', usage, { factionId: faction.id })
+          logLlmUsage('npc-actions-finalize', usage, {
+            saveId: ctx.saveId,
+            turn: ctx.turn,
+            factionId: faction.id
+          })
       })
       fullText = await forced.text
     }

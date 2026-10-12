@@ -69,10 +69,14 @@ MVP 阶段全部使用 `Qwen/Qwen3-8B`（硅基流动 SiliconFlow），单价约
 | 调用 | 输入 token | 输出 token | 单次成本 |
 |---|---|---|---|
 | `generate-event`（含 system prompt + stateSnapshot + factions） | ~1500 | ~600 | ¥0.000735 |
-| `npc-actions`（含 system prompt + compressedFactions + stateSnapshot） | ~1200 | ~500 | ¥0.000595 |
+| `npc-actions`（含 system prompt + compressedFactions + stateSnapshot + 名望档位） | ~1250 | ~500 | ¥0.000612 |
 | `resolve-decision`（仅自由输入时） | ~1800 | ~100 | ¥0.000665 |
 | `advisor-chat`（单轮，~300 字回复） | ~2000 | ~500 | ¥0.000875 |
 | `faction-negotiate`（单阶段：人格 prompt + 兑换表 + 信件/上下文） | ~1200 | ~250 | ¥0.000508 |
+
+> **`npc-actions` 的 +50 tokens 来自名望档位注入**（`reputation-bands.ts` 的一句态度倾向，
+> 约 40-50 个中文字符）：输入 ~1200 → ~1250（+4%），单次 ¥0.000595 → ¥0.000612。
+> 这是「名望影响 NPC 态度」的落地代价，下面的合计已同步。
 
 > 谈判完整一轮（letter + settle）≈ 2 × ¥0.000508 ≈ ¥0.001，与 npc-actions（每回合必发）同量级；接受条件的效果执行是纯前端确定性计算，不耗 AI。
 
@@ -80,28 +84,40 @@ MVP 阶段全部使用 `Qwen/Qwen3-8B`（硅基流动 SiliconFlow），单价约
 
 ```
 generate-event + npc-actions + advisor-chat
-= ¥0.000735 + ¥0.000595 + ¥0.000875
-= ¥0.002205 / 回合
+= ¥0.000735 + ¥0.000612 + ¥0.000875
+= ¥0.002222 / 回合
 ```
 
 **自由输入回合**（自由决策 + 1 次军师对话）：
 
 ```
 generate-event + resolve-decision + npc-actions + advisor-chat
-= ¥0.000735 + ¥0.000665 + ¥0.000595 + ¥0.000875
-= ¥0.002870 / 回合
+= ¥0.000735 + ¥0.000665 + ¥0.000612 + ¥0.000875
+= ¥0.002887 / 回合
 ```
 
 ### 单局成本（典型 50 回合）
 
 | 场景 | 计算 | 单局成本 |
 |---|---|---|
-| 全部选项决策，无军师对话 | 50 × (¥0.000735 + ¥0.000595) | ¥0.0665 |
-| 全部选项决策 + 每回合军师 | 50 × ¥0.002205 | ¥0.110 |
-| 全部自由输入 + 每回合军师 | 50 × ¥0.002870 | ¥0.144 |
-| 开局 + 50 回合 + 每回合军师 | ¥0.001 + ¥0.110 | **¥0.111** |
+| 全部选项决策，无军师对话 | 50 × (¥0.000735 + ¥0.000612) | ¥0.0674 |
+| 全部选项决策 + 每回合军师 | 50 × ¥0.002222 | ¥0.111 |
+| 全部自由输入 + 每回合军师 | 50 × ¥0.002887 | ¥0.144 |
+| 开局 + 50 回合 + 每回合军师 | ¥0.001 + ¥0.111 | **¥0.112** |
 
 **结论**：单局成本约 ¥0.07 ~ ¥0.15，可接受。
+
+> ⚠️ **上表按「典型 50 回合」估，时钟已改为 1 回合 = 1 年，局长随之变化**（200 局模拟实测）：
+>
+> | 组 | 局长 | 全部选项决策 + 每回合军师（按 ¥0.002222/回合 线性外推） |
+> |---|---|---|
+> | 关链（LLM 不可用的最坏情况） | 63 回合 | ≈ ¥0.140 |
+> | 开链 | 44 回合 | ≈ ¥0.098 |
+>
+> 两点抵消，实际值应低于线性外推：① 链节点命中时 `generate-event` **不调 LLM**（0 token），
+> 开链局长既短、每回合的调用也更少；② 5 分钟事件缓存在同键命中时同样免调用。
+> [不确定] 每回合真实的"链占比"未在成本侧埋点，上表是**按回合数线性外推的上界**，
+> 不是实测；要拿准数请用 `llm-cost-report` 跑一段真实日志（`[llm-usage]` 采集已接好）。
 
 ### Embedding 成本（AI 长期记忆）
 
@@ -142,23 +158,94 @@ agent 化改造改变了两处 AI 调用的形态，整体单局 token 成本上
 
 ```
 generate-event                        ≈ ¥0.000735  （不变）
-npc-actions（2 个 Agent，含多步）     ≈ ¥0.0010   （原 ¥0.000595，约 ×1.7）
+npc-actions（2 个 Agent，含多步）     ≈ ¥0.0010   （原 ¥0.000612，约 ×1.7）
 advisor-chat（含~50% 工具轮，混合）   ≈ ¥0.0011   （原 ¥0.000875，约 ×1.25）
-= ¥0.002835 / 回合（典型，含军师）
+= ¥0.002875 / 回合（典型，含军师）
 ```
 
-对比升级前典型回合 `¥0.002205`，约 **+29%**；若军师高频使用工具或 active 势力更多，单回合可较升级前高 **40%~60%**。考虑到单局绝对值仍仅约 ¥0.11~¥0.16，MVP 阶段（< 100 DAU）月度成本仍 < ¥500，可接受。
+对比升级前典型回合 `¥0.002222`，约 **+29%**；若军师高频使用工具或 active 势力更多，单回合可较升级前高 **40%~60%**。考虑到单局绝对值仍仅约 ¥0.11~¥0.16，MVP 阶段（< 100 DAU）月度成本仍 < ¥500，可接受。
 
 ### 月度成本预估（1000 DAU）
 
 假设单用户日均 1 局 50 回合 + 每回合军师：
 
 ```
-1000 用户 × ¥0.111 / 局 × 1 局 / 日 × 30 日
-= ¥3330 / 月
+1000 用户 × ¥0.112 / 局 × 1 局 / 日 × 30 日
+= ¥3360 / 月
 ```
 
-**MVP 阶段**（< 100 DAU）：< ¥333 / 月，可接受。
+**MVP 阶段**（< 100 DAU）：< ¥336 / 月，可接受。
+
+## 成本观测与告警口径
+
+上表的成本是**纸面估算**。真实的采集与核算方式如下。
+
+### 数据源
+
+各 AI 端点在 LLM 调用完成后由 [server/utils/llm-usage.ts](file:///d:/code/codeWork/jintian-1851/server/server/utils/llm-usage.ts) 输出一行 JSON：
+
+```
+[llm-usage] {"endpoint":"generate-event","inputTokens":1500,"outputTokens":600,"totalTokens":2100,"saveId":"…","turn":1,"attempt":1}
+```
+
+| 端点 | 附带的维度 |
+|---|---|
+| `generate-event` / `generate-event-stream` | `saveId` `turn` `attempt`（重试次数，>1 说明首轮失败） |
+| `npc-actions` / `npc-actions-finalize` | `saveId` `turn` `factionId` |
+| `advisor-chat` | `saveId` `turn` |
+| `resolve-decision` | `saveId` `turn` `attempt` |
+| `faction-negotiate` | `saveId` `turn` `phase` `factionId` |
+| `init-factions` | 无 —— 发生在**存档创建之前**（角色创建页），逻辑上没有 saveId 可归 |
+| `advisor-briefing` | 无 —— 该端点未把 saveId 解构进作用域，属已知归因缺口，成本仍计入总量 |
+
+`npc-actions` 按**每个势力 Agent 各记一行**，所以它的行数会大于回合数，这是设计而非重复计数。
+
+### 核算命令
+
+```bash
+# 在服务器上：日志是既有唯一数据源，脚本无状态、不连 docker daemon、不写库
+cd /root/jintian/server && docker logs --timestamps --since 24h jintian-api 2>&1 \
+  | pnpm cost-report --daily-limit 30
+```
+
+脚本：[server/scripts/llm-cost-report.ts](file:///d:/code/codeWork/jintian-1851/server/server/scripts/llm-cost-report.ts)（聚合逻辑在 `scripts/lib/llm-cost.ts`，有单测）。
+输出按端点、按天的成本表 + 单局口径。
+
+| 退出码 | 含义 | cron 侧用法 |
+|---|---|---|
+| 0 | 正常 | — |
+| 1 | stdin 为空 / 没解析到记录 / 用法错误 | **必须当故障报警**：多半是 `docker logs` 抓失败，不是「今天零成本」 |
+| 2 | 有任一天成本超过 `--daily-limit` | 发通知 |
+
+### 阈值口径（怎么定 daily-limit）
+
+| 阶段 | 文档预估 | 折算日均 | 建议告警阈值 |
+|---|---|---|---|
+| MVP（< 100 DAU） | < ¥336 / 月 | ≈ ¥11.2 / 日 | **¥30**（约 2.7 倍预算上沿，留出自然波动，避免天天误报把告警喊废） |
+| 增长期（1000 DAU） | ¥3360 / 月 | ≈ ¥112 / 日 | **¥300** |
+
+两个**结构性异常**信号（比日总额更早定位问题）：
+
+- `costPerGameCny` > **¥0.30** —— 文档上限是 ¥0.144（全自由输入 + 每回合军师）。超 2 倍通常意味着
+  `npc-actions` 的 active 势力数失控（成本随势力数线性上升），或 `attempt>1` 的重试在放大
+- `init-factions` 或 `generate-event` 占比异常高 —— 前者暴涨说明有人在刷开局页，后者说明缓存失效
+
+### 三个「数据本身不可信」的信号
+
+聚合结果里这三个字段非零/异常时，**成本数字要打折看**：
+
+| 信号 | 含义 | 根因排查 |
+|---|---|---|
+| `unparsed > 0` | 命中 `[llm-usage]` 标志但 JSON 解析失败 | 日志格式漂移（改过 `logLlmUsage` 的 payload） |
+| `emptyUsage > 0` | provider 没回 usage，该条按 0 计 | 硅基流动某模型不返 usage，**成本被系统性低估** |
+| `attributableShare` 下滑 | 带 saveId 的记录占比变小 | 有新端点没传 saveId，单局口径失真 |
+
+### 后续接入监控时
+
+日志格式已经稳定且机器可读（`--json` 直接给结构化结果），接 Loki/Prometheus 时消费同一格式即可，
+不需要改端点代码。docs 这里定义的阈值应随 `docs/ai-cost.md` 的单价/模型变更同步调整。
+
+---
 
 ## 缓存策略
 
@@ -216,7 +303,7 @@ sha256(saveId + turn + sha256(JSON.stringify(stateSnapshot)) + sha256(JSON.strin
 | 接口 | 降级返回 | 数据源 |
 |---|---|---|
 | `init-factions` | 6 个预置势力 | [fallback-factions.ts](file:///d:/code/codeWork/jintian-1851/server/server/runtime/fallback-factions.ts)（湘军/淮军/太平天国/清廷/北洋/革命党，按 background 调整 initialRelationship） |
-| `generate-event` | 随机预置事件 | [fallback-events.ts](file:///d:/code/codeWork/jintian-1851/server/server/runtime/fallback-events.ts)（60 条事件，5 类型各 12 条） |
+| `generate-event` | 随机预置事件 | [fallback-events.ts](file:///d:/code/codeWork/jintian-1851/server/server/runtime/fallback-events.ts)（90 条事件，5 类型各 18 条） |
 | `resolve-decision` | 默认 effects `{military:-3, economy:-3, politics:-3, people:-3, diplomacy:-3}` | 模拟决策失误的惩罚 |
 | `npc-actions` | `{ actions: [] }` | 跳过本回合 NPC 行动 |
 | `advisor-chat` | 流式写 `data: {"error":"AI_CALL_FAILED"}` 后 end | 前端显示「军师沉默」占位 |

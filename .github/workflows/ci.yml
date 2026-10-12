@@ -1,0 +1,102 @@
+name: CI
+
+# 触发：PR 与 main 推送。要真正「PR 必过」还需在仓库设置里把下面两个 job
+# 加进分支保护的 Required status checks（见文件末尾注释）。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 同一引用上的新提交作废上一次运行，避免排队浪费额度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: server (lint / typecheck / unit / api)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm 版本由 server/package.json 的 packageManager 字段决定，
+      # 与本地/线上锁死同一版，避免版本切换导致 lockfile 差异
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          # 22 = 线上运行镜像（deploy/docker-compose.deploy.yml 的 node:22-alpine）。
+          # 本地是 24/25，用线上版本跑才有意义——Vercel AI SDK 的流式行为不要依赖未发布特性
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+
+      # postinstall 会跑 nuxi prepare，产出 .nuxt 类型声明，typecheck 依赖它
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: API tests
+        run: pnpm test:api
+
+  game-web:
+    name: game-web (lint / typecheck / unit / component)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: game-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: game-web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Component tests
+        run: pnpm test:component
+
+# ── 让 CI 成为 PR 门禁（一次性仓库设置，不在本文件里生效）────────────────
+# 路径：Settings → Branches → Add branch protection rule
+#   Branch name pattern: main
+#   勾选 Require a pull request before merging
+#   勾选 Require status checks to pass before merging，搜索并添加：
+#     server (lint / typecheck / unit / api)
+#     game-web (lint / typecheck / unit / component)
+#   （job 的 name 就是 status check 名，改了 name 要同步改这里的勾选）
+# 命令行等价操作（需 gh 认证，且属于改动共享状态，请人工确认后再执行）：
+#   gh api -X PUT /repos/MrC-Sinclair/jintian-1851/branches/main/protection   # 需要 --input 传完整 JSON
+# 注意：本仓库当前有若干提交未推送，GitHub 上看不到任何运行结果，
+#       首次 push 之后 CI 才会真正跑起来。

@@ -24,7 +24,8 @@
     "db:push": "tsx --env-file=.env server/scripts/ensure-extensions.ts && drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
-    "check-models": "tsx --env-file=.env server/scripts/check-models.ts"
+    "check-models": "tsx --env-file=.env server/scripts/check-models.ts",
+    "cost-report": "tsx server/scripts/llm-cost-report.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.106",

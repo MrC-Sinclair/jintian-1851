@@ -68,6 +68,12 @@ services:
       NUXT_OPENAI_BASE_URL: ${NUXT_OPENAI_BASE_URL}
       NUXT_LLM_MODEL: ${NUXT_LLM_MODEL}
       NUXT_ENABLE_BRIEFING: ${NUXT_ENABLE_BRIEFING}
+      # 存档归属鉴权双轨开关（运行时覆盖，不用改代码重新构建）：
+      #   ENFORCED=true 关闭「无凭据凭 deviceId 访问」的旧通道
+      #   ALLOW_FIRST_BIND=false 关闭新设备注册窗口
+      # 默认值刻意与开发期一致：兼容期开、注册开。收紧时机看 [auth-compat] 日志。
+      NUXT_DEVICE_AUTH_ENFORCED: ${NUXT_DEVICE_AUTH_ENFORCED:-false}
+      NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND: ${NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND:-true}
       # ⚠️ 同一批值还要以「无前缀」形式再给一遍：
       # server/db/index.ts 读的是 process.env.DATABASE_URL，server/utils/embeddings.ts 读的是
       # process.env.OPENAI_API_KEY —— runtimeConfig 不会反向写回 process.env，
@@ -87,19 +93,24 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      # 产物里没有 /health 路由，这里只判「进程是否已在监听并应答」：
-      # 任何 HTTP 响应（含 404）都算活着，连接失败才算不健康。
+      # 打 /api/health 而不是 /api/game/saves：后者会在 rate-limit 中间件里
+      # 因缺 x-device-id 直接返 400，连数据库都没碰到，等于只测「进程还在监听」——
+      # postgres 挂掉时容器依然 healthy（无声故障）。
+      # 现在要求 HTTP 200 且响应体 ok:true，DB 探针失败会返 503 → 容器转 unhealthy。
+      # 不会引起重启风暴：这里没有 autoheal，unhealthy 只是状态标记，
+      # depends_on 的 service_healthy 只作用于启动顺序。
       test:
         [
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/api/game/saves').then(()=>process.exit(0)).catch(()=>process.exit(1))"
+          "fetch('http://127.0.0.1:3000/api/health').then(async r=>{const j=await r.json().catch(()=>null);process.exit(r.status===200&&j&&j.ok===true?0:1)}).catch(()=>process.exit(1))"
         ]
-      interval: 15s
-      timeout: 5s
+      interval: 20s
+      # 必须大于服务端 DB 探针的 3s 超时，否则「慢」会被误判成「死」
+      timeout: 10s
       retries: 4
-      start_period: 20s
+      start_period: 30s
     mem_limit: 512m
 
   caddy:
