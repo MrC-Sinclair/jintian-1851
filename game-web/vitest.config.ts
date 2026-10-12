@@ -21,7 +21,10 @@ export default defineConfig({
         branches: 60
       }
     },
-    setupFiles: ['./tests/setup.ts']
+    setupFiles: ['./tests/setup.ts'],
+    // 见 tests/global-setup.ts：镜像守卫用例跨项目 import server 的 .ts，
+    // 转换时需要 server/.nuxt/tsconfig.json 存在，否则整文件 TSConfckParseError
+    globalSetup: ['./tests/global-setup.ts']
   },
   resolve: {
     alias: {
