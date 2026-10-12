@@ -86,7 +86,7 @@ $jt-ink-secondary: #5d4037; // 次级文字
 $jt-ink-muted: #8d6e63; // 弱化文字
 $jt-ink-faint: #8a7a66; // 极弱文字（提示小字）
 $jt-ink-disabled: #9e8e76; // 禁用文字
-$jt-ink-inverse: #ffffff; // 反色（深底上的文字）
+$jt-ink-inverse: #fff; // 反色（深底上的文字）
 
 /* 色板：语义色 */
 $jt-success: #2e7d32; // 上升/胜利/盟友
@@ -125,7 +125,9 @@ $jt-space-md: 16rpx;
 $jt-space-lg: 24rpx;
 $jt-space-xl: 32rpx;
 
-/* 字体栈（P0-3：标题衬线 + 正文黑体，营造 1851 史册感） */
-$jt-font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
-  'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+/* 字体栈（P0-3：标题衬线 + 正文黑体，营造 1851 史册感）
+   裸标识符按 stylelint 的 value-keyword-case 小写（CSS 字体名匹配不区分大小写，行为不变）；
+   带引号的家族名保留原大小写，它们不是 keyword、不受该规则约束 */
+$jt-font-sans: -apple-system, blinkmacsystemfont, 'PingFang SC', 'Hiragino Sans GB',
+  'Microsoft YaHei', 'Helvetica Neue', arial, sans-serif;
 $jt-font-serif: 'Songti SC', 'STSong', 'SimSun', 'Noto Serif CJK SC', serif;
