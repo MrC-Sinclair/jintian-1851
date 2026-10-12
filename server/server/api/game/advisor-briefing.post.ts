@@ -77,8 +77,10 @@ function buildBriefingPrompt(
     '你是金田：1851 的军师，为玩家提供本回合局势简报。',
     '',
     `当前局势：`,
-    `- 回合：第 ${turn} 回合`,
-    `- 日期：${date.year} 年 ${date.month} 月`,
+    `- 回合：第 ${turn} 回合（1 回合 = 1 年）`,
+    // 年钟：只报年份。报月份会让模型按「一个月内发生的事」给建议，
+    // 而 month 在年钟下恒为 1，写出来本身就是误导（时钟改造当时漏了这个 prompt）
+    `- 日期：${date.year} 年`,
     `- 五维属性：军事 ${attributes.military} / 经济 ${attributes.economy} / 政治 ${attributes.politics} / 民心 ${attributes.people} / 外交 ${attributes.diplomacy}`,
     `- 资源：银两 ${resources.silver} / 兵员 ${resources.troops} / 粮草 ${resources.food} / 名望 ${resources.reputation}`,
     '',
@@ -88,8 +90,9 @@ function buildBriefingPrompt(
     '',
     '要求：',
     '- 白话为主，新手能懂',
-    '- 综合实力 = 5 维属性平均值，达到 90 触发胜利',
-    '- 任一属性 ≤ 0 触发失败',
+    '- 综合实力 = 5 维**加权**平均（政治 / 民心权重更高），达到 85 即锁定「中兴」',
+    '- 但结局要到 1912 年之后才结算，锁定之后仍需守住局面不被击穿',
+    '- 任一属性 ≤ 0 立即触发对应维度崩溃（优先级高于胜利）',
     '- summary/suggestion 均不超过 60 字'
   ].join('\n')
 }

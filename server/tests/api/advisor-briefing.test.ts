@@ -93,6 +93,30 @@ describe('POST /api/game/advisor-briefing', () => {
     expect((globalThis as any).setHeader).not.toHaveBeenCalled()
   })
 
+  it('prompt 事实口径：年钟只报年份、阈值 85 且为加权平均', async () => {
+    // 这条是防回归的钉子：时钟从月改成年时改了 4 个 prompt，唯独漏了本文件的 briefing，
+    // 于是军师仍按「一个月内的事」给建议；同一段还把胜利条件写成「平均值达 90」
+    // （实际是加权平均、阈值 85），等于让 LLM 拿假规则劝玩家。
+    generateObjectMock.mockResolvedValueOnce({
+      object: { summary: '局势平稳', suggestion: '宜固本' }
+    } as any)
+    readBodyMock.mockResolvedValueOnce(makeBody(3))
+
+    await handler(makeEvent())
+
+    const calls = generateObjectMock.mock.calls as unknown as any[][]
+    expect(calls.length).toBe(1)
+    const prompt: string = calls[0][0].prompt
+    // 不得再出现「N 年 M 月」的月钟写法
+    expect(prompt).not.toMatch(/\d+ 年 \d+ 月/)
+    expect(prompt).toContain('1 回合 = 1 年')
+    // 阈值与口径必须是 85 / 加权，并交代「1912 之后才结算」这层年钟语义
+    expect(prompt).not.toContain('90 触发胜利')
+    expect(prompt).toContain('85')
+    expect(prompt).toContain('加权')
+    expect(prompt).toContain('1912')
+  })
+
   it('参数错误：saveId 非 UUID → 400', async () => {
     readBodyMock.mockResolvedValueOnce(makeBody(2, { saveId: 'not-uuid' }))
     const res = (await handler(makeEvent())) as any
