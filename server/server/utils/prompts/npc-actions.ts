@@ -24,7 +24,8 @@ interface NpcActionsArgs {
  */
 export function buildNpcActionsPrompt(args: NpcActionsArgs): string {
   const { character, stateSnapshot, npcFactions, turn } = args
-  const dateStr = `${stateSnapshot.date.year}年${stateSnapshot.date.month}月`
+  // 1 回合 = 1 年：只报年份（月份会让人以为势力一个月才动一次）
+  const dateStr = `${stateSnapshot.date.year}年`
 
   const factionStr = npcFactions
     .map(
@@ -36,7 +37,7 @@ export function buildNpcActionsPrompt(args: NpcActionsArgs): string {
   return `你是近代策略游戏的 NPC 决策引擎。请为每个 NPC 势力生成 1 个本回合行动。
 
 【玩家势力】${character.factionName}（${character.background}出身）
-【当前时间】${dateStr}（第 ${turn} 回合）
+【当前时间】${dateStr}（第 ${turn} 回合，1 回合 = 1 年）
 
 【玩家当前局势】
 - 军务 ${stateSnapshot.attributes.military} / 经济 ${stateSnapshot.attributes.economy} / 政治 ${stateSnapshot.attributes.politics} / 民心 ${stateSnapshot.attributes.people} / 外交 ${stateSnapshot.attributes.diplomacy}

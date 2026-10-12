@@ -42,7 +42,8 @@ const NEW_PLAYER_TURN_THRESHOLD = 3
  */
 export function buildAdvisorSystemPrompt(args: AdvisorChatArgs): string {
   const { character, stateSnapshot, turn } = args
-  const dateStr = `${stateSnapshot.date.year}年${stateSnapshot.date.month}月`
+  // 1 回合 = 1 年：只报年份
+  const dateStr = `${stateSnapshot.date.year}年`
   // T2.5：前 3 回合为新手期
   const isNewPlayer = turn <= NEW_PLAYER_TURN_THRESHOLD
 
@@ -61,7 +62,7 @@ export function buildAdvisorSystemPrompt(args: AdvisorChatArgs): string {
   return `你是 ${character.factionName} 的军师/幕僚，清朝末年背景。玩家是 ${character.background} 出身的 ${character.factionName} 首领，你的职责是为玩家出谋划策。
 
 【玩家势力】${character.factionName}：${character.factionSummary}
-【当前时间】${dateStr}（第 ${turn} 回合）
+【当前时间】${dateStr}（第 ${turn} 回合，1 回合 = 1 年）
 
 【当前局势】
 - 军务 ${stateSnapshot.attributes.military} / 经济 ${stateSnapshot.attributes.economy} / 政治 ${stateSnapshot.attributes.politics} / 民心 ${stateSnapshot.attributes.people} / 外交 ${stateSnapshot.attributes.diplomacy}

@@ -36,7 +36,8 @@ interface GenerateEventArgs {
 export function buildGenerateEventPrompt(args: GenerateEventArgs): string {
   const { character, stateSnapshot, factions, recentEvents, turn, attributeShortfall, dedupEvents } = args
   const isFirstTurn = turn === 1
-  const dateStr = `${stateSnapshot.date.year}年${stateSnapshot.date.month}月`
+  // 1 回合 = 1 年：只报年份。报月份会让 LLM 按「一个月内发生的事」控制事件密度
+  const dateStr = `${stateSnapshot.date.year}年`
 
   const factionStr = factions
     .map((f) => `- ${f.name}（实力 ${f.power}，关系 ${f.relationship}，状态 ${f.status}）：${f.summary}`)
@@ -73,7 +74,7 @@ export function buildGenerateEventPrompt(args: GenerateEventArgs): string {
   return `你是近代历史策略游戏的剧情生成器。请为玩家生成 1 个回合事件。
 
 【玩家势力】${character.factionName}（${character.background}出身）：${character.factionSummary}
-【当前时间】${dateStr}（第 ${turn} 回合）${openingContext}
+【当前时间】${dateStr}（第 ${turn} 回合，1 回合 = 1 年）${openingContext}
 
 【当前局势】
 - 五维属性：军务 ${stateSnapshot.attributes.military} / 经济 ${stateSnapshot.attributes.economy} / 政治 ${stateSnapshot.attributes.politics} / 民心 ${stateSnapshot.attributes.people} / 外交 ${stateSnapshot.attributes.diplomacy}

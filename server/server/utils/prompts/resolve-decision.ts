@@ -25,7 +25,8 @@ interface ResolveDecisionArgs {
  */
 export function buildResolveDecisionPrompt(args: ResolveDecisionArgs): string {
   const { event, playerDecision, stateSnapshot, turn, factions } = args
-  const dateStr = `${stateSnapshot.date.year}年${stateSnapshot.date.month}月`
+  // 1 回合 = 1 年：只报年份
+  const dateStr = `${stateSnapshot.date.year}年`
 
   const optionStr = event.options
     .map((o) => `- [${o.id}] ${o.label}：${JSON.stringify(o.effects)}`)
@@ -52,7 +53,7 @@ ${optionStr}
 
 【玩家决策】${playerDecision}
 
-【当前时间】${dateStr}（第 ${turn} 回合）
+【当前时间】${dateStr}（第 ${turn} 回合，1 回合 = 1 年）
 【当前局势】
 - 军务 ${stateSnapshot.attributes.military} / 经济 ${stateSnapshot.attributes.economy} / 政治 ${stateSnapshot.attributes.politics} / 民心 ${stateSnapshot.attributes.people} / 外交 ${stateSnapshot.attributes.diplomacy}
 - 银两 ${stateSnapshot.resources.silver} / 兵力 ${stateSnapshot.resources.troops} / 粮草 ${stateSnapshot.resources.food} / 威望 ${stateSnapshot.resources.reputation}

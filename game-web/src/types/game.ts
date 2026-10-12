@@ -271,6 +271,15 @@ export interface GameSave {
   /** 进行中的剧情链 ID */
   activeChainIds: string[]
 
+  /**
+   * 「中兴已定」锁定年份（1 回合 = 1 年制下的胜利锁定）。
+   *
+   * 综合实力首次达到 VICTORY_THRESHOLD 的那一年写入此字段，**游戏不因此结束**；
+   * 走到 1912 年结算时，只要本字段有值即判 `victory`，否则按结算时的实力判 `victory` / `time_up`。
+   * 可选字段：旧存档缺省即"从未锁定"，不需要数据迁移。
+   */
+  zenithYear?: number
+
   /** 结局标志（与 endedAt/endedReason 同步设置） */
   ended: boolean
   /** 游戏结束时间戳（仅 ended=true 时有值） */

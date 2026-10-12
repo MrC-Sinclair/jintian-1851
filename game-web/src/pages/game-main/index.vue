@@ -585,7 +585,8 @@ const historyEvents = computed<HistoryEvent[]>(() => store.currentSave?.events ?
 
 const gameDate = computed(() => {
   const d = store.currentSave?.state.date
-  return d ? `${d.year} 年 ${d.month} 月` : ''
+  // 1 回合 = 1 年，month 恒为 1，因此只显示年（带上"1 月"会让人误以为日历按月走）
+  return d ? `${d.year} 年` : ''
 })
 
 const hasDecided = computed(() => decided.value)

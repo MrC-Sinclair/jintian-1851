@@ -130,10 +130,10 @@ const hasSave = ref(false)
 
 /** 当前回合数（用于底部显示） */
 const saveTurn = computed(() => store.currentSave?.state.turn ?? 0)
-/** 游戏内日期（如「1851 年 1 月」） */
+/** 游戏内日期（如「1851 年」；1 回合 = 1 年，month 恒为 1 故不显示） */
 const saveDate = computed(() => {
   const d = store.currentSave?.state.date
-  return d ? `${d.year} 年 ${d.month} 月` : ''
+  return d ? `${d.year} 年` : ''
 })
 
 /** 加载本地存档到 store，并更新 hasSave */

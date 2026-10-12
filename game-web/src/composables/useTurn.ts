@@ -16,11 +16,12 @@ import { useGameStore } from '@/stores/game'
 import { useGameState } from '@/composables/useGameState'
 import { useSSE } from '@/composables/useSSE'
 import { post, postWithMeta, ApiError } from '@/utils/api'
-import { checkEndConditions } from '@/utils/end-conditions'
+import { calcOverallPower, checkEndConditions } from '@/utils/end-conditions'
+import { VICTORY_THRESHOLD } from '@/utils/constants'
 import { getCrisis, type Crisis } from '@/utils/goal-hint'
 import { calcAttributeShortfall } from '@/utils/attribute-shortfall'
 import { calcTurnYield } from '@/utils/turn-yield'
-import { calcResourcePenalty } from '@/utils/resource-penalty'
+import { calcBankruptcyPenalty, calcResourcePenalty } from '@/utils/resource-penalty'
 import { SYSTEM_EVENT } from '@/utils/copywriting'
 import type {
   Attributes,
@@ -249,9 +250,10 @@ export function useTurn(options: UseTurnOptions = {}) {
       }
       store.setEvent(gameEvent)
 
-      // 时光跳跃：剧情链锚点晚于当前日历时，把游戏日历直接推到锚点年月。
-      // 每回合只推进 1 个月、单局约 35 回合（实测中位），日历走不到 1856 年以后，
-      // 14 条剧情链里 12 条将永不触发；跳跃由服务端判定并随事件下发 eventDate。
+      // 时光跳跃：链首锚点晚于当前日历时，把日历推到锚点年（只往前推，不回拨）。
+      // 时钟改为 1 回合 = 1 年后，日历本身每回合自己走 1 年，61 回合即可走完 1851—1912；
+      // 跳跃因此从"必需"降级为"补漏"——用于跨过两个锚点之间的空档年。
+      // （月钟时代它不然：中位 37 回合只推进 3 年多，23 条链里绝大多数永不触发。）
       const jump = gameEvent.eventDate
       const cur = store.currentSave?.state.date
       if (jump && cur && (jump.year > cur.year || (jump.year === cur.year && jump.month > cur.month))) {
@@ -538,7 +540,7 @@ export function useTurn(options: UseTurnOptions = {}) {
    *   1. 调用 npc-actions 获取 NPC 行动
    *   2. 应用 NPC effects
    *   3. 追加历史事件
-   *   4. turn+1, date.month+1（溢出 year+1）
+   *   4. turn+1, date.year+1（1 回合 = 1 年；month 保留但恒为 1）
    *   5. 持久化 + 结局判定
    *
    * @param playerChoice 玩家最终选择描述（用于历史记录）
@@ -605,8 +607,29 @@ export function useTurn(options: UseTurnOptions = {}) {
       }
       store.appendEvent(historyEvent)
 
-      // 3.5 回合资源自动产出（game-design.md:572）：结算银两 +50，并记录系统历史事件（可追溯）
-      const turnYield = calcTurnYield()
+      // 3.45 财政破产（银两 ≤ 0）：**必须在回合产出之前判**——赋税是净正数入库，
+      //      放在之后判定的话只要净产出 >0 就永远触发不了（实测那样 K=4 胜率仍 95.5%，惩罚形同不存在）。
+      //      月初空库意味着本月已经靠加赋/赊欠撑过来了，损伤既成事实，月底补税不能倒回去抹掉。
+      const preYieldResources = store.currentSave?.state.resources ?? s.state.resources
+      const bankruptcy = calcBankruptcyPenalty(preYieldResources)
+      if (bankruptcy.reasons.length > 0) {
+        store.applyEffects(bankruptcy.effects)
+        const bankNote = bankruptcy.reasons.join('；')
+        store.appendEvent({
+          turn: s.state.turn,
+          eventType: '系统',
+          title: bankNote,
+          description: bankNote,
+          playerChoice: '',
+          effects: { ...bankruptcy.effects }
+        })
+      }
+
+      // 3.5 回合资源净流转（game-design.md:572）：产出扣养饷后的净额，并记录系统历史事件（可追溯）
+      //     养饷按发饷时的在编兵员算，所以读 store 最新存量而不是进入 endTurn 时的快照
+      //     （本回合的决策与事件可能已经改变兵员，用旧值会算错饷银）
+      const troopsNow = store.currentSave?.state.resources.troops ?? s.state.resources.troops
+      const turnYield = calcTurnYield(troopsNow)
       store.applyEffects(turnYield)
       store.appendEvent({
         turn: s.state.turn,
@@ -637,15 +660,28 @@ export function useTurn(options: UseTurnOptions = {}) {
       // 3.7 势力存亡：本回合内被打到 power ≤ 0 的势力转为 destroyed，下回合起不再进 NPC 决策
       store.applyFactionSurvival()
 
-      // 4. turn+1, date 推进
-      const nextMonth = s.state.date.month + 1
-      const nextDate =
-        nextMonth > 12
-          ? { year: s.state.date.year + 1, month: 1 }
-          : { year: s.state.date.year, month: nextMonth }
+      // 3.8 「中兴已定」锁定：综合实力**首次**达阈值时只记年份 + 播一条系统事件，
+      //     不结束游戏 —— 终局仍要走到 1912 年结算（见 utils/end-conditions.ts）
+      const liveAttrs = store.currentSave?.state.attributes ?? s.state.attributes
+      if (!s.zenithYear && calcOverallPower(liveAttrs) >= VICTORY_THRESHOLD) {
+        const zenithYear = store.currentSave?.state.date.year ?? s.state.date.year
+        store.lockZenith(zenithYear)
+        store.appendEvent({
+          turn: s.state.turn,
+          eventType: '系统',
+          title: SYSTEM_EVENT.zenithLocked,
+          description: SYSTEM_EVENT.zenithLocked,
+          playerChoice: '',
+          effects: {}
+        })
+      }
+
+      // 4. turn+1, date 推进：**1 回合 = 1 年**。
+      //    month 字段刻意保留且恒为 1（不删）—— 删它会牵动 6 处 zod schema、eventDate 结构、
+      //    DB 里已存的 JSON 与存档迁移；保留则 API 契约零变更。见 turn-equals-year-clock 提案。
       store.updateState({
         turn: s.state.turn + 1,
-        date: nextDate
+        date: { year: s.state.date.year + 1, month: 1 }
       })
 
       // 5. 持久化

@@ -738,13 +738,13 @@ describe('endTurn', () => {
     const systemEvt = store.currentSave?.events[1]
     expect(systemEvt?.eventType).toBe('系统')
     expect(systemEvt?.playerChoice).toBe('')
-    expect(systemEvt?.effects).toEqual({ silver: 50, troops: 15 })
-    // 银两自动 +50（1000 → 1050）
-    expect(store.currentSave?.state.resources.silver).toBe(1050)
+    expect(systemEvt?.effects).toEqual({ silver: 30, troops: 15, reputation: -3 })
+    // 银两净 +30（1000 → 1030）：产出 +50 扣掉养饷 20（兵员 500 → ceil(500/100)×4）
+    expect(store.currentSave?.state.resources.silver).toBe(1030)
     // turn +1
     expect(store.currentSave?.state.turn).toBe(2)
-    // date.month +1
-    expect(store.currentSave?.state.date).toEqual({ year: 1851, month: 2 })
+    // date.year +1（1 回合 = 1 年；month 保留但恒为 1）
+    expect(store.currentSave?.state.date).toEqual({ year: 1852, month: 1 })
     // currentEvent 清空（下一回合事件由 startTurn 重新拉取）
     expect(store.currentEvent).toBeNull()
     // npcActions 保留至下一回合展示「天下动静」（endTurn 末尾不再清空，避免面板永不显示）
@@ -779,10 +779,11 @@ describe('endTurn', () => {
     expect(hist?.chainNodeId).toBe('node-1')
   })
 
-  it('date 月份溢出 year +1', async () => {
+  it('老存档停在年中：下一回合直接落到次年 1 月（month 被年钟收拢）', async () => {
     const store = useGameStore()
     const save = createMockSave()
-    save.state.date = { year: 1851, month: 12 }
+    // 月钟时代留下的存档可能停在任意月份；年钟下不保留，统一收拢到次年 1 月
+    save.state.date = { year: 1851, month: 7 }
     store.setSave(save)
     store.setEvent({
       title: '事件',
@@ -878,7 +879,7 @@ describe('endTurn', () => {
     expect(syncFn).not.toHaveBeenCalled()
   })
 
-  it('资源产出提案：endTurn 注入银两+50 且追加系统历史事件（eventType 系统）', async () => {
+  it('资源产出提案：endTurn 注入净产出（+50 减养饷）且追加系统历史事件（eventType 系统）', async () => {
     const store = useGameStore()
     const save = createMockSave()
     save.state.resources.silver = 500
@@ -894,14 +895,44 @@ describe('endTurn', () => {
     const { endTurn } = useTurn()
     await endTurn('选项')
 
-    // 银两 +50（500 → 550），与玩家/NPC 决策无关
-    expect(store.currentSave?.state.resources.silver).toBe(550)
+    // 银两净 +30（500 → 530）：产出 +50 − 养饷 20（兵员 500），与玩家/NPC 决策无关
+    expect(store.currentSave?.state.resources.silver).toBe(530)
     // 末条历史事件为系统产出事件
     const events = store.currentSave?.events ?? []
     const last = events[events.length - 1]
     expect(last?.eventType).toBe('系统')
     expect(last?.playerChoice).toBe('')
-    expect(last?.effects).toEqual({ silver: 50, troops: 15 })
+    expect(last?.effects).toEqual({ silver: 30, troops: 15, reputation: -3 })
+  })
+
+  it('endTurn 按在编兵员发饷：兵员越多净产出越少，超过 1250 后转为净负', async () => {
+    // 养饷是「兵多则饷重」的联动而非固定值——锁住三档净额，
+    // 防止 upkeep 被改回常量或调用处漏传 troops（漏传会静默退化成不扣饷）
+    const cases: { troops: number; netSilver: number }[] = [
+      { troops: 300, netSilver: 50 - 12 }, // ceil(300/100)×4 = 12
+      { troops: 500, netSilver: 50 - 20 }, // 20
+      { troops: 1300, netSilver: 50 - 52 } // 52 > 50 → 财政倒挂
+    ]
+    for (const c of cases) {
+      setActivePinia(createPinia())
+      const store = useGameStore()
+      const save = createMockSave()
+      save.state.resources.troops = c.troops
+      save.state.resources.silver = 500
+      store.setSave(save)
+      store.setEvent({
+        title: '事件',
+        description: '',
+        eventType: '随机',
+        options: [{ id: 'o1', label: '选项', effects: {} }]
+      })
+      vi.mocked(post).mockResolvedValueOnce({ actions: [] })
+
+      const { endTurn } = useTurn()
+      await endTurn('选项')
+
+      expect(store.currentSave?.state.resources.silver).toBe(500 + c.netSilver)
+    }
   })
 
   it('endTurn 接线势力存亡判定：power ≤ 0 的势力在结算时转 destroyed', async () => {
@@ -963,10 +994,9 @@ describe('endTurn - 结局判定', () => {
     expect(onTurnEnd).not.toHaveBeenCalled()
   })
 
-  it('胜利触发结局：综合实力 ≥ 90', async () => {
+  it('中途达标不再立即通关：只锁定「中兴已定」并播一条系统事件', async () => {
     const store = useGameStore()
     const save = createMockSave()
-    // 设置 5 维属性都为 90，综合实力 = 90 触发胜利
     save.state.attributes = { military: 90, economy: 90, politics: 90, people: 90, diplomacy: 90 }
     store.setSave(save)
     store.setEvent({
@@ -980,9 +1010,56 @@ describe('endTurn - 结局判定', () => {
     const { endTurn } = useTurn()
     await endTurn('选项')
 
+    // 年钟下胜利改到 1912 结算：本回合只锁定年份，游戏继续
+    expect(store.currentSave?.ended).toBe(false)
+    expect(store.currentSave?.zenithYear).toBe(1851)
+    expect(uni.redirectTo).not.toHaveBeenCalled()
+    const zenithEvt = store.currentSave?.events.find((e) => e.eventType === '系统' && e.title.includes('中兴已定'))
+    expect(zenithEvt).toBeDefined()
+  })
+
+  it('已锁定中兴 → 走到 1912 年后结算为 victory', async () => {
+    const store = useGameStore()
+    const save = createMockSave()
+    save.state.date = { year: 1912, month: 1 }
+    save.zenithYear = 1890
+    // 结算时实力已跌下阈值也无妨：中兴评价在锁定的那一年就已经拿到
+    save.state.attributes = { military: 60, economy: 60, politics: 60, people: 60, diplomacy: 60 }
+    store.setSave(save)
+    store.setEvent({
+      title: '事件',
+      description: '',
+      eventType: '随机',
+      options: [{ id: 'o1', label: '选项', effects: {} }]
+    })
+    vi.mocked(post).mockResolvedValueOnce({ actions: [] })
+
+    const { endTurn } = useTurn()
+    await endTurn('选项')
+
+    expect(store.currentSave?.state.date).toEqual({ year: 1913, month: 1 })
     expect(store.currentSave?.ended).toBe(true)
     expect(store.currentSave?.endedReason).toBe('victory')
-    expect(uni.redirectTo).toHaveBeenCalledWith({ url: '/pages/end-game/index' })
+  })
+
+  it('从未锁定但结算时实力达标 → 同样 victory', async () => {
+    const store = useGameStore()
+    const save = createMockSave()
+    save.state.date = { year: 1912, month: 1 }
+    save.state.attributes = { military: 90, economy: 90, politics: 90, people: 90, diplomacy: 90 }
+    store.setSave(save)
+    store.setEvent({
+      title: '事件',
+      description: '',
+      eventType: '随机',
+      options: [{ id: 'o1', label: '选项', effects: {} }]
+    })
+    vi.mocked(post).mockResolvedValueOnce({ actions: [] })
+
+    const { endTurn } = useTurn()
+    await endTurn('选项')
+
+    expect(store.currentSave?.endedReason).toBe('victory')
   })
 
   it('时光尽头触发结局：year > 1912', async () => {
@@ -1001,7 +1078,7 @@ describe('endTurn - 结局判定', () => {
     const { endTurn } = useTurn()
     await endTurn('选项')
 
-    // 月份 12 + 1 → year + 1 = 1913，触发时光尽头
+    // 1912 + 1 回合 = 1913 → 跨年结算；本局从未锁定中兴、结算时实力也不达标 → time_up
     expect(store.currentSave?.state.date).toEqual({ year: 1913, month: 1 })
     expect(store.currentSave?.ended).toBe(true)
     expect(store.currentSave?.endedReason).toBe('time_up')
