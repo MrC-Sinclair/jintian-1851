@@ -6,7 +6,7 @@
 ## Requirements
 ### Requirement: 谈判两阶段接口
 
-`POST /api/game/faction-negotiate` 提供玩家与单个 NPC 势力 Agent 的自然语言谈判。两阶段状态机：`phase='letter'`（玩家写信 1-200 字，Agent 回信并表态）与 `phase='settle'`（仅当 letter 阶段 `stance='counter'` 时可达，玩家「接受条件」或「还价」，Agent 最终裁定，不再提新条件）。单次谈判最多 2 次 AI 调用。请求携带 `character` / `stateSnapshot` / `faction`（单势力全量），出参 `{ stance: 'accept'|'reject'|'counter', reply ≤200字, relationshipDelta, deal? }`。复用 npc-actions 的 `streamText` + `createNpcTools`（4 查询工具）+ `stopWhen: stepCountIs(3)` 模式；请求头 `x-e2e-test-mode: 1` 时步数压为 1、超时 8 秒。
+`POST /api/game/faction-negotiate` MUST 提供玩家与单个 NPC 势力 Agent 的自然语言谈判。两阶段状态机：`phase='letter'`（玩家写信 1-200 字，Agent 回信并表态）与 `phase='settle'`（仅当 letter 阶段 `stance='counter'` 时可达，玩家「接受条件」或「还价」，Agent 最终裁定，不再提新条件）。单次谈判最多 2 次 AI 调用。请求携带 `character` / `stateSnapshot` / `faction`（单势力全量），出参 `{ stance: 'accept'|'reject'|'counter', reply ≤200字, relationshipDelta, deal? }`。复用 npc-actions 的 `streamText` + `createNpcTools`（4 查询工具）+ `stopWhen: stepCountIs(3)` 模式；请求头 `x-e2e-test-mode: 1` 时步数压为 1、超时 8 秒。
 
 #### Scenario: 写信获得还价
 
@@ -30,7 +30,7 @@ THEN 前端不发起 settle 请求，直接关闭谈判并仅应用信件 relati
 
 ### Requirement: 条件兑换表与防幻觉 sanitize
 
-谈判条件来自预定义 `NEGOTIATION_DEALS`（馈赠通好/互市通商/破财止战/歃血为盟），每条含资源价格区间、效果区间与关系门槛（如 `alliance-deal` 要求 relationship≥35、`truce-deal` 要求 relationship≤-30）。效果随价格线性缩放：`ratio = (price − 下限) / (上限 − 下限)`，各效果值在自身区间按 ratio 取整。LLM 只能选择 dealId 与区间内价格，**不产出最终数值与 status**；status 变更仅由前端按表映射（仅 `alliance-deal` → `'allied'`）。服务端 sanitize：非法 `dealId` 丢弃 deal 且 stance 强制降为 `reject`；`price` clamp 回区间；`relationshipDelta` clamp ±10；`reply` 截断 200 字。
+谈判条件 MUST 来自预定义 `NEGOTIATION_DEALS`（馈赠通好/互市通商/破财止战/歃血为盟），每条含资源价格区间、效果区间与关系门槛（如 `alliance-deal` 要求 relationship≥35、`truce-deal` 要求 relationship≤-30）。效果随价格线性缩放：`ratio = (price − 下限) / (上限 − 下限)`，各效果值在自身区间按 ratio 取整。LLM 只能选择 dealId 与区间内价格，**不产出最终数值与 status**；status 变更仅由前端按表映射（仅 `alliance-deal` → `'allied'`）。服务端 sanitize：非法 `dealId` 丢弃 deal 且 stance 强制降为 `reject`；`price` clamp 回区间；`relationshipDelta` clamp ±10；`reply` 截断 200 字。
 
 #### Scenario: 非法 dealId 被丢弃
 
@@ -44,7 +44,7 @@ THEN 服务端 clamp 为 120 后返回，前端按 120 计算缩放效果
 
 ### Requirement: 信件软性关系影响
 
-无论是否成交，letter 阶段回信附 `relationshipDelta`（LLM 对信件语气/内容的态度反应），前端 `applyLetterDelta` 应用并 clamp 至 ±10（弱于行贿按钮的 +15）。多次谈判的叠加受独立配额（每回合 1 次）约束。
+无论是否成交，letter 阶段回信 MUST 附 `relationshipDelta`（LLM 对信件语气/内容的态度反应），前端 `applyLetterDelta` 应用并 clamp 至 ±10（弱于行贿按钮的 +15）。多次谈判的叠加受独立配额（每回合 1 次）约束。
 
 #### Scenario: 拒绝时小幅关系损失
 
@@ -53,7 +53,7 @@ THEN 前端应用后该势力 relationship 变为 -58（clamp 边界内），谈
 
 ### Requirement: 独立回合配额
 
-谈判配额 `negotiationUsedThisTurn` 每回合上限 1 次（`MAX_NEGOTIATION_PER_TURN = 1`）：发起 `letter` 且非降级时置位；`settle` 追答不重复计数；`useTurn.startTurn` 随 `resetDiplomacy()` 一并重置。与按钮外交配额 `diplomacyUsedThisTurn` 互不占用。降级（X-Fallback）时前端不置位，允许同回合重试（连续失败由 10 次/分钟限流兜底）。
+谈判配额 `negotiationUsedThisTurn` MUST 限制为每回合 1 次（`MAX_NEGOTIATION_PER_TURN = 1`）：发起 `letter` 且非降级时置位；`settle` 追答不重复计数；`useTurn.startTurn` 随 `resetDiplomacy()` 一并重置。与按钮外交配额 `diplomacyUsedThisTurn` 互不占用。降级（X-Fallback）时前端不置位，允许同回合重试（连续失败由 10 次/分钟限流兜底）。
 
 #### Scenario: 谈判与按钮外交同回合并存
 
@@ -67,7 +67,7 @@ THEN 前端提示「信使途中受阻，未能送达」，不置位 negotiation
 
 ### Requirement: 失败降级
 
-AI 调用异常或 JSON 不可解析时，端点返回 `{ ok: true, data: { stance: 'reject', reply: '', relationshipDelta: 0 }, fallback: true }` 与响应头 `X-Fallback: true`，HTTP 200（与 npc-actions 降级语义一致，游戏不中断）。不重试。
+AI 调用异常或 JSON 不可解析时，端点 MUST 返回 `{ ok: true, data: { stance: 'reject', reply: '', relationshipDelta: 0 }, fallback: true }` 与响应头 `X-Fallback: true`，HTTP 200（与 npc-actions 降级语义一致，游戏不中断）。不重试。
 
 #### Scenario: AI 超时降级
 
@@ -76,7 +76,7 @@ THEN 返回降级结构 + `X-Fallback: true`，前端走降态文案且退还配
 
 ### Requirement: 并发锁与限流
 
-端点纳入现有 saveId 粒度并发锁（进程内 Map，30 秒自动释放；同 saveId 进行中再请求返回 429 `CONCURRENT_REQUEST`）与 `x-device-id` 10 次/分钟限流（429 `RATE_LIMITED`），与 generate-event / resolve-decision / npc-actions / advisor-chat 共用池。letter 与 settle 不会并发发出（前端状态机保证串行）。
+端点 MUST 纳入现有 saveId 粒度并发锁（进程内 Map，30 秒自动释放；同 saveId 进行中再请求返回 429 `CONCURRENT_REQUEST`）与 `x-device-id` 10 次/分钟限流（429 `RATE_LIMITED`），与 generate-event / resolve-decision / npc-actions / advisor-chat 共用池。letter 与 settle 不会并发发出（前端状态机保证串行）。
 
 #### Scenario: 重复点击被并发锁拦截
 
@@ -85,7 +85,7 @@ THEN 服务端返回 429 `CONCURRENT_REQUEST`，前端防重复提交守卫（�
 
 ### Requirement: 谈判历史记录
 
-谈判成交（settle accept）或仅信件影响（reject/放弃）后，前端追加事件到 `save.events`（复用 eventType `外交`），内容含势力名、deal 标签（若有）与一句话摘要；事件列表超 50 条按现有规则截断。
+谈判成交（settle accept）或仅信件影响（reject/放弃）后，前端 MUST 追加事件到 `save.events`（复用 eventType `外交`），内容含势力名、deal 标签（若有）与一句话摘要；事件列表超 50 条按现有规则截断。
 
 #### Scenario: 成交事件入档
 

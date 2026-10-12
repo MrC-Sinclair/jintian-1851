@@ -2,7 +2,17 @@
 
 > 合并自 `openspec/changes/archive/2026-09-06-save-management`（2026-09-06 实现并验证）。
 
-## ADDED Requirements
+## Purpose
+
+多存档管理：一个设备可拥有多个存档，玩家可查看摘要、切换、删除、导出与导入。
+本能力规定 `GET /api/game/saves`（列表）与 `DELETE /api/game/saves`（删除）两个端点的契约、
+按属主过滤的一致性口径，以及前端「云端存档」区块的交互与防重复提交要求。
+
+属主凭证正在从「客户端自声明 `deviceId`」迁移为「服务端换发的设备凭据」，
+迁移过程与双轨兼容期由 `openspec/changes/save-ownership-auth` 规定；
+本规格描述的是该能力的行为边界，不绑定具体凭证形态。
+
+## Requirements
 
 ### Requirement: 按设备拉取存档列表
 系统 SHALL 提供 `GET /api/game/saves` 接口，按 `deviceId` 返回存档摘要列表（不含完整 saveData），按 `updated_at` 倒序排列。
