@@ -1,7 +1,8 @@
 /**
  * @file fallback-events 单元测试
  *
- * 验证总数 = 60 与 5 类型各 12 条；兜底事件不携带 chainId；
+ * 验证总数 = 90 与 5 类型各 18 条；兜底事件不携带 chainId；标题全局唯一；
+ * 扩容新增的 30 条无严格占优选项、且至少 1/3 带粮草/兵员收支；
  * 以及 getRandomFallbackEvent 的 avoidTitles 避重与「剔空回退全池」行为
  */
 
@@ -9,20 +10,20 @@ import { describe, expect, it } from 'vitest'
 import { FALLBACK_EVENTS, getRandomFallbackEvent } from '../../server/runtime/fallback-events'
 
 describe('fallback-events', () => {
-  it('总数 = 60', () => {
-    expect(FALLBACK_EVENTS.length).toBe(60)
+  it('总数 = 90', () => {
+    expect(FALLBACK_EVENTS.length).toBe(90)
   })
 
-  it('5 类型各 12 条', () => {
+  it('5 类型各 18 条', () => {
     const counts: Record<string, number> = {}
     for (const e of FALLBACK_EVENTS) {
       counts[e.type] = (counts[e.type] ?? 0) + 1
     }
-    expect(counts['民生']).toBe(12)
-    expect(counts['军事']).toBe(12)
-    expect(counts['外交']).toBe(12)
-    expect(counts['随机']).toBe(12)
-    expect(counts['历史剧情']).toBe(12)
+    expect(counts['民生']).toBe(18)
+    expect(counts['军事']).toBe(18)
+    expect(counts['外交']).toBe(18)
+    expect(counts['随机']).toBe(18)
+    expect(counts['历史剧情']).toBe(18)
   })
 
   it('兜底事件不携带 chainId 字段', () => {
@@ -31,6 +32,68 @@ describe('fallback-events', () => {
       expect(e).not.toHaveProperty('chainNodeId')
       expect(e).not.toHaveProperty('chainProgress')
     }
+  })
+
+  it('标题全局唯一（同类内不重复主题的前提）', () => {
+    const titles = FALLBACK_EVENTS.map((e) => e.title)
+    expect(new Set(titles).size).toBe(titles.length)
+  })
+
+  // 扩容 30 条的清单（新增事件时必须同步登记，否则下面两条护栏覆盖不到它）
+  const EXPANDED_TITLES = [
+    // 民生
+    '蚕桑歉收', '银荒钱贱', '裁撤驿递', '乡族械斗', '田赋加派', '书院义学',
+    // 军事
+    '屯田实边', '军粮转运', '团练劝捐', '溃兵为匪', '江防炮台', '军马采购',
+    // 外交
+    '洋商欠债', '出使经费', '华工出洋', '矿权让与', '商约修订', '公使觐礼',
+    // 随机
+    '戏班义演', '巧匠献器', '洋油失慎', '奇兽困人', '电报误传', '落第士子',
+    // 历史剧情
+    '丁戊奇荒', '捻军荡平', '滇案照会', '伊犁交涉', '海防塞防之争', '义和拳起'
+  ]
+
+  /**
+   * 严格占优判定：effects 里所有字段都是「越大越好」（负数即代价），
+   * 若 A 在全部字段 ≥ B 且至少一项 >，则 A 严格优于 B —— 玩家不必思考就能选对，是坏设计。
+   */
+  function strictlyDominates(a: Record<string, number>, b: Record<string, number>): boolean {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+    let strict = false
+    for (const k of keys) {
+      const av = a[k] ?? 0
+      const bv = b[k] ?? 0
+      if (av < bv) return false
+      if (av > bv) strict = true
+    }
+    return strict
+  }
+
+  it('扩容新增的 30 条：不存在严格占优选项（每条都要有权衡）', () => {
+    const offenders: string[] = []
+    for (const e of FALLBACK_EVENTS.filter((x) => EXPANDED_TITLES.includes(x.title))) {
+      for (const a of e.options) {
+        for (const b of e.options) {
+          if (a !== b && strictlyDominates(a.effects as Record<string, number>, b.effects as Record<string, number>)) {
+            offenders.push(`${e.title}：「${a.label}」严格优于「${b.label}」`)
+          }
+        }
+      }
+    }
+    // 旧池 60 条里有 26 条存在严格占优选项（早于本规则，未一并整改，见提案「遗留」）。
+    // 因此本护栏只覆盖登记的扩容清单——新增事件不写进 EXPANDED_TITLES 就等于没测。
+    expect(offenders).toEqual([])
+    expect(EXPANDED_TITLES.length).toBe(30)
+    expect(FALLBACK_EVENTS.filter((x) => EXPANDED_TITLES.includes(x.title))).toHaveLength(30)
+  })
+
+  it('扩容新增的 30 条里至少 1/3 以粮草或兵员为代价/收益（激活枯竭惩罚）', () => {
+    const withResource = FALLBACK_EVENTS.filter(
+      (x) =>
+        EXPANDED_TITLES.includes(x.title) &&
+        x.options.some((o) => o.effects.food !== undefined || o.effects.troops !== undefined)
+    )
+    expect(withResource.length).toBeGreaterThanOrEqual(10)
   })
 
   it('每条事件含 title/description/options(2-4)/eventType', () => {

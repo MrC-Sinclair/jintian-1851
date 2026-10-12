@@ -1,11 +1,19 @@
 /**
  * @file 预置兜底事件池
  *
- * 60 条事件，覆盖 5 类型各 12 条（民生/军事/外交/随机/历史剧情）。
+ * 90 条事件，覆盖 5 类型各 18 条（民生/军事/外交/随机/历史剧情）。
  * 当 LLM generate-event 失败时从池中随机返回，保证回合不阻断。
  *
- * 每条事件含 title/description/options(2-4)/effects（effects 数值 ±3~15 平衡）。
+ * 每条事件含 title/description/options(2-4)/effects（属性 ±3~15、资源 ±50~500）。
  * 兜底事件**不携带** chainId 字段（独立事件，不进入剧情链）。
+ *
+ * 扩容 30 条（每类 +6）时的两条硬约束，改池子时请一并守住：
+ *   1. **同类内主题不重复**——先 grep 现有 title 列表再选题；
+ *   2. **至少 1/3 新事件以粮草/兵员为代价或收益**——`resource-penalty` 的「断粮→饥荒」
+ *      「兵溃」两条惩罚在旧池下几乎不触发（200 局模拟：粮草最低 160、兵员最低 15，
+ *      枯竭惩罚触发回合占比均为 0.0%），粮草/兵员的消耗与补给只能靠内容侧提供。
+ *      本池现有 food/troops 收支：负向以 军事/历史剧情 类为主，正向补给见
+ *      「屯田实边」「招抚降众给田」「劝民改稻以济口粮」等条。
  */
 
 import type { GameEvent, EventType } from '@/types/game'
@@ -16,7 +24,7 @@ interface FallbackEvent extends GameEvent {
 }
 
 export const FALLBACK_EVENTS: readonly FallbackEvent[] = [
-  // ========== 民生（12 条）==========
+  // ========== 民生（18 条）==========
   {
     type: '民生',
     title: '粮价飞涨',
@@ -150,7 +158,75 @@ export const FALLBACK_EVENTS: readonly FallbackEvent[] = [
     ]
   },
 
-  // ========== 军事（12 条）==========
+  // —— 以下为扩容新增（T5.x）：与上方 12 条主题不重复，且至少一条以粮草/兵员为代价或收益 ——
+  {
+    type: '民生',
+    title: '蚕桑歉收',
+    description: '江浙蚕室遍发僵病，秋丝减产近半，机户停织者十之三四，丝行伙计纷纷散往城中觅食。',
+    eventType: '民生',
+    options: [
+      { id: 'a', label: '拨款购浙种给机户', effects: { economy: 6, people: 4, silver: -150 } },
+      { id: 'b', label: '劝民改稻以济口粮', effects: { food: 120, people: 3, economy: -6 } },
+      { id: 'c', label: '听丝价自涨自落', effects: { economy: -8, people: -6, silver: 100 } }
+    ]
+  },
+  {
+    type: '民生',
+    title: '银荒钱贱',
+    description: '民间钱票充斥，铜钱较往年贱了三成，纳粮折银愈多而卖粮得钱愈少，市面交易半趋停滞。',
+    eventType: '民生',
+    options: [
+      { id: 'a', label: '设局平准钱价', effects: { economy: 6, people: 4, silver: -200 } },
+      { id: 'b', label: '严禁私票私铸', effects: { politics: 5, reputation: 3, people: -5 } },
+      { id: 'c', label: '加征折色以实库', effects: { economy: 5, silver: 150, people: -10 } }
+    ]
+  },
+  {
+    type: '民生',
+    title: '裁撤驿递',
+    description: '部议裁并天下驿站以节冗费，各省驿夫马夫骤失生路，秦晋之间已有逃驿结伙劫夺商队之事。',
+    eventType: '民生',
+    options: [
+      { id: 'a', label: '给资遣散驿夫', effects: { people: 5, politics: 3, silver: -150 } },
+      { id: 'b', label: '照议即刻裁撤', effects: { silver: 100, people: -8, politics: -4 } },
+      { id: 'c', label: '缓裁两年再议', effects: { politics: 4, silver: -80, economy: -3 } }
+    ]
+  },
+  {
+    type: '民生',
+    title: '乡族械斗',
+    description: '闽省土客两族因争田水利，聚众持械互殴已历三昼夜，焚毁祠堂数处，地方官弹压不住。',
+    eventType: '民生',
+    options: [
+      { id: 'a', label: '调勇丁分投弹压', effects: { troops: -80, politics: 6, people: -4 } },
+      { id: 'b', label: '传集族老议和断田', effects: { people: 6, politics: 3, silver: -100 } },
+      { id: 'c', label: '借清乡抄没凶族', effects: { military: 5, troops: -50, people: -10 } }
+    ]
+  },
+  {
+    type: '民生',
+    title: '田赋加派',
+    description: '户部以军饷支绌，饬各省于钱漕之外按亩加耗。里胥趁势浮收，乡民已有抗粮聚众之兆。',
+    eventType: '民生',
+    options: [
+      { id: 'a', label: '按亩加耗征本色', effects: { food: 150, silver: 200, people: -12 } },
+      { id: 'b', label: '改向行商捐输', effects: { silver: 120, people: 3, economy: -6 } },
+      { id: 'c', label: '抗命不加派', effects: { people: 5, military: -4, silver: -100 } }
+    ]
+  },
+  {
+    type: '民生',
+    title: '书院义学',
+    description: '省城绅商请拨寺观绝产兴办新式学堂，习算学外语；学政以「废弃经义」为由连衔具呈力争。',
+    eventType: '民生',
+    options: [
+      { id: 'a', label: '拨产兴办学堂', effects: { reputation: 8, people: 5, silver: -120, politics: -4 } },
+      { id: 'b', label: '仍守旧章书院', effects: { politics: 5, reputation: -3 } },
+      { id: 'c', label: '官绅合办两存', effects: { reputation: 5, economy: 4, silver: -60 } }
+    ]
+  },
+
+  // ========== 军事（18 条）==========
   {
     type: '军事',
     title: '兵饷拖欠',
@@ -284,7 +360,75 @@ export const FALLBACK_EVENTS: readonly FallbackEvent[] = [
     ]
   },
 
-  // ========== 外交（12 条）==========
+  // —— 以下为扩容新增（T5.x）：与上方 12 条主题不重复，且至少一条以粮草/兵员为代价或收益 ——
+  {
+    type: '军事',
+    title: '屯田实边',
+    description: '口外驻军粮饷转运千里，费银十石始致一石。督府请仿汉屯田旧制，拨荒田与勇丁自耕实边。',
+    eventType: '军事',
+    options: [
+      { id: 'a', label: '拨荒田给勇丁屯种', effects: { food: 250, troops: 80, silver: -150, people: -5 } },
+      { id: 'b', label: '募流民往垦', effects: { food: 150, people: 6, silver: -100 } },
+      { id: 'c', label: '罢屯田专靠转运', effects: { economy: 4, food: -80, troops: -40 } }
+    ]
+  },
+  {
+    type: '军事',
+    title: '军粮转运',
+    description: '前敌八营月需米粮四千石，山路崎岖车马难行，里正报称沿途民夫已逃亡过半。',
+    eventType: '军事',
+    options: [
+      { id: 'a', label: '重征民夫转运', effects: { food: 200, silver: -100, people: -8 } },
+      { id: 'b', label: '就地采买筹粮', effects: { food: 120, silver: -150, economy: -5 } },
+      { id: 'c', label: '减兵口粮以济急', effects: { food: 80, troops: -60, military: -5 } }
+    ]
+  },
+  {
+    type: '军事',
+    title: '团练劝捐',
+    description: '府县劝办团练，需绅商捐输枪价口粮。城中大户聚议三日，暗托幕友求免，亦有愿领团总之职者。',
+    eventType: '军事',
+    options: [
+      { id: 'a', label: '给虚衔劝富户捐输', effects: { troops: 150, silver: 100, reputation: -4, economy: -6 } },
+      { id: 'b', label: '按亩派捐勒令齐交', effects: { troops: 100, silver: 80, people: -7 } },
+      { id: 'c', label: '不强劝听其自便', effects: { troops: -50, people: 5, reputation: 4 } }
+    ]
+  },
+  {
+    type: '军事',
+    title: '溃兵为匪',
+    description: '上年溃散勇丁数百人散伏山僻，借旧日队伍名号拦路索财，绑票勒赎，商路几至断绝。',
+    eventType: '军事',
+    options: [
+      { id: 'a', label: '招抚收编前敌', effects: { troops: 80, silver: -120, military: -4, people: -3 } },
+      { id: 'b', label: '派营痛剿示众', effects: { military: 8, troops: -60, people: -5 } },
+      { id: 'c', label: '给资遣散归农', effects: { people: 6, silver: -60, troops: -100, food: -80 } }
+    ]
+  },
+  {
+    type: '军事',
+    title: '江防炮台',
+    description: '洋轮屡于江心游弋测探水深，督署请于江阴一带筑台置炮，以固门户；户部以库支绌力持缓议。',
+    eventType: '军事',
+    options: [
+      { id: 'a', label: '筑台置炮驻勇', effects: { military: 10, diplomacy: 4, troops: 50, silver: -400 } },
+      { id: 'b', label: '购轮船巡江', effects: { military: 7, diplomacy: 5, silver: -350 } },
+      { id: 'c', label: '节省防费缓议', effects: { economy: 8, military: -6, diplomacy: -5 } }
+    ]
+  },
+  {
+    type: '军事',
+    title: '军马采购',
+    description: '马政废弛已久，现存战马十不及二。察哈尔商帮报马价较常年低两成，惟须现银交易不能赊欠。',
+    eventType: '军事',
+    options: [
+      { id: 'a', label: '向北口现银买马', effects: { troops: 100, military: 5, silver: -200 } },
+      { id: 'b', label: '就地征马给值', effects: { troops: 80, silver: -50, people: -8 } },
+      { id: 'c', label: '改购车炮弃马', effects: { military: 6, silver: -150, troops: -30, economy: -5 } }
+    ]
+  },
+
+  // ========== 外交（18 条）==========
   {
     type: '外交',
     title: '列强施压',
@@ -418,7 +562,75 @@ export const FALLBACK_EVENTS: readonly FallbackEvent[] = [
     ]
   },
 
-  // ========== 随机（12 条）==========
+  // —— 以下为扩容新增（T5.x）：与上方 12 条主题不重复，且至少一条以粮草/兵员为代价或收益 ——
+  {
+    type: '外交',
+    title: '洋商欠债',
+    description: '沪上怡和等洋行呈称华商聚源号拖欠丝价四万余两，请由官府催追，否则将扣船货不得出口。',
+    eventType: '外交',
+    options: [
+      { id: 'a', label: '官为代偿以息事', effects: { diplomacy: 8, economy: -5, silver: -250 } },
+      { id: 'b', label: '照律不理其自保', effects: { diplomacy: -8, politics: 6, reputation: 4 } },
+      { id: 'c', label: '责令铺东自清', effects: { economy: 5, diplomacy: -4, people: -4 } }
+    ]
+  },
+  {
+    type: '外交',
+    title: '出使经费',
+    description: '御史奏称驻外使署廪饩过糜，请大加核减。出使大臣复称各国使臣仪注皆有等差，骤减则贻笑外人。',
+    eventType: '外交',
+    options: [
+      { id: 'a', label: '照额拨给使署', effects: { diplomacy: 7, politics: 3, silver: -120 } },
+      { id: 'b', label: '大加核减省费', effects: { silver: 150, diplomacy: -9, reputation: -4 } },
+      { id: 'c', label: '改归海关税项', effects: { diplomacy: 4, economy: -4, politics: -3 } }
+    ]
+  },
+  {
+    type: '外交',
+    title: '华工出洋',
+    description: '厦门招工馆以「契约五年、归国给资」诱招华工，登船后多被转卖古巴种植园，各家哭诉于衙前。',
+    eventType: '外交',
+    options: [
+      { id: 'a', label: '出示严禁出洋', effects: { people: 7, economy: -5, diplomacy: -8 } },
+      { id: 'b', label: '官为设局查验保护', effects: { people: 5, diplomacy: 3, economy: 4, silver: -100 } },
+      { id: 'c', label: '听凭自往招募', effects: { economy: 8, silver: 120, people: -9 } }
+    ]
+  },
+  {
+    type: '外交',
+    title: '矿权让与',
+    description: '英商福公司请办山西上下游煤铁，愿先借巨资修路。晋绅连日聚议，谓「路成而矿为人有，是开门揖盗」。',
+    eventType: '外交',
+    options: [
+      { id: 'a', label: '准其自行开采', effects: { economy: 10, silver: 200, people: -8, reputation: -5 } },
+      { id: 'b', label: '官商合办分利', effects: { economy: 6, politics: 4, silver: -80 } },
+      { id: 'c', label: '划界自办拒约', effects: { reputation: 7, diplomacy: -5, economy: -6 } }
+    ]
+  },
+  {
+    type: '外交',
+    title: '商约修订',
+    description: '各国所派议约大臣请增开口岸并加税进口货税则，译书递到，其中「须先准外人入内地行商」一条最要。',
+    eventType: '外交',
+    options: [
+      { id: 'a', label: '力争自主税则', effects: { economy: 8, reputation: 8, diplomacy: -6 } },
+      { id: 'b', label: '循旧延宕不议', effects: { diplomacy: 5, economy: -5 } },
+      { id: 'c', label: '许开矿以换减口', effects: { economy: 4, diplomacy: 4, people: -6 } }
+    ]
+  },
+  {
+    type: '外交',
+    title: '公使觐礼',
+    description: '各国驻华公使连衔照会，请以本国礼节入觐大皇帝，不必行跪拜。礼部谓「定制昭垂，断难骤改」，两造相持。',
+    eventType: '外交',
+    options: [
+      { id: 'a', label: '准行西式鞠躬', effects: { diplomacy: 9, politics: -4, reputation: -7 } },
+      { id: 'b', label: '坚持跪拜定制', effects: { reputation: 8, diplomacy: -10 } },
+      { id: 'c', label: '变通于同仁殿赐见', effects: { diplomacy: 4, reputation: 2, politics: 3 } }
+    ]
+  },
+
+  // ========== 随机（18 条）==========
   {
     type: '随机',
     title: '异星坠落',
@@ -552,7 +764,75 @@ export const FALLBACK_EVENTS: readonly FallbackEvent[] = [
     ]
   },
 
-  // ========== 历史剧情（12 条，独立兜底事件，不携带 chainId）==========
+  // —— 以下为扩容新增（T5.x）：与上方 12 条主题不重复，且至少一条以粮草/兵员为代价或收益 ——
+  {
+    type: '随机',
+    title: '戏班义演',
+    description: '城内庆和班串演义戏赈济水灾贫民，连开三天台，绅商争购戏票，亦有言官谓「优伶登堂，有伤风化」。',
+    eventType: '随机',
+    options: [
+      { id: 'a', label: '捐资带头观演', effects: { reputation: 7, people: 5, silver: -100 } },
+      { id: 'b', label: '官绅同席以示倡', effects: { politics: 4, reputation: 4, silver: -50 } },
+      { id: 'c', label: '以聚众伤风禁演', effects: { politics: 4, people: -6, reputation: -4 } }
+    ]
+  },
+  {
+    type: '随机',
+    title: '巧匠献器',
+    description: '广东一人自造双轮自行车与铁轮机杼，试之果行且速，恳请设局制造。匠作旧行恐夺其利，四处阻挠。',
+    eventType: '随机',
+    options: [
+      { id: 'a', label: '出资设局仿造', effects: { economy: 8, reputation: 4, silver: -150 } },
+      { id: 'b', label: '送入机器局试验', effects: { politics: 4, reputation: 3, economy: -3 } },
+      { id: 'c', label: '斥为奇技禁毁', effects: { reputation: -5, economy: -4, people: 3 } }
+    ]
+  },
+  {
+    type: '随机',
+    title: '洋油失慎',
+    description: '南市货栈煤油倾覆起火，延烧铺屋百余家，晨间始熄。灾民环泣于道，栈主与邻铺互推失火之责。',
+    eventType: '随机',
+    options: [
+      { id: 'a', label: '筹款抚恤被灾各户', effects: { people: 8, reputation: 5, silver: -200 } },
+      { id: 'b', label: '严察灯油铺户', effects: { politics: 5, economy: -4, people: -4 } },
+      { id: 'c', label: '令灾民自行投亲', effects: { people: -9, reputation: -6, politics: -3 } }
+    ]
+  },
+  {
+    type: '随机',
+    title: '奇兽困人',
+    description: '深山饿虎三日内拖走牧童、樵夫四人，山村闭户不敢出，猎户请官给火器入山搜捕。',
+    eventType: '随机',
+    options: [
+      { id: 'a', label: '募勇合围捕虎', effects: { troops: -60, reputation: 8, people: 5 } },
+      { id: 'b', label: '悬赏募格任猎', effects: { silver: -100, reputation: 6, people: 4 } },
+      { id: 'c', label: '驱之出境便罢', effects: { food: -50, people: -5, military: -3 } }
+    ]
+  },
+  {
+    type: '随机',
+    title: '电报误传',
+    description: '电报局译错一字，将「防营调省」误为「防营哗变」，各省电信纷来探问，市面钱庄因之暂停收付半日。',
+    eventType: '随机',
+    options: [
+      { id: 'a', label: '查办电局示信', effects: { politics: 6, diplomacy: -4, silver: -80 } },
+      { id: 'b', label: '借试电政之利', effects: { economy: 6, reputation: 4, politics: -4 } },
+      { id: 'c', label: '秘而不宣压下', effects: { reputation: -6, politics: 3, diplomacy: 3 } }
+    ]
+  },
+  {
+    type: '随机',
+    title: '落第士子',
+    description: '乡试落卷者百余人聚于贡院外，痛陈时弊并传抄所为《变法条议》，城中书贾争相翻刻，纸为踊贵。',
+    eventType: '随机',
+    options: [
+      { id: 'a', label: '择优选入幕府', effects: { reputation: 6, politics: 4, silver: -60 } },
+      { id: 'b', label: '派差驱散勿聚', effects: { politics: 3, people: -5, reputation: -6 } },
+      { id: 'c', label: '特开算学经济科', effects: { politics: 7, reputation: 5, economy: -4 } }
+    ]
+  },
+
+  // ========== 历史剧情（18 条，独立兜底事件，不携带 chainId）==========
   {
     type: '历史剧情',
     title: '金田起义',
@@ -683,6 +963,73 @@ export const FALLBACK_EVENTS: readonly FallbackEvent[] = [
       { id: 'a', label: '响应起义独立', effects: { reputation: 10, politics: 8, military: 6 } },
       { id: 'b', label: '按兵静观其变', effects: { military: -3, reputation: -4 } },
       { id: 'c', label: '效忠清廷平乱', effects: { politics: 4, reputation: -8, military: 5 } }
+    ]
+  },
+  // —— 以下为扩容新增（T5.x）：补齐上方 12 条未覆盖的年代，仍为独立兜底事件、不携带 chainId ——
+  {
+    type: '历史剧情',
+    title: '丁戊奇荒',
+    description: '光绪初年山西、直隶、河南连年大旱，赤地千里，人相食为报者络绎于道，为百余年来未有之奇荒。',
+    eventType: '历史剧情',
+    options: [
+      { id: 'a', label: '急拨库银截留漕粮往赈', effects: { people: 10, reputation: 8, silver: -400, food: -150 } },
+      { id: 'b', label: '劝绅商捐输协济', effects: { people: 6, silver: -150, economy: -6 } },
+      { id: 'c', label: '饬地方官自行筹办', effects: { people: -12, reputation: -8, silver: 50 } }
+    ]
+  },
+  {
+    type: '历史剧情',
+    title: '捻军荡平',
+    description: '西捻为淮军马队蹙于黄河以南，覆灭在即。朝廷饬令善后：降众安置、地方勇丁如何裁遣，皆须速决。',
+    eventType: '历史剧情',
+    options: [
+      { id: 'a', label: '穷追残捻建功', effects: { military: 9, troops: -100, food: -120 } },
+      { id: 'b', label: '招抚降众给田', effects: { troops: 80, people: 6, food: 100, silver: -150 } },
+      { id: 'c', label: '勒兵不战守境', effects: { military: -6, people: 3, silver: -80 } }
+    ]
+  },
+  {
+    type: '历史剧情',
+    title: '滇案照会',
+    description: '英国翻译官马嘉理在云南被边民所杀，公使威妥玛照会请派大员查办，且以绝邦交相胁，译署为之骚动。',
+    eventType: '历史剧情',
+    options: [
+      { id: 'a', label: '惩犯赔款派员赴英道歉', effects: { diplomacy: 8, silver: -200, reputation: -6 } },
+      { id: 'b', label: '坚称边民自为缓议', effects: { reputation: 7, diplomacy: -9, military: -4 } },
+      { id: 'c', label: '遣使赴英借订新约', effects: { diplomacy: 6, politics: 4, silver: -120 } }
+    ]
+  },
+  {
+    type: '历史剧情',
+    title: '伊犁交涉',
+    description: '崇厚使俄擅订界约，尽失伊犁要隘矿权，朝野哗然请治其罪。俄使坚称约不可改，兵船已至海参崴。',
+    eventType: '历史剧情',
+    options: [
+      { id: 'a', label: '批准原约息兵端', effects: { diplomacy: 7, politics: -4, reputation: -9 } },
+      { id: 'b', label: '改约另派专使', effects: { reputation: 9, diplomacy: -5, military: -5 } },
+      { id: 'c', label: '整军备边以胁改约', effects: { military: 8, troops: -100, silver: -200, diplomacy: -4 } }
+    ]
+  },
+  {
+    type: '历史剧情',
+    title: '海防塞防之争',
+    description: '日本窥台、阿古柏据新疆，朝廷饬议防务。李鸿章谓力不能及宜先海防，左宗棠谓天山不设险则蒙古不宁。',
+    eventType: '历史剧情',
+    options: [
+      { id: 'a', label: '专注海防缓议西征', effects: { diplomacy: 6, military: 6, silver: -300, troops: -60 } },
+      { id: 'b', label: '力主西征收复新疆', effects: { military: 8, troops: 50, silver: -250, people: -5 } },
+      { id: 'c', label: '两防皆缓以节饷', effects: { economy: 8, military: -7, diplomacy: -6 } }
+    ]
+  },
+  {
+    type: '历史剧情',
+    title: '义和拳起',
+    description: '山东、直隶民间设团练拳，习刀枪符咒，号称能御洋枪，仇教焚堂之事日有所闻，洋使照会请严禁。',
+    eventType: '历史剧情',
+    options: [
+      { id: 'a', label: '招拳民为勇以御外', effects: { troops: 150, people: 5, military: -5, diplomacy: -10 } },
+      { id: 'b', label: '派兵痛剿解散', effects: { diplomacy: 5, troops: -60, people: -8 } },
+      { id: 'c', label: '弹压拳民兼抚教民', effects: { politics: 6, diplomacy: -4, silver: -120 } }
     ]
   }
 ] as const
