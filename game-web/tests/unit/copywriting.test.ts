@@ -19,14 +19,14 @@ import {
   EVENT_TYPE_LABELS,
   TERM_EXPLANATIONS,
   EMPTY_TEXT,
-  ERROR_TEXT,
-  CHAIN_LABELS,
+  ERROR_TEXT,  CHAIN_LABELS,
   CHAIN_PROGRESS_LABEL,
   CHAIN_PENDING_LABEL,
   CHAIN_EXPAND_LABEL,
   formatRelationshipLabel,
   getRelationshipLevel
 } from '../../src/utils/copywriting'
+import { CHAIN_META } from '../../src/data/story-chains'
 
 describe('EFFECT_LABELS', () => {
   it('包含 5 维属性完整词映射', () => {
@@ -187,8 +187,8 @@ describe('PHASE_HINTS', () => {
 
 // ====================== expand-event-engine T4.4 剧情链文案 ======================
 describe('CHAIN_LABELS', () => {
-  it('包含 14 条剧情链的中文标题', () => {
-    expect(Object.keys(CHAIN_LABELS)).toHaveLength(14)
+  it('覆盖全部剧情链的中文标题（由 CHAIN_META 派生，条数不硬编码）', () => {
+    expect(Object.keys(CHAIN_LABELS).sort()).toEqual(Object.keys(CHAIN_META).sort())
     expect(CHAIN_LABELS['tai-ping-tian-guo']).toBe('太平天国兴亡')
     expect(CHAIN_LABELS['xin-hai-ge-ming']).toBe('辛亥革命')
     expect(CHAIN_LABELS['jia-wu-zhan-zheng']).toBe('甲午战争')

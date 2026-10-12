@@ -223,9 +223,14 @@ export const EMPTY_TEXT = {
  * 每回合自动产出的资源以系统历史事件形式记录于 timeline，文案集中管理避免硬编码。
  */
 export const SYSTEM_EVENT = {
-  turnYield: '本月赋税入库，并补充练兵，银两 +50、兵员 +15',
+  // 刻意不写死数字：银两是「产出 − 养饷」的净额，随在编兵员每回合变化，
+  // 具体数额由该条历史事件的 effects 承载展示
+  // 1 回合 = 1 年，故措辞用"本年"而非"本月"
+  turnYield: '本年赋税入库、练兵补员，并按在编兵员发饷（兵多则饷重）',
   /** 势力实力归零 → 覆灭（game-design.md FactionStatus.destroyed 的触发条件） */
-  factionDestroyed: '势力覆灭'
+  factionDestroyed: '势力覆灭',
+  /** 综合实力首次达阈值：锁定「中兴」评价，但游戏继续走到 1912 年结算 */
+  zenithLocked: '中兴已定：实力臻于极盛，然天下大势仍在推移，须守住这副局面直到时局终了'
 } as const
 
 /**
