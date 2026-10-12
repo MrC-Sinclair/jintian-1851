@@ -16,13 +16,27 @@
       用 HTTPS 的目的是拿到「安全上下文」（`crypto.randomUUID` 等在 `http://IP` 下为 undefined）
 - [x] 反向代理：**Caddy 2**（非 Nginx）。SSE 关键项为 `flush_interval -1`（等价于 `proxy_buffering off`），
       且 `/api/*` 的 handle 必须排在静态 handle 之前，否则接口被 `try_files` 兜成 index.html
-- [ ] 微信小程序后台配置 request 合法域名 → **阻塞中**：微信要求备案域名 + 受信任证书，
-      自签 IP 证书过不了校验，小程序端目前无法直连该后端
-- [x] 验证接口可达 → 项目**没有 `/health` 路由**（本清单原假设存在），改用
-      `curl -sk https://122.51.97.106:8443/api/game/saves` 与容器 healthcheck（任意 HTTP 响应即存活）
+- [ ] ~~微信小程序后台配置 request 合法域名~~ → **2026-10-11 决定：不做小程序接入**。
+      接入需 ICP 备案域名（唯一硬门槛），且 `game-web/src/manifest.json` 的 `mp-weixin.appid` 仍是空串、
+      游戏类目资质未核实（个人主体大概率走不通）。方案与核实项存档见
+      [deploy/domain-https-plan.md](file:///d:/code/codeWork/jintian-1851/deploy/domain-https-plan.md)
+- [x] 验证接口可达 → 已新增 `GET /api/health`（真查 DB，不可用返 503），
+      容器 healthcheck 改为「HTTP 200 且响应体 `ok===true`」。实测：DB 正常 200 / `probeMs=1ms`；
+      DB 不可达 503 + `db:"down"`，同款探活命令退 1（会正确翻 unhealthy）
+- [ ] 备份/健康告警接线：`/api/health` 与 `pnpm cost-report --daily-limit` 的退出码都可作 cron 报警钩子，
+      **尚未接**（当前 cron 只跑备份，失败无人知晓）
 - [x] 验证 SSE：`POST /api/game/generate-event?stream=1` 首包实测 **830ms / 1024ms**，
       单次生成收到 68–72 个 delta 帧后给出完整事件对象；缓存命中 140ms
-- [ ] 微信开发者工具关闭「不校验合法域名」后请求成功 → 同上，待域名
+- [ ] ~~微信开发者工具关闭「不校验合法域名」后请求成功~~ → 同上，随小程序接入一并搁置
+
+#### 2026-10-11 复核：原计划里的两处认知纠正
+
+1. **「借用 mychat 的域名」不成立** —— mychat 同样没有域名。
+   `my-chat/deploy/Caddyfile` 自述「线上只有公网 IP，ACME 不给 IP 签发证书」，站点按 `:443` 端口建、
+   用含 `IP:122.51.97.106` SAN 的自签证书。两个项目都是裸 IP + 自签，无域名可借。
+2. **`:8443` 本身不阻碍微信接入** —— 微信官方网络文档明确「对于 https 域名，可以配置端口，
+   如 `https://myserver.com:8080`」。因此不必迁 443、不必与 mychat 做 SNI 分流、不必新增安全组端口。
+   真正的门槛只有「备案域名 + 受信任证书」。
 
 ### 生产环境配置
 
