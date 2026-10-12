@@ -7,13 +7,24 @@
 - [x] 新增 `.github/workflows/ci.yml`：两个 job
       - `server`：install(--frozen-lockfile) → lint → typecheck → test:unit → test:api
       - `game-web`：install → lint → typecheck → test:unit → test:component
-- [x] Node 固定 `22`（对齐线上 `node:22-alpine`），pnpm 版本由 `packageManager` 字段决定（`pnpm/action-setup@v4` 读取），缓存按各自 lockfile 路径
+- [x] Node 固定 `22`（对齐线上 `node:22-alpine`），缓存按各自 lockfile 路径
 - [x] `concurrency` 取消同引用旧运行；`timeout-minutes: 15`
-- [x] YAML 语法校验：`python -c yaml.safe_load` → jobs=[server,game-web]，各 8 步，triggers=[pull_request,push] ✅
-- [ ] **未做：把两个 job 名勾进分支保护的 Required status checks** —— 这是仓库设置而非文件，
+- [x] YAML 语法校验：用 js-yaml 解析核对 → jobs=[server,game-web,openspec]，triggers=[pull_request,push]
+- [ ] **未做：把三个 job 名勾进分支保护的 Required status checks** —— 这是仓库设置而非文件，
       且属于改动共享状态。名称与路径写在 ci.yml 末尾注释
-- [ ] **未做：推送验证 CI 真跑** —— 本仓库领先 `origin/main` 若干提交未推送，GitHub 上看不到任何运行结果。
-      需你确认后再 push（我不会自行推送）
+- [x] **推送验证 CI 真跑**：run #5（`37e7ef7`）、#6（`684fb9c`）、#7（`fe5403b`）三个 job 全 success，
+      逐 step 结论已核（不是只看 run 级结论）。首跑（run #1，`cb5c9c0`）是红的，红在三个
+      「本地全绿、CI 必红」的不对称上，均已定位并单独修复：
+      1. `pnpm/action-setup@v4` 读**仓库根** package.json 的 `packageManager`，而根目录刻意不是
+         workspace、没有该文件 → 两个 job 止步第一步、lint/测试一行没跑（修：显式 `package_json_file`，`eb0cd9b`）
+      2. `lint:css` 的 `customSyntax` 依赖 `postcss-html` / `postcss-scss` 未声明为直接依赖，
+         npm hoist 布局能解析、pnpm 隔离布局不能；且本地 hoist 到的是 `postcss-html@1.8.1`，
+         它对 `<style lang="scss">` 静默跳过 —— 这道 gate 从未真正生效过（修：`6510c4c` + 整改 195 条 `88de72f`）
+      3. 三个镜像守卫用例跨项目 import `server/*.ts`，esbuild 按文件位置解析 `server/tsconfig.json`，
+         其 extends 指向被 gitignore 的 `.nuxt/tsconfig.json` → 只有跑过 server dev/typecheck 的机器能过
+         （修：`tests/global-setup.ts` 缺失时补桩，`37e7ef7`；附带 4 条 200 局模拟用例的 30s 超时 `8d5e0a3`）
+- [x] 新增第三个 job：`openspec validate --all --strict`（openspec 不是子项目依赖，
+      本地为 nvm 全局的 `@fission-ai/openspec@1.5.0`，CI 用 `npx --yes` 钉同一版本）
 
 ## 2. /api/health
 
@@ -66,5 +77,8 @@
 
 - [ ] cron 报警通道（备份失败、health 转 unhealthy、cost-report 退 2 三处都只有退出码，无人接收）
 - [ ] `advisor-briefing` 的 saveId 归因缺口
-- [ ] CI 未覆盖 Playwright e2e（需装浏览器 + 起 dev server，本次按任务范围排除）
+- [ ] CI 未覆盖 Playwright e2e（需装浏览器 + 起 dev server；另有 `full-journey-real` /
+      `faction-negotiation` / `free-action-faction-effects` 三条依赖真实后端与 AI key，
+      接进 CI 前要先决定它们怎么跑或怎么标退）
+- [ ] CI 未覆盖 `build`（game-web `build:h5` 与 server `nuxi build` 本地退 0，runner 上未验）
 - [ ] 长期成本趋势需要落库或接 Loki/Prometheus；当前设计只保证日志格式可被直接消费
