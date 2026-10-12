@@ -3,13 +3,16 @@
  *
  * 进程内 Map<bucketKey, { count, resetAt }>，按 deviceId 分桶计数。
  *
- * 两个桶（刻意分开，不共用一个计数器）：
+ * 三个桶（刻意分开，不共用一个计数器）：
  *   - 'ai'   ：7 个 AI 端点 + 存档读写，10 次/分钟
  *   - 'save' ：sync-save，30 次/分钟
+ *   - 'auth' ：device-credential 设备凭据注册，5 次/分钟
  * 分桶的原因是正常一回合就要发 generate-event / advisor-briefing / npc-actions /
  * resolve-decision / sync-save 共 4-5 个请求，若把 sync-save 也塞进 10 次/分钟的桶，
  * 手快的玩家两三个回合就会被 429 卡住；而完全不限 sync-save 又留下真实风险：
  * 它是唯一无上限的写端点，每次带一个新 saveId 就插一行，可被用来把 44G 的盘写满。
+ * auth 桶单独存在是因为注册端点每次成功都往 device_credentials 插一行，
+ * 且「首绑即锁」意味着先抢注者赢——不限流就等于给了脚本扫注 deviceId 的机会。
  *
  * 进程内实现：单实例 MVP 足够，多实例需换 Redis。
  */
@@ -20,19 +23,25 @@ interface RateLimitEntry {
 }
 
 /** 限流桶类型 */
-export type RateBucket = 'ai' | 'save'
+export type RateBucket = 'ai' | 'save' | 'auth'
 
-const LIMITS: Record<RateBucket, number> = { ai: 10, save: 30 }
+const LIMITS: Record<RateBucket, number> = { ai: 10, save: 30, auth: 5 }
 const WINDOW_MS = 60 * 1000
 
 const buckets = new Map<string, RateLimitEntry>()
 
 const API_GAME_PREFIX = '/api/game/'
 const SYNC_SAVE_PATH = '/api/game/sync-save'
+const DEVICE_CREDENTIAL_PATH = '/api/game/device-credential'
 
 /** 去掉 query 后判断是否 sync-save 路径 */
 function isSyncSavePath(path: string): boolean {
   return path === SYNC_SAVE_PATH || path.startsWith(SYNC_SAVE_PATH + '?')
+}
+
+/** 去掉 query 后判断是否设备凭据注册路径 */
+function isDeviceCredentialPath(path: string): boolean {
+  return path === DEVICE_CREDENTIAL_PATH || path.startsWith(DEVICE_CREDENTIAL_PATH + '?')
 }
 
 /**
@@ -44,6 +53,7 @@ function isSyncSavePath(path: string): boolean {
 export function getRateBucket(path: string): RateBucket | null {
   if (!path.startsWith(API_GAME_PREFIX)) return null
   if (isSyncSavePath(path)) return 'save'
+  if (isDeviceCredentialPath(path)) return 'auth'
   return 'ai'
 }
 

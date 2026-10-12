@@ -3,21 +3,26 @@
  *
  * 服务端权威 updated_at 方案：
  *   - POST：zod `.strict()` 模式拒绝 updatedAt 字段，updated_at 由 DB `NOW()` 生成
- *   - GET：按 saveId + deviceId 查询，404 if 不存在或不属于该设备
+ *   - GET：按 saveId + 属主 deviceId 查询，404 if 不存在或不属于该设备
  *
  * 属主校验（防越权读写）：
- *   - 存档归属由「saveId + deviceId 对」绑定（deviceId 随存档传播，跨设备拉取后继承）
- *   - POST：`ON CONFLICT DO UPDATE` 附加 `setWhere(device_id = 请求 deviceId)` 原子条件更新，
+ *   - 属主 deviceId 由 `x-device-token` 凭据反查得出（见 utils/device-auth.ts），
+ *     **不再采信客户端自声明**；双轨兼容期允许无凭据请求回落到声明的 deviceId
+ *   - POST：写入与冲突更新条件都用裁决出的属主 deviceId。这同时封掉了原先的一个注档口：
+ *     客户端可以在 body 里填任意 deviceId，首插时会造出一行「归属他人」的存档
+ *   - POST：`ON CONFLICT DO UPDATE` 附加 `setWhere(属主 deviceId)` 原子条件更新，
  *     冲突且设备不匹配 → 0 行更新 → 403 SAVE_FORBIDDEN（无 Read-Modify-Write 竞态窗口）
- *   - GET：WHERE 同时匹配 saveId + deviceId；不匹配与不存在统一返回 404（不泄漏他人存档存在性）
+ *   - GET：WHERE 同时匹配 saveId + 属主 deviceId；不匹配与不存在统一返回 404（不泄漏他人存档存在性）
+ *   - `saveData` JSONB 内的 `deviceId` 是**客户端快照**，服务端不采信，也不迁移存量值
  *
- * 注意：sync-save 不受 rate-limit 中间件限制（非 AI 调用）。
+ * 限流：走独立的 'save' 桶（30 次/分钟）。
  */
 
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '../../db'
 import { gameSaves } from '../../db/schema'
+import { DEVICE_TOKEN_HEADER, resolveOwnerDeviceId } from '../../utils/device-auth'
 
 // ====================== POST：上传/覆盖存档 ======================
 
@@ -83,6 +88,8 @@ const saveDataSchema = z.strictObject({
     .default([]),
   completedChainIds: z.array(z.string()).default([]),
   activeChainIds: z.array(z.string()).default([]),
+  // 年钟新增：「中兴已定」锁定年份。strict 模式下不显式声明就会把带该字段的存档整条拒掉
+  zenithYear: z.number().int().positive().optional(),
   ended: z.boolean(),
   endedAt: z.number().nullable().optional(),
   endedReason: z.string().nullable().optional()
@@ -141,15 +148,29 @@ export default defineEventHandler(async (event) => {
 
     const save = parseResult.data
 
+    // 属主裁决：凭据优先。用裁决结果而非 body 自声明值写库，
+    // 否则首插可以造出一行「归属任意他人 deviceId」的存档
+    const owner = await resolveOwnerDeviceId(
+      getHeader(event, DEVICE_TOKEN_HEADER),
+      save.deviceId
+    )
+    if (!owner.ok) {
+      return createError({
+        statusCode: owner.statusCode,
+        statusMessage: owner.code,
+        data: { ok: false, error: { code: owner.code, message: owner.message } }
+      })
+    }
+
     try {
       // INSERT ... ON CONFLICT (save_id) DO UPDATE
       // updated_at 由 DB NOW() 强制生成，不接受客户端值
-      // setWhere：冲突时仅当已有行属于同一 deviceId 才允许覆盖（原子属主校验）
+      // setWhere：冲突时仅当已有行属于同一属主才允许覆盖（原子属主校验）
       const [inserted] = await db
         .insert(gameSaves)
         .values({
           saveId: save.saveId,
-          deviceId: save.deviceId,
+          deviceId: owner.deviceId,
           saveData: save,
           saveVersion: save.saveVersion,
           endedAt: save.endedAt ? new Date(save.endedAt) : null,
@@ -164,7 +185,7 @@ export default defineEventHandler(async (event) => {
             endedAt: save.endedAt ? new Date(save.endedAt) : null,
             endedReason: save.endedReason ?? null
           },
-          setWhere: eq(gameSaves.deviceId, save.deviceId)
+          setWhere: eq(gameSaves.deviceId, owner.deviceId)
         })
         .returning({
           saveId: gameSaves.saveId,
@@ -208,15 +229,15 @@ export default defineEventHandler(async (event) => {
   if (method === 'GET') {
     const query = getQuery(event)
     const saveId = query.saveId as string | undefined
-    const deviceId = query.deviceId as string | undefined
+    const declaredDeviceId = query.deviceId as string | undefined
 
-    if (!saveId || !deviceId) {
+    if (!saveId) {
       return createError({
         statusCode: 400,
         statusMessage: 'INVALID_PARAMS',
         data: {
           ok: false,
-          error: { code: 'INVALID_PARAMS', message: 'saveId 与 deviceId 均为必填' }
+          error: { code: 'INVALID_PARAMS', message: 'saveId 必填' }
         }
       })
     }
@@ -231,15 +252,28 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // 属主裁决：凭据优先，兼容期允许回落到 query 里声明的 deviceId
+    const owner = await resolveOwnerDeviceId(
+      getHeader(event, DEVICE_TOKEN_HEADER),
+      declaredDeviceId
+    )
+    if (!owner.ok) {
+      return createError({
+        statusCode: owner.statusCode,
+        statusMessage: owner.code,
+        data: { ok: false, error: { code: owner.code, message: owner.message } }
+      })
+    }
+
     try {
-      // 属主校验：saveId + deviceId 双条件；不匹配与不存在统一 404（不泄漏存在性）
+      // 属主校验：saveId + 属主 deviceId 双条件；不匹配与不存在统一 404（不泄漏存在性）
       const rows = await db
         .select({
           saveData: gameSaves.saveData,
           updatedAt: gameSaves.updatedAt
         })
         .from(gameSaves)
-        .where(and(eq(gameSaves.saveId, saveId), eq(gameSaves.deviceId, deviceId)))
+        .where(and(eq(gameSaves.saveId, saveId), eq(gameSaves.deviceId, owner.deviceId)))
         .limit(1)
 
       if (rows.length === 0) {

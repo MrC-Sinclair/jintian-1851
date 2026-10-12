@@ -44,6 +44,13 @@ export default defineNuxtConfig({
       'postgresql://sw_game:CHANGE_ME@localhost:5534/sw_game',
 
     // 局势简报开关（T1.14）：默认 true，可通过 ENABLE_BRIEFING=false 关闭
-    enableBriefing: process.env.ENABLE_BRIEFING !== 'false'
+    enableBriefing: process.env.ENABLE_BRIEFING !== 'false',
+
+    // 存档归属鉴权（设备凭据）双轨开关，均可用环境变量覆盖，不必改代码重新构建：
+    //   - enforced=false：兼容期，无凭据的老客户端仍可凭 deviceId 访问（打 [auth-compat] 日志）
+    //   - enforced=true ：收紧，所有存档读写必须带有效 x-device-token
+    //   - allowFirstBind=false：关闭新设备注册，收窄「抢注未绑定 deviceId」的窗口
+    deviceAuthEnforced: process.env.DEVICE_AUTH_ENFORCED === 'true',
+    deviceAuthAllowFirstBind: process.env.DEVICE_AUTH_ALLOW_FIRST_BIND !== 'false'
   }
 })

@@ -32,6 +32,17 @@ vi.mock('../../src/utils/api', async () => {
   }
 })
 
+// 默认无凭据 = 走服务端双轨兼容通道（GET 的 URL 里带 deviceId）
+// 必须 mock：setup 里的 uni.request 是空 vi.fn()，真注册会永久挂住。
+const credentialMocks = vi.hoisted(() => ({ ensureCredential: vi.fn() }))
+
+vi.mock('../../src/utils/device-credential', async () => {
+  const actual = await vi.importActual<typeof import('../../src/utils/device-credential')>(
+    '../../src/utils/device-credential'
+  )
+  return { ...actual, ensureCredential: credentialMocks.ensureCredential }
+})
+
 // ====================== mock storage ======================
 const storageMocks = vi.hoisted(() => ({
   saveSave: vi.fn().mockResolvedValue(undefined),
@@ -84,6 +95,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   apiMocks.get.mockReset()
   apiMocks.post.mockReset()
+  credentialMocks.ensureCredential.mockReset().mockResolvedValue('')
   storageMocks.saveSave.mockClear()
   storageMocks.loadSave.mockClear()
   storageMocks.loadSave.mockResolvedValue(null)
@@ -363,5 +375,49 @@ describe('useSaveSync - onSuccess 回调', () => {
     // 注意：当前实现未在 sync 内部调用 onSuccess，由调用方根据 result.action 自行 toast
     // 这里仅验证 onSuccess 是可选的，不报错
     expect(store.isSyncing).toBe(false)
+  })
+})
+
+describe('useSaveSync - 设备凭据属主', () => {
+  it('拿到凭据：GET 的 URL 只带 saveId，属主由 x-device-token 头证明', async () => {
+    const { useGameStore } = await import('../../src/stores/game')
+    const { useSaveSync } = await import('../../src/composables/useSaveSync')
+    const store = useGameStore()
+    credentialMocks.ensureCredential.mockResolvedValue('b'.repeat(64))
+    store.setSave(createMockSave(2000))
+    apiMocks.get.mockRejectedValueOnce(new ApiError('NOT_FOUND', 'not found', 404))
+    apiMocks.post.mockResolvedValueOnce({
+      saveId: 'save-test-id',
+      updatedAt: 3000,
+      endedAt: null,
+      endedReason: null
+    })
+
+    const { sync } = useSaveSync()
+    await sync()
+
+    expect(apiMocks.get).toHaveBeenCalledWith('/api/game/sync-save?saveId=save-test-id')
+  })
+
+  it('注册失败（无凭据）：回落成 query 里自声明 deviceId', async () => {
+    const { useGameStore } = await import('../../src/stores/game')
+    const { useSaveSync } = await import('../../src/composables/useSaveSync')
+    const store = useGameStore()
+    credentialMocks.ensureCredential.mockResolvedValue('')
+    store.setSave(createMockSave(2000))
+    apiMocks.get.mockRejectedValueOnce(new ApiError('NOT_FOUND', 'not found', 404))
+    apiMocks.post.mockResolvedValueOnce({
+      saveId: 'save-test-id',
+      updatedAt: 3000,
+      endedAt: null,
+      endedReason: null
+    })
+
+    const { sync } = useSaveSync()
+    await sync()
+
+    expect(apiMocks.get).toHaveBeenCalledWith(
+      '/api/game/sync-save?saveId=save-test-id&deviceId=test-device'
+    )
   })
 })

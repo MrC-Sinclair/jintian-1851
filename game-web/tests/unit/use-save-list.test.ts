@@ -25,6 +25,19 @@ vi.mock('../../src/utils/api', async () => {
   }
 })
 
+// ====================== mock device-credential ======================
+// 默认返回空凭据 = 走服务端双轨兼容通道（URL 里仍带 deviceId）；
+// 用例可覆盖成返回一个 token，断言 URL 不再声明 deviceId。
+// 必须 mock：setup 里的 uni.request 是空 vi.fn()，真注册会永久挂住。
+const credentialMocks = vi.hoisted(() => ({ ensureCredential: vi.fn() }))
+
+vi.mock('../../src/utils/device-credential', async () => {
+  const actual = await vi.importActual<typeof import('../../src/utils/device-credential')>(
+    '../../src/utils/device-credential'
+  )
+  return { ...actual, ensureCredential: credentialMocks.ensureCredential }
+})
+
 // ====================== mock storage（保留真实 isValidSaveShape 供导入复用） ======================
 const storageMocks = vi.hoisted(() => ({
   saveSave: vi.fn().mockResolvedValue(undefined),
@@ -93,6 +106,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   apiMocks.get.mockReset()
   apiMocks.del.mockReset()
+  credentialMocks.ensureCredential.mockReset().mockResolvedValue('')
   storageMocks.saveSave.mockClear().mockResolvedValue(undefined)
   storageMocks.clearSave.mockClear().mockResolvedValue(undefined)
   // jsdom 无 URL.createObjectURL/revokeObjectURL，导出测试需要（beforeEach 重置防泄漏）
@@ -113,8 +127,20 @@ describe('useSaveList - fetchList', () => {
 
     expect(res).toHaveLength(2)
     expect(saves.value).toEqual(items)
-    expect(apiMocks.get).toHaveBeenCalledWith(expect.stringContaining('/api/game/saves?deviceId='))
-    expect(apiMocks.get).toHaveBeenCalledWith(expect.stringContaining('limit=20'))
+    expect(apiMocks.get).toHaveBeenCalledWith(expect.stringContaining('/api/game/saves?limit=20'))
+    // 无凭据 → 兼容通道：deviceId 作为 query 兜底声明（收紧后这条回落会被服务端拒绝）
+    expect(apiMocks.get).toHaveBeenCalledWith(expect.stringContaining('&deviceId='))
+  })
+
+  it('拿到凭据时 URL 不再声明 deviceId（属主由 x-device-token 反查，不落进 URL/浏览器历史）', async () => {
+    const { useSaveList } = await import('../../src/composables/useSaveList')
+    credentialMocks.ensureCredential.mockResolvedValue('a'.repeat(64))
+    apiMocks.get.mockResolvedValueOnce({ saves: [makeListItem('a')] })
+
+    const { fetchList } = useSaveList()
+    await fetchList()
+
+    expect(apiMocks.get).toHaveBeenCalledWith('/api/game/saves?limit=20')
   })
 
   it('isLoading 期间重复调用直接返回缓存，不重复请求', async () => {

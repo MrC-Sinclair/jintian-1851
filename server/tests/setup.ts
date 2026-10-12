@@ -5,12 +5,16 @@ import { vi } from 'vitest'
 // 注意：Nuxt 的 .nuxt/types.d.ts 已声明这些全局类型，这里只赋值不重新声明
 
 // mock useRuntimeConfig：返回与 nuxt.config.ts 一致的配置结构
+// 存档鉴权默认给「双轨兼容期」取值，让沿用 deviceId 自声明的老用例继续通过；
+// 需要收紧/关闭注册的用例各自覆盖 useRuntimeConfig
 ;(globalThis as any).useRuntimeConfig = () => ({
   openaiApiKey: 'test-api-key',
   openaiBaseUrl: 'https://api.siliconflow.cn/v1',
   llmModel: 'Qwen/Qwen3-8B',
   databaseUrl: 'postgresql://test:test@localhost:5434/test',
-  enableBriefing: true
+  enableBriefing: true,
+  deviceAuthEnforced: false,
+  deviceAuthAllowFirstBind: true
 })
 
 // mock defineEventHandler：直接返回 handler

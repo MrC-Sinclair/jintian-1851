@@ -1,13 +1,19 @@
 /**
  * @file device-id 单元测试
  *
- * mock 三端环境（H5/小程序/App）验证 UUID 格式与持久化
+ * mock 三端环境（H5/小程序/App）验证 UUID 格式与持久化，以及设备凭据的存取
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDeviceId } from '../../src/utils/device-id'
+import {
+  clearDeviceCredential,
+  getDeviceCredential,
+  getDeviceId,
+  setDeviceCredential
+} from '../../src/utils/device-id'
 
 const STORAGE_KEY = 'game_device_id'
+const CREDENTIAL_KEY = 'game_device_token'
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 // 每个测试前清空 storage，避免测试间污染
@@ -126,5 +132,54 @@ describe('getDeviceId - 跨平台一致性', () => {
     const mpId = getDeviceId()
 
     expect(h5Id).not.toBe(mpId)
+  })
+})
+
+describe('设备凭据存取', () => {
+  const TOKEN = 'a'.repeat(64)
+
+  // 两条存储通道都要清：clearDeviceCredential() 只清「当前平台」那一条，
+  // 而 getSystemInfoSync 的 spy 会跨用例残留，单靠它会漏
+  beforeEach(() => {
+    localStorage.removeItem(CREDENTIAL_KEY)
+    uni.removeStorageSync(CREDENTIAL_KEY)
+    clearDeviceCredential()
+  })
+
+  it('H5 端：写入 localStorage 后能读回', () => {
+    vi.spyOn(uni, 'getSystemInfoSync').mockReturnValue({ uniPlatform: 'web' } as any)
+    setDeviceCredential(TOKEN)
+
+    expect(getDeviceCredential()).toBe(TOKEN)
+    expect(localStorage.getItem(CREDENTIAL_KEY)).toBe(TOKEN)
+  })
+
+  it('小程序端：走 uni.setStorageSync', () => {
+    vi.spyOn(uni, 'getSystemInfoSync').mockReturnValue({ uniPlatform: 'mp-weixin' } as any)
+    setDeviceCredential(TOKEN)
+
+    expect(getDeviceCredential()).toBe(TOKEN)
+    expect(uni.getStorageSync(CREDENTIAL_KEY)).toBe(TOKEN)
+  })
+
+  it('格式不符（长度/字符）的凭据既不落库也读不出', () => {
+    vi.spyOn(uni, 'getSystemInfoSync').mockReturnValue({ uniPlatform: 'web' } as any)
+    setDeviceCredential('too-short')
+
+    expect(getDeviceCredential()).toBe('')
+    expect(localStorage.getItem(CREDENTIAL_KEY)).toBeNull()
+
+    // 绕过 setter 直接塞脏数据：读取侧同样要拒绝
+    localStorage.setItem(CREDENTIAL_KEY, 'z'.repeat(64))
+    expect(getDeviceCredential()).toBe('')
+  })
+
+  it('clearDeviceCredential 同时清内存副本与持久化', () => {
+    vi.spyOn(uni, 'getSystemInfoSync').mockReturnValue({ uniPlatform: 'web' } as any)
+    setDeviceCredential(TOKEN)
+    clearDeviceCredential()
+
+    expect(getDeviceCredential()).toBe('')
+    expect(localStorage.getItem(CREDENTIAL_KEY)).toBeNull()
   })
 })

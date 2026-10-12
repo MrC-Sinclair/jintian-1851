@@ -4,6 +4,8 @@
  * 基于 uni.request 统一三端（H5/小程序/App）的 API 调用入口。
  *
  * - 自动注入 x-device-id header（rate-limit 中间件依赖）
+ * - 自动注入 x-device-token header（存档归属凭据，由 utils/device-credential.ts 换取；
+ *   未换到时不带，服务端在双轨兼容期回落到自声明的 deviceId）
  * - 统一响应格式：成功 { ok: true, data } 或 { ok: true, data, fallback: true }
  *   失败抛 ApiError，包含 code/message/detail/statusCode
  * - H5 走 Vite proxy（/api 转发到 Nuxt3 后端），小程序/App 走绝对 URL
@@ -12,7 +14,7 @@
  * 注意：本封装不处理 SSE 流式响应，流式请用 composables/useSSE.ts。
  */
 
-import { getDeviceId } from './device-id'
+import { getDeviceCredential, getDeviceId } from './device-id'
 import { ERROR_TEXT } from './copywriting'
 
 /** E2E 测试模式标志（由 vite.config.ts 的 __E2E__ define 注入，仅 PLAYWRIGHT_E2E=1 时为 '1'） */
@@ -115,6 +117,18 @@ function getDeviceIdSafe(): string {
 }
 
 /**
+ * 取已缓存的设备凭据（只读本地，不在此发起注册——
+ * 注册由存档流程显式 `await ensureCredential()`，避免每个请求都挂一个异步前置）
+ */
+function getCredentialSafe(): string {
+  try {
+    return getDeviceCredential()
+  } catch {
+    return ''
+  }
+}
+
+/**
  * 发起 API 请求（内部实现，同时返回顶层 fallback 标志）。
  *
  * @param method HTTP 方法（GET/POST/PUT/DELETE）
@@ -132,6 +146,7 @@ function requestRaw<T = unknown>(
 ): Promise<{ data: T; fallback: boolean }> {
   const fullUrl = getBaseUrl() + url
   const deviceId = getDeviceIdSafe()
+  const deviceToken = getCredentialSafe()
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS
   // 重试语义：GET 幂等可自动重试；POST/PUT/DELETE 有副作用（属性结算/存档覆盖），不自动重试
   // （服务端并发锁 + 前端 isProcessingTurn 守卫负责幂等性，重试只兜瞬时网络抖动）
@@ -156,6 +171,7 @@ function requestRaw<T = unknown>(
         header: {
           'Content-Type': 'application/json',
           'x-device-id': deviceId,
+          ...(deviceToken ? { 'x-device-token': deviceToken } : {}),
           // E2E 测试模式下附加标记头，触发后端 npc-actions 加速与自由行动强力负值兜底
           ...(IS_E2E ? { 'x-e2e-test-mode': '1' } : {})
         },

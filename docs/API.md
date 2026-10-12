@@ -7,6 +7,7 @@
 ## 目录
 
 - [通用约定](#通用约定)
+- [GET /api/health](#get-apihealth)
 - [POST /api/game/init-factions](#post-apigameinit-factions)
 - [POST /api/game/generate-event](#post-apigamegenerate-event)
 - [POST /api/game/resolve-decision](#post-apigameresolve-decision)
@@ -14,9 +15,11 @@
 - [POST /api/game/advisor-briefing](#post-apigameadvisor-briefing)
 - [POST /api/game/advisor-chat](#post-apigameadvisor-chat)
 - [POST /api/game/faction-negotiate](#post-apigamefaction-negotiate)
+- [POST /api/game/device-credential](#post-apigamedevice-credential)
 - [POST /api/game/sync-save](#post-apigamesync-save)
 - [GET /api/game/sync-save](#get-apigamesync-save)
 - [GET /api/game/saves](#get-apigamesaves)
+- [DELETE /api/game/saves](#delete-apigamesaves)
 - [错误码表](#错误码表)
 
 ---
@@ -42,15 +45,28 @@
 }
 ```
 
+### 请求头
+
+| 头 | 必填 | 说明 |
+|---|---|---|
+| `x-device-id` | 是（`/api/game/` 全部） | 设备标识，限流按它分桶；缺失返回 400 + `MISSING_DEVICE_ID`。**它不再是权限凭证** |
+| `x-device-token` | 存档读写必填（收紧后） | 设备凭据，`POST /api/game/device-credential` 下发。存档端点用它**反查权威属主 deviceId** |
+
+> 双轨兼容期（`DEVICE_AUTH_ENFORCED=false`，当前默认）：无凭据的存档请求仍回落到
+> query/body 自声明的 `deviceId`，服务端每条都打一行 `[auth-compat] deviceId=前8位***` 日志。
+> 日志归零即代表可收紧。收紧后缺凭据 → 401 `DEVICE_TOKEN_REQUIRED`；
+> 凭据反查不到 → 401 `INVALID_DEVICE_TOKEN`（**不降级**，否则冒领尝试会被兼容逻辑吞掉）。
+
 ### 频率限制
 
-- 中间件：[server/middleware/rate-limit.ts](file:///d:/code/codeWork/jintian-1851/server/server/middleware/rate-limit.ts)，按 `deviceId`（请求头 `x-device-id`）**分两个桶**独立计数
+- 中间件：[server/middleware/rate-limit.ts](file:///d:/code/codeWork/jintian-1851/server/server/middleware/rate-limit.ts)，按 `deviceId`（请求头 `x-device-id`）**分三个桶**独立计数
 - 超限：HTTP 429 + `{ "ok": false, "error": { "code": "RATE_LIMITED", "message": "请求过于频繁，请稍后再试" } }`
 
 | 桶 | 覆盖端点 | 上限 |
 |---|---|---|
 | `ai` | 7 个 AI 端点（`init-factions` / `generate-event` / `resolve-decision` / `npc-actions` / `advisor-chat` / `advisor-briefing` / `faction-negotiate`）+ 存档读写 `GET/DELETE /api/game/saves` | 10 次/分钟 |
-| `save` | `POST /api/game/sync-save` | 30 次/分钟 |
+| `save` | `/api/game/sync-save`（POST/GET） | 30 次/分钟 |
+| `auth` | `POST /api/game/device-credential` | 5 次/分钟 |
 
 > **为什么分桶而不是把 `sync-save` 也塞进 `ai` 桶**：正常一回合客户端就要发
 > generate-event + advisor-briefing + npc-actions + resolve-decision + sync-save 共 4-5 个请求，
@@ -76,6 +92,58 @@
   - 流式输出：`streamText()` + 自定义 SSE 协议
 - thinking 控制：通过 [server/utils/siliconflow-fetch.ts](file:///d:/code/codeWork/jintian-1851/server/server/utils/siliconflow-fetch.ts) 的 `createSiliconFlowFetch(enableThinking?)` 在 fetch 层注入 `enable_thinking` 字段（避免被 `providerOptions.openai` zod schema 剥离）
 - 超时：`generateObject` 路径 30 秒（`AbortSignal.timeout(30_000)`），`advisor-briefing` 20 秒（实测 10s 会 100% 命中超时），`advisor-chat` 流式 60 秒
+
+---
+
+## GET /api/health
+
+存活与依赖就绪探针。源码：[health.get.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/health.get.ts)。
+
+> 放在 `/api/health` 而不是裸 `/health`：Caddy 只反代 `/api/*`，裸路径会被静态站点的
+> `try_files` 兜成 `index.html`，外部探活会拿到 200 + HTML 而不是真实状态。
+>
+> **本端点会真查一次数据库**（`select 1`，3 秒超时）。此前容器 healthcheck 打的是
+> `/api/game/saves`，而那个请求在 rate-limit 中间件里就因缺 `x-device-id` 返 400 了，
+> 连库都没碰——postgres 挂掉容器依然 healthy。现在 DB 不可用返回 **503**，容器转 unhealthy。
+>
+> 不会造成重启风暴：部署里没有 autoheal，`unhealthy` 只是状态标记；
+> `depends_on: condition: service_healthy` 仅作用于启动顺序。
+
+### 请求
+
+```http
+GET /api/health
+```
+
+无参数、无请求头要求，**不受限流**（限流只覆盖 `/api/game/` 前缀）、不使用并发锁。
+
+### 响应
+
+DB 可用（HTTP 200）：
+
+```json
+{ "ok": true, "data": { "status": "ok", "db": "up", "uptimeSec": 1834, "probeMs": 3 } }
+```
+
+DB 不可用（HTTP 503）：
+
+```json
+{ "ok": false, "data": { "status": "degraded", "db": "down", "uptimeSec": 12, "probeMs": 3001 } }
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `status` | `ok` / `degraded` | 进程一定活着，区别只在依赖 |
+| `db` | `up` / `down` | `select 1` 是否在 3 秒内成功 |
+| `uptimeSec` | number | 进程运行秒数，用于判断是否刚重启过 |
+| `probeMs` | number | DB 探针耗时（毫秒）。接近 3000 说明库在超时边缘，即使仍返回 up 也值得关注 |
+
+响应体刻意不含环境变量、连接串、版本号等信息。
+
+### 容器探活命令
+
+`deploy/docker-compose.deploy.yml` 的 app 服务 healthcheck 要求 **HTTP 200 且响应体 `ok === true`**，
+`timeout: 10s` 必须大于服务端 3s 的 DB 探针超时，否则「慢」会被 Docker 误判成「死」。
 
 ---
 
@@ -163,7 +231,8 @@ x-device-id: {设备指纹}
     { "chainId": "tai-ping-tian-guo", "nodeId": "node-2", "scheduledTurn": 2 }
   ],
   "completedChainIds": [],
-  "activeChainIds": []
+  "activeChainIds": [],
+  "zenithYear": 1882
 }
 ```
 
@@ -180,6 +249,7 @@ x-device-id: {设备指纹}
 | `pendingChainNodes` | array | 否 | 挂起的剧情链节点（v2 存档必传，老客户端兼容 `.default([])`）。每项 `{ chainId, nodeId, scheduledTurn }` |
 | `completedChainIds` | array (string) | 否 | 已完成的剧情链 ID 列表（避免重复触发），默认 `[]` |
 | `activeChainIds` | array (string) | 否 | 进行中的剧情链 ID 列表（避免时间窗口重复触发同链），默认 `[]` |
+| `zenithYear` | number (positive int) | 否 | 「中兴已定」锁定年份：综合实力首次达阈值的年份。**年钟新增**，缺省即从未锁定 |
 
 > 三个剧情链状态字段用于**三层触发优先级**（详见下方响应 header `X-Event-Source`）：挂起节点优先 → 时间窗口匹配 → LLM 自主生成。老客户端不传时服务端按 `[]` 处理，完全兼容。
 
@@ -218,9 +288,12 @@ x-device-id: {设备指纹}
 | `options[].nextChainNodeId` | string（仅首节点选项携带） | 选择该选项后入队的下个节点 ID，供前端推进剧情链 |
 | `eventDate` | `{ year, month }`（**仅时光跳跃时返回**） | 该链锚点年份晚于当前游戏日历时的目标年月（恒为锚点年 1 月）。前端 `useTurn.startTurn` 据此把日历直接推到该年月 |
 
-**时光跳跃**：每回合只推进 1 个月，而实测单局中位 35 回合（通关模拟 200 局），日历只能走到
-1853~1855 年——14 条剧情链里 12 条永不触发。为此链的锚点年份若晚于当前年份，服务端下发
-`eventDate` 并把描述改写成 `【{当前年}—{锚点年} 年间】{链概述} {节点描述}`，交代这段空档。
+**时光跳跃**：**1 回合 = 1 年**，日历自己每回合走一年，约 62 回合即可走完 1851—1912；
+跳跃因此从"必需"降级为"补漏"——用于跨过两个链锚点之间的空档年。
+（月钟时代它不然：中位 37 回合只推进 3 年多，23 条链里绝大多数永不触发，`time_up` 是死代码。
+详见 `docs/game-design.md` 的时间推进一节。）
+链的锚点年份晚于当前年份时，服务端下发 `eventDate` 并把描述改写成
+`【{当前年}—{锚点年} 年间】{链概述} {节点描述}`，交代这段空档。
 只在链首（`time-window` 路径）判定；链内后续节点走 `pending-chain` 接续，日历停在链开始的年代，
 否则一条 5 节点的链会把时间往前推 5 次。
 
@@ -820,13 +893,77 @@ AI 调用异常或 JSON 不可解析时**不重试**，返回 HTTP 200 + 响应�
 
 ---
 
+## POST /api/game/device-credential
+
+注册设备凭据（存档归属鉴权）。源码：[device-credential.post.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/device-credential.post.ts)
+实现：[utils/device-auth.ts](file:///d:/code/codeWork/jintian-1851/server/server/utils/device-auth.ts)
+
+> **一个 `deviceId` 只能成功注册一次（首绑即锁）**。成功时服务端生成 256bit 随机凭据，
+> **仅此一次**在响应里返回明文，库里只存 `sha256`。此后存档读写带 `x-device-token`，
+> 服务端按 hash 反查出权威 `deviceId`。
+>
+> 它防的是「事后冒领」：攻击者获知他人 deviceId 后换不到凭据，也就无法列出/读取/删除其存档。
+> 它**防不住「首个声明者」**——兼容期任何人都能替未注册的 deviceId 抢下绑定，
+> 这是「不要求老玩家重装、存量存档无损归属」的对价，靠 `DEVICE_AUTH_ALLOW_FIRST_BIND=false` 收窄。
+> 清缓存/换浏览器会丢凭据且无法找回，需要真实身份（微信 openid）才能解决，不属本接口范围。
+
+### 请求
+
+```http
+POST /api/game/device-credential
+Content-Type: application/json
+x-device-id: {设备指纹}
+
+{ "deviceId": "550e8400-e29b-41d4-a716-446655440000" }
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `deviceId` | string (uuid) | 是 | 客户端自生成的设备标识（`utils/device-id.ts`）；zod `.strict()`，多余字段一律 400 |
+
+### 响应（成功）
+
+```json
+{
+  "ok": true,
+  "data": {
+    "deviceId": "550e8400-e29b-41d4-a716-446655440000",
+    "token": "3f9c1e...（64 位十六进制，只在此处出现一次）"
+  }
+}
+```
+
+客户端把 `token` 持久化（H5 `localStorage` / 小程序 `uni.setStorageSync`，键 `game_device_token`），
+此后由 `utils/api.ts` 自动注入到每个请求的 `x-device-token` 头。
+
+### 错误
+
+| HTTP | code | 触发场景 |
+|---|---|---|
+| 400 | `INVALID_PARAMS` | `deviceId` 缺失/非 UUID，或带多余字段，或请求体解析失败 |
+| 403 | `ENROLLMENT_CLOSED` | `DEVICE_AUTH_ALLOW_FIRST_BIND=false`，注册窗口已关闭 |
+| 405 | `METHOD_NOT_ALLOWED` | 非 POST |
+| 409 | `CREDENTIAL_EXISTS` | 该 `deviceId` 已绑定（含被吊销的情形，吊销即封禁不再发凭据） |
+| 429 | `RATE_LIMITED` | 超 `auth` 桶 5 次/分钟 |
+| 500 | `DB_ERROR` | 数据库写入失败 |
+
+> 前端 `ensureCredential()` 对 409/403 会停止重试（`enrollmentBlocked`），对网络失败与 429 保留下次重试。
+
+---
+
 ## POST /api/game/sync-save
 
 上传/覆盖云端存档。源码：[sync-save.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/sync-save.ts)。
 
 > 服务端权威 `updated_at` 方案：POST body **不含 `updatedAt` 字段**（zod `.strict()` 模式拒绝），`updated_at` 由 DB `NOW()` 生成，从源头消除两设备并发 race。
 >
-> **属主校验**：存档归属由「`saveId` + `deviceId` 对」绑定。`ON CONFLICT DO UPDATE` 附加 `setWhere(device_id = 请求 deviceId)` 原子条件，`saveId` 已存在但属于其他设备时返回 403 `SAVE_FORBIDDEN`（deviceId 随存档传播：跨设备拉取后本地存档继承原 deviceId，同步不受影响）。
+> **属主校验**：属主 `deviceId` 由 `x-device-token` 设备凭据**反查**得出（见 [POST /api/game/device-credential](#post-apigamedevice-credential)），
+> 不再采信 body 里的自声明；`ON CONFLICT DO UPDATE` 附加 `setWhere(device_id = 属主 deviceId)` 原子条件，
+> `saveId` 已存在但属于其他设备时返回 403 `SAVE_FORBIDDEN`。
+> 双轨兼容期（`DEVICE_AUTH_ENFORCED=false`）无凭据的请求仍回落到 body 的 `deviceId`，服务端打 `[auth-compat]` 日志。
+>
+> **导入他人存档的归属**：`save_data` blob 内的 `deviceId` 只是客户端快照。导入的存档首次上传时
+> 以**上传者的凭据属主**入库；若该 `saveId` 已存在且属于导出者，则返回 403（不覆盖他人存档）。
 
 ### 请求
 
@@ -834,6 +971,7 @@ AI 调用异常或 JSON 不可解析时**不重试**，返回 HTTP 200 + 响应�
 POST /api/game/sync-save
 Content-Type: application/json
 x-device-id: {设备指纹}
+x-device-token: {设备凭据，属主证明}
 
 {
   "saveVersion": 2,
@@ -866,7 +1004,7 @@ x-device-id: {设备指纹}
 |---|---|---|---|
 | `saveVersion` | `1` / `2` | 是 | 存档结构版本（zod `union([literal(1), literal(2)])`） |
 | `saveId` | string (uuid) | 是 | 存档唯一标识 |
-| `deviceId` | string (≥1) | 是 | 设备指纹 |
+| `deviceId` | string (≥1) | 是 | 设备指纹。**仅作存档内容快照**：属主判定用 `x-device-token` 反查值，与本页不一致时以凭据为准 |
 | `createdAt` | number | 是 | 存档创建时间戳（毫秒） |
 | `character` | object | 是 | 玩家身份信息 |
 | `state` | object | 是 | 游戏状态（含 `turn`/`date`/`attributes`/`resources`） |
@@ -879,6 +1017,7 @@ x-device-id: {设备指纹}
 | `pendingChainNodes` | array | 否 | v2 新增：挂起的剧情链节点（结构与请求同） |
 | `completedChainIds` | array (string) | 否 | v2 新增：已完成剧情链 ID 列表 |
 | `activeChainIds` | array (string) | 否 | v2 新增：进行中剧情链 ID 列表 |
+| `zenithYear` | number (positive int) | 否 | 年钟新增：「中兴已定」锁定年份。`saveDataSchema` 是 **strict 模式**，不显式声明就会把带该字段的存档整条 400 拒掉 |
 
 > ⚠️ **严禁传入 `updatedAt` 字段**：zod `.strict()` 模式会拒绝，返回 400 + 错误信息 `updatedAt is not allowed (server-authoritative)`。
 
@@ -907,7 +1046,9 @@ x-device-id: {设备指纹}
 | HTTP | code | 触发场景 |
 |---|---|---|
 | 400 | `INVALID_PARAMS` | body 解析失败 / zod 校验失败（含传入 `updatedAt` 字段） |
-| 403 | `SAVE_FORBIDDEN` | `saveId` 已存在且归属于其他 `deviceId`（禁止覆盖他人存档） |
+| 401 | `INVALID_DEVICE_TOKEN` | 带了 `x-device-token` 但库里反查不到（凭据被吊销或伪造）——**不降级**采信 body 的 deviceId |
+| 401 | `DEVICE_TOKEN_REQUIRED` | 服务端已收紧（`DEVICE_AUTH_ENFORCED=true`）却未带凭据 |
+| 403 | `SAVE_FORBIDDEN` | `saveId` 已存在且归属于其他设备（禁止覆盖他人存档） |
 | 500 | `DB_ERROR` | 数据库写入失败 |
 
 > sync-save 走**独立的 `save` 桶**（30 次/分钟，不与 AI 端点的 10 次/分钟配额互相挤占），
@@ -924,16 +1065,19 @@ x-device-id: {设备指纹}
 ### 请求
 
 ```http
-GET /api/game/sync-save?saveId=550e8400-e29b-41d4-a716-446655440000&deviceId=device-abc123
+GET /api/game/sync-save?saveId=550e8400-e29b-41d4-a716-446655440000
 x-device-id: {设备指纹}
+x-device-token: {设备凭据，属主证明}
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `saveId` (query) | string (uuid) | 是 | 存档 ID |
-| `deviceId` (query) | string (≥1) | 是 | 设备指纹（属主校验，必须与存档归属一致） |
+| `deviceId` (query) | string (≥1) | 否 | **仅兼容期兜底**：未带凭据时用它当属主；带了 `x-device-token` 就不必传，新客户端不再传 |
 
-> **属主校验**：`deviceId` 与存档归属不匹配时返回 404（与「不存在」同响应，不泄漏他人存档存在性）。前端 `useSaveSync` 以本地存档内嵌的 `deviceId` 发起请求（该值随存档跨设备传播）。
+> **属主校验**：属主取自 `x-device-token` 反查，`WHERE save_id = $1 AND device_id = $2` 用该值。
+> 不匹配时返回 404（与「不存在」同响应，不泄漏他人存档存在性）。
+> 前端 `useSaveSync` 先 `await ensureCredential()`：拿到凭据则 URL 只带 `saveId`，拿不到才回落带 `deviceId`。
 
 ### 响应（成功）
 
@@ -964,28 +1108,32 @@ x-device-id: {设备指纹}
 
 | HTTP | code | 触发场景 |
 |---|---|---|
-| 400 | `INVALID_PARAMS` | `saveId` / `deviceId` 缺失，或 `saveId` 非 UUID 格式 |
-| 404 | `SAVE_NOT_FOUND` | 云端未找到此存档，或存档不属于该 `deviceId`（不区分，防存在性泄漏） |
+| 400 | `INVALID_PARAMS` | `saveId` 缺失或非 UUID 格式；或既无凭据又无 `deviceId`（兼容期） |
+| 401 | `INVALID_DEVICE_TOKEN` | 凭据反查不到属主（吊销/伪造），不降级采信 query 的 deviceId |
+| 401 | `DEVICE_TOKEN_REQUIRED` | 已收紧但未带凭据 |
+| 404 | `SAVE_NOT_FOUND` | 云端未找到此存档，或存档不属于该属主（不区分，防存在性泄漏） |
 | 500 | `DB_ERROR` | 数据库查询失败 |
 
 ---
 
 ## GET /api/game/saves
 
-按 `deviceId` 拉取存档列表（多存档管理基础能力）。源码：[saves.get.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/saves.get.ts)。
+按属主拉取存档列表（多存档管理基础能力）。源码：[saves.get.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/saves.get.ts)。
 
-> 仅返回摘要（不含完整 `saveData` blob），按 `updated_at` 倒序；命中 `idx_game_saves_device_id` 索引。归属模型与 sync-save 一致：deviceId 随存档传播。
+> 仅返回摘要（不含完整 `saveData` blob），按 `updated_at` 倒序；命中 `idx_game_saves_device_id` 索引。
+> 属主模型与 sync-save 一致：由 `x-device-token` 凭据反查，兼容期才回落用 query 的 `deviceId`。
 
 ### 请求
 
 ```http
-GET /api/game/saves?deviceId=device-abc123&limit=20
+GET /api/game/saves?limit=20
 x-device-id: {设备指纹}
+x-device-token: {设备凭据，属主证明}
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `deviceId` (query) | string (≥1) | 是 | 设备指纹（归属过滤） |
+| `deviceId` (query) | string (1-64) | 否 | **仅兼容期兜底**：无凭据时按它过滤；有凭据时忽略 |
 | `limit` (query) | number (1-50) | 否 | 返回条数上限，默认 20 |
 
 ### 响应（成功）
@@ -1019,10 +1167,13 @@ x-device-id: {设备指纹}
 
 | HTTP | code | 触发场景 |
 |---|---|---|
-| 400 | `INVALID_PARAMS` | `deviceId` 缺失 / `limit` 非 1-50 整数 |
+| 400 | `INVALID_PARAMS` | `limit` 非 1-50 整数；或既无凭据又无 `deviceId`（兼容期） |
+| 401 | `INVALID_DEVICE_TOKEN` | 凭据反查不到属主（吊销/伪造） |
+| 401 | `DEVICE_TOKEN_REQUIRED` | 已收紧但未带凭据 |
 | 500 | `DB_ERROR` | 数据库查询失败 |
 
-> saves **不受频率限制**、不使用并发锁（只读列表，与 sync-save 同口径）。
+> saves 走 rate-limit 的 **`ai` 桶**（10 次/分钟），不使用并发锁（只读列表）。
+> 旧文档写「不受频率限制」是脱节表述——`utils/rate-limit.ts` 一直把它算在 `ai` 桶里。
 
 ---
 
@@ -1030,19 +1181,25 @@ x-device-id: {设备指纹}
 
 删除云端存档（多存档管理收尾能力）。源码：[saves.delete.ts](file:///d:/code/codeWork/jintian-1851/server/server/api/game/saves.delete.ts)。
 
-> 属主校验与 sync-save 同口径：`save_id + device_id` 双条件原子删除，0 行命中返回 404（与「不存在」同响应，不泄漏他人存档存在性）。同时顺带清理该 `saveId` 的 `game_events` / `faction_memories` 记忆行（best-effort，失败不阻断存档删除）。
+> 属主校验与 sync-save 同口径：`save_id + device_id` 双条件原子删除，0 行命中返回 404（与「不存在」同响应，不泄漏他人存档存在性）。
+>
+> ⚠️ **记忆行清理排在主删除成功之后**：`game_events` / `faction_memories` 没有 `device_id` 列，
+> 「这个 saveId 是不是你的」只能由主删除的返回行数来证明。先清记忆再删存档的旧写法，
+> 会让任何知道他人 `saveId` 的人擦掉对方的记忆行，而响应的 404 还假装拒绝了请求。
+> 清理失败仅告警，不影响已成功的存档删除。
 
 ### 请求
 
 ```http
-DELETE /api/game/saves?saveId=550e8400-e29b-41d4-a716-446655440000&deviceId=device-abc123
+DELETE /api/game/saves?saveId=550e8400-e29b-41d4-a716-446655440000
 x-device-id: {设备指纹}
+x-device-token: {设备凭据，属主证明}
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `saveId` (query) | string (uuid) | 是 | 待删除存档 ID |
-| `deviceId` (query) | string (≥1) | 是 | 设备指纹（属主校验） |
+| `deviceId` (query) | string (1-64) | 否 | **仅兼容期兜底**：无凭据时用它做属主条件 |
 
 ### 响应（成功）
 
@@ -1054,11 +1211,13 @@ x-device-id: {设备指纹}
 
 | HTTP | code | 触发场景 |
 |---|---|---|
-| 400 | `INVALID_PARAMS` | `saveId` 非 UUID / `deviceId` 缺失 |
-| 404 | `SAVE_NOT_FOUND` | 云端未找到此存档，或存档不属于该 `deviceId`（不区分，防存在性泄漏） |
+| 400 | `INVALID_PARAMS` | `saveId` 非 UUID；或既无凭据又无 `deviceId`（兼容期） |
+| 401 | `INVALID_DEVICE_TOKEN` | 凭据反查不到属主（吊销/伪造） |
+| 401 | `DEVICE_TOKEN_REQUIRED` | 已收紧但未带凭据 |
+| 404 | `SAVE_NOT_FOUND` | 云端未找到此存档，或存档不属于该属主（不区分，防存在性泄漏）。**此时不动记忆行** |
 | 500 | `DB_ERROR` | 数据库删除失败 |
 
-> saves DELETE **不受频率限制**、不使用并发锁（与 saves GET 同口径）。
+> saves DELETE 走 rate-limit 的 **`ai` 桶**（10 次/分钟），不使用并发锁（与 saves GET 同口径）。
 
 ---
 
@@ -1067,12 +1226,17 @@ x-device-id: {设备指纹}
 | code | HTTP | 含义 | 触发接口 |
 |---|---|---|---|
 | `INVALID_PARAMS` | 400 | 请求参数校验失败（body 解析失败、zod 校验失败、UUID 格式错误等） | 全部 |
-| `RATE_LIMITED` | 429 | 频率超限（>10 次/分钟/deviceId） | 7 个 AI 端点（init-factions / generate-event / resolve-decision / npc-actions / advisor-chat / advisor-briefing / faction-negotiate） |
+| `MISSING_DEVICE_ID` | 400 | 缺少 `x-device-id` 请求头 | `/api/game/` 全部（限流中间件） |
+| `RATE_LIMITED` | 429 | 频率超限（`ai` 10/分钟、`save` 30/分钟、`auth` 5/分钟，按 deviceId 分桶） | 7 个 AI 端点 + 存档读写 `saves` + `sync-save` + `device-credential` |
 | `CONCURRENT_REQUEST` | 429 | 同 `saveId` 已有进行中请求 | generate-event / resolve-decision / npc-actions / advisor-chat / faction-negotiate |
-| `SAVE_NOT_FOUND` | 404 | 云端未找到此存档（或 deviceId 属主校验不通过，不区分） | GET sync-save / DELETE saves |
-| `SAVE_FORBIDDEN` | 403 | 存档归属于其他 deviceId，禁止覆盖 | POST sync-save |
-| `DB_ERROR` | 500 | 数据库读写失败 | sync-save |
-| `METHOD_NOT_ALLOWED` | 405 | 非 POST/GET 方法 | sync-save |
+| `INVALID_DEVICE_TOKEN` | 401 | 带了 `x-device-token` 但反查不到未吊销的凭据（伪造或已吊销）；**不降级**采信自声明的 deviceId | POST/GET sync-save / GET saves / DELETE saves |
+| `DEVICE_TOKEN_REQUIRED` | 401 | 服务端已收紧（`DEVICE_AUTH_ENFORCED=true`）却未带凭据 | 同上 |
+| `ENROLLMENT_CLOSED` | 403 | 注册窗口已关闭（`DEVICE_AUTH_ALLOW_FIRST_BIND=false`） | POST device-credential |
+| `SAVE_NOT_FOUND` | 404 | 云端未找到此存档（或属主校验不通过，不区分） | GET sync-save / DELETE saves |
+| `SAVE_FORBIDDEN` | 403 | 存档归属于其他设备，禁止覆盖 | POST sync-save |
+| `CREDENTIAL_EXISTS` | 409 | 该 deviceId 已绑定凭据（首绑即锁；含已吊销设备） | POST device-credential |
+| `DB_ERROR` | 500 | 数据库读写失败 | sync-save / saves / device-credential |
+| `METHOD_NOT_ALLOWED` | 405 | 方法不支持（sync-save 仅 POST/GET；device-credential 仅 POST） | sync-save / device-credential |
 
 ### 降级标识（非错误）
 

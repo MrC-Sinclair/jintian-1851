@@ -106,10 +106,31 @@ describe('getRateBucket', () => {
     expect(getRateBucket('/api/game/sync-save?saveId=xxx')).toBe('save')
   })
 
+  it('设备凭据注册归独立的 auth 桶', () => {
+    expect(getRateBucket('/api/game/device-credential')).toBe('auth')
+    expect(getRateBucket('/api/game/device-credential?x=1')).toBe('auth')
+  })
+
   it('非 /api/game/ 前缀不限流', () => {
     expect(getRateBucket('/api/health')).toBeNull()
     expect(getRateBucket('/')).toBeNull()
     expect(getRateBucket('/index.html')).toBeNull()
+  })
+})
+
+describe('auth 桶', () => {
+  it('每分钟 5 次：第 6 次被限制（注册成功即插一行，且首绑即锁不容扫注）', () => {
+    for (let i = 0; i < 5; i++) {
+      expect(isRateLimited('device-auth', undefined, 'auth')).toBe(false)
+    }
+    expect(isRateLimited('device-auth', undefined, 'auth')).toBe(true)
+    expect(getRemaining('device-auth', undefined, 'auth')).toBe(0)
+  })
+
+  it('auth 桶打满不影响 save 桶', () => {
+    for (let i = 0; i < 5; i++) isRateLimited('device-auth2', undefined, 'auth')
+    expect(isRateLimited('device-auth2', undefined, 'auth')).toBe(true)
+    expect(isRateLimited('device-auth2', undefined, 'save')).toBe(false)
   })
 })
 

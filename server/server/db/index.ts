@@ -10,7 +10,7 @@
 
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { gameSaves, gameEvents, factionMemories } from './schema'
+import { deviceCredentials, factionMemories, gameEvents, gameSaves } from './schema'
 
 const connectionString =
   process.env.DATABASE_URL || 'postgresql://sw_game:CHANGE_ME@localhost:5534/sw_game'
@@ -18,6 +18,6 @@ const connectionString =
 // postgres-js 客户端，max=1 避免开发期连接池过度创建
 const client = postgres(connectionString, { max: 1 })
 
-export const db = drizzle(client, { schema: { gameSaves, gameEvents, factionMemories } })
+export const db = drizzle(client, { schema: { gameSaves, deviceCredentials, gameEvents, factionMemories } })
 
-export { gameSaves, gameEvents, factionMemories }
+export { deviceCredentials, factionMemories, gameEvents, gameSaves }

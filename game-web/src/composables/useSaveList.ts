@@ -1,9 +1,11 @@
 /**
  * @file useSaveList — 云端存档列表（多存档管理）
  *
- * 数据源：GET /api/game/saves?deviceId=&limit=（摘要列表，按 updated_at 倒序）
- * 切换/导出：GET /api/game/sync-save 拉全量 → 写本地（deviceId 随存档传播，属主校验由服务端负责）
- * 删除：DELETE /api/game/saves（服务端 saveId+deviceId 双条件原子删除；删除当前本地档时同步清本地）
+ * 数据源：GET /api/game/saves?limit=（摘要列表，按 updated_at 倒序）
+ * 切换/导出：GET /api/game/sync-save 拉全量 → 写本地
+ * 删除：DELETE /api/game/saves（服务端 saveId + 凭据属主双条件原子删除；删除当前本地档时同步清本地）
+ * 归属：三个端点都先 `ensureCredential()` 拿设备凭据（走 x-device-token 头），
+ *       拿到就不在 URL 里声明 deviceId；拿不到才回落成 query 参数（服务端双轨兼容期认这条）
  * 导出：H5 Blob 下载；小程序端剪贴板兜底（JSON 文本）
  * 导入：JSON 文本 → isValidSaveShape 校验 → 写本地（导航由页面层负责，本模块保持可测）
  *
@@ -14,6 +16,7 @@
 import { ref } from 'vue'
 import { useGameStore } from '@/stores/game'
 import { ApiError, del, get } from '@/utils/api'
+import { ensureCredential, ownerParam } from '@/utils/device-credential'
 import { getDeviceId } from '@/utils/device-id'
 import { clearSave, isValidSaveShape, saveSave } from '@/utils/storage'
 import type { GameSave } from '@/types/game'
@@ -80,13 +83,14 @@ export function useSaveList() {
     if (isLoading.value) return saves.value
     isLoading.value = true
     try {
+      const token = await ensureCredential()
       const deviceId = safeDeviceId()
-      if (!deviceId) {
+      if (!token && !deviceId) {
         saves.value = []
         return []
       }
       const res = await get<SavesListResponse>(
-        `/api/game/saves?deviceId=${encodeURIComponent(deviceId)}&limit=${limit}`
+        `/api/game/saves?limit=${limit}${ownerParam(token, deviceId)}`
       )
       saves.value = res.saves
       return res.saves
@@ -100,9 +104,9 @@ export function useSaveList() {
    * @throws ApiError
    */
   async function fetchFullSave(saveId: string): Promise<GameSave> {
-    const deviceId = safeDeviceId()
+    const token = await ensureCredential()
     const res = await get<SyncSaveGetResponse>(
-      `/api/game/sync-save?saveId=${encodeURIComponent(saveId)}&deviceId=${encodeURIComponent(deviceId)}`
+      `/api/game/sync-save?saveId=${encodeURIComponent(saveId)}${ownerParam(token, safeDeviceId())}`
     )
     return res.save
   }
@@ -135,9 +139,9 @@ export function useSaveList() {
     if (isMutating.value) return { ok: false, message: '操作进行中，请稍候' }
     isMutating.value = true
     try {
-      const deviceId = safeDeviceId()
+      const token = await ensureCredential()
       await del<DeleteSaveResponse>(
-        `/api/game/saves?saveId=${encodeURIComponent(saveId)}&deviceId=${encodeURIComponent(deviceId)}`
+        `/api/game/saves?saveId=${encodeURIComponent(saveId)}${ownerParam(token, safeDeviceId())}`
       )
       // 本地当前档即被删档：清本地 + 置空 store（与云端一致，防「幽灵存档」）
       if (store.currentSave?.saveId === saveId) {

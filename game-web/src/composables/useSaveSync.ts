@@ -15,11 +15,14 @@
  *   - 全程 isSyncing 守卫，禁止重复点击
  *   - 失败 toast.error 不影响本地，isSyncing 必须在 catch 重置
  *   - POST body 不含 updatedAt（strict 模式拒绝）
+ *   - 属主由 `ensureCredential()` 拿到的设备凭据证明（x-device-token 头）；
+ *     body 里的 deviceId 只是存档内容快照，服务端不再拿它当权限凭证
  */
 
 import { computed } from 'vue'
 import { useGameStore } from '@/stores/game'
 import { ApiError, get, post } from '@/utils/api'
+import { ensureCredential, ownerParam } from '@/utils/device-credential'
 import { loadSave, saveSave } from '@/utils/storage'
 import type { EndedReason, GameSave } from '@/types/game'
 
@@ -79,12 +82,13 @@ export function useSaveSync(options: UseSaveSyncOptions = {}) {
     store.setSyncing(true)
 
     try {
-      // 1. 查询云端状态（deviceId 为属主校验必需：服务端按 saveId+deviceId 双条件查询）
+      // 1. 查询云端状态（属主由设备凭据证明；凭据拿不到才回落成 query 里的 deviceId）
+      const token = await ensureCredential()
       // 不用 URLSearchParams：小程序端无此全局对象（跨端兼容）
       let cloud: SyncSaveGetResponse | null = null
       try {
         cloud = await get<SyncSaveGetResponse>(
-          `/api/game/sync-save?saveId=${encodeURIComponent(localSave.saveId)}&deviceId=${encodeURIComponent(localSave.deviceId)}`
+          `/api/game/sync-save?saveId=${encodeURIComponent(localSave.saveId)}${ownerParam(token, localSave.deviceId)}`
         )
       } catch (err) {
         if (err instanceof ApiError && err.statusCode === 404) {

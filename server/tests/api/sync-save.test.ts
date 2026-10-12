@@ -2,6 +2,7 @@
  * @file sync-save API 集成测试
  *
  * 覆盖首次上传 / 二次覆盖 / 并发 / strict 拒绝 / 拉取 / 参数错误
+ *      / 凭据属主裁决（写入的 device_id 取凭据反查值，不取 body 自声明）
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -41,7 +42,20 @@ import handler from '../../server/api/game/sync-save'
 
 const readBodyMock = (globalThis as any).readBody as ReturnType<typeof vi.fn>
 const getQueryMock = (globalThis as any).getQuery as ReturnType<typeof vi.fn>
+const getHeaderMock = (globalThis as any).getHeader as ReturnType<typeof vi.fn>
 const SAVE_ID = '550e8400-e29b-41d4-a716-446655440000'
+
+// 双轨开关：覆盖 setup 的固定 mock，用例改字段、beforeEach 复位
+const authConfig = { deviceAuthEnforced: false, deviceAuthAllowFirstBind: true }
+;(globalThis as any).useRuntimeConfig = () => authConfig
+
+/** 让 `x-device-token` 反查命中 ownerDeviceId（select→from→where→limit 的第一次 limit 调用） */
+function stubTokenLookup(token: string, ownerDeviceId: string): void {
+  getHeaderMock.mockImplementation((_: unknown, name: string) =>
+    name === 'x-device-token' ? token : undefined
+  )
+  dbMock.limitMock.mockImplementationOnce(() => [{ deviceId: ownerDeviceId }])
+}
 
 function makeEvent(): any {
   return { node: { res: { write: vi.fn(async () => {}), end: vi.fn() } } }
@@ -86,6 +100,10 @@ function makeSaveData(overrides = {}): any {
 describe('POST/GET /api/game/sync-save', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // mockClear 不回收 mockImplementation，必须显式复位，否则凭据会漏到下一个用例
+    getHeaderMock.mockImplementation(() => undefined)
+    authConfig.deviceAuthEnforced = false
+    authConfig.deviceAuthAllowFirstBind = true
     ;(globalThis as any).getMethod = vi.fn(() => 'POST')
     dbMock.returningMock.mockReturnValue([
       {
@@ -124,6 +142,27 @@ describe('POST/GET /api/game/sync-save', () => {
       const res = (await handler(makeEvent())) as any
       expect(res.statusCode).toBe(400)
       expect(res.data.error.message).toContain('updatedAt')
+    })
+
+    it('zenithYear（年钟新增字段）被 schema 接受并原样入库', async () => {
+      // saveDataSchema 是 strictObject：新字段不显式声明就会把带它的存档整条 400 拒掉。
+      // 这条用例守的是"以后再加存档字段记得同步 schema"。
+      readBodyMock.mockResolvedValueOnce(makeSaveData({ zenithYear: 1882 }))
+
+      const res = (await handler(makeEvent())) as any
+      expect(res.ok).toBe(true)
+      expect(dbMock.valuesMock).toHaveBeenCalledTimes(1)
+      // valuesMock 是零参签名的 vi.fn，直接下标访问过不了 typecheck（仓库既有写法一致）
+      const valuesArg = (dbMock.valuesMock.mock.calls as unknown as any[][])[0][0]
+      expect(valuesArg.saveData.zenithYear).toBe(1882)
+    })
+
+    it('zenithYear 非正整数仍被拒', async () => {
+      readBodyMock.mockResolvedValueOnce(makeSaveData({ zenithYear: 0 }))
+
+      const res = (await handler(makeEvent())) as any
+      expect(res.statusCode).toBe(400)
+      expect(res.data.error.code).toBe('INVALID_PARAMS')
     })
 
     it('参数错误：saveId 非 UUID', async () => {
@@ -194,6 +233,40 @@ describe('POST/GET /api/game/sync-save', () => {
       const res = (await handler(makeEvent())) as any
       expect(res.statusCode).toBe(403)
       expect(res.data.error.code).toBe('SAVE_FORBIDDEN')
+    })
+
+    it('凭据属主裁决：写入的 device_id 取凭据反查值，不取 body 自声明', async () => {
+      // 攻击者拿自己设备的合法凭据，却把 body 里的 deviceId 填成受害者
+      stubTokenLookup('tok-owner', 'device-owner')
+      readBodyMock.mockResolvedValueOnce(makeSaveData({ deviceId: 'device-victim' }))
+
+      const res = (await handler(makeEvent())) as any
+      expect(res.ok).toBe(true)
+      const values = (dbMock.valuesMock.mock.calls as any[][])[0][0] as Record<string, unknown>
+      expect(values.deviceId).toBe('device-owner')
+    })
+
+    it('凭据无效：401 且不写库（不降级采信 body 的 deviceId）', async () => {
+      getHeaderMock.mockImplementation((_: unknown, name: string) =>
+        name === 'x-device-token' ? 'tok-bogus' : undefined
+      )
+      dbMock.limitMock.mockReturnValue([])
+      readBodyMock.mockResolvedValueOnce(makeSaveData())
+
+      const res = (await handler(makeEvent())) as any
+      expect(res.statusCode).toBe(401)
+      expect(res.data.error.code).toBe('INVALID_DEVICE_TOKEN')
+      expect(dbMock.insertMock).not.toHaveBeenCalled()
+    })
+
+    it('收紧后（enforced=true）无凭据上传一律 401', async () => {
+      authConfig.deviceAuthEnforced = true
+      readBodyMock.mockResolvedValueOnce(makeSaveData())
+
+      const res = (await handler(makeEvent())) as any
+      expect(res.statusCode).toBe(401)
+      expect(res.data.error.code).toBe('DEVICE_TOKEN_REQUIRED')
+      expect(dbMock.insertMock).not.toHaveBeenCalled()
     })
   })
 

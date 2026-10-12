@@ -3,13 +3,15 @@
  *
  * 当前含：
  *   - game_saves：云端存档同步（既有）
+ *   - device_credentials：设备凭据（存档归属鉴权新增，替代「deviceId 自声明即凭证」）
  *   - game_events：情景记忆（本局发生了什么，AI 长期记忆提案新增）
  *   - faction_memories：关系记忆（某势力对玩家的印象，AI 长期记忆提案新增）
  *
  * 字段说明（与 specs/cloud-sync/spec.md 一致）：
  *   - id: UUID PK，数据库自动生成（defaultRandom）
  *   - saveId: UUID UNIQUE NOT NULL，前端生成的存档唯一标识
- *   - deviceId: TEXT NOT NULL，设备指纹（MVP 占位，后续接登录系统）
+ *   - deviceId: TEXT NOT NULL，存档属主设备标识。双轨期仍可能来自客户端声明；
+ *     鉴权收紧后一律由 device_credentials 校验过的凭据反查得出，客户端无法自声明
  *   - saveData: JSONB NOT NULL，完整存档数据
  *   - saveVersion: INT NOT NULL DEFAULT 1，存档结构版本号（用于后续迁移）
  *   - endedAt: TIMESTAMP NULL，游戏结局时间（NULL 表示进行中）
@@ -34,6 +36,7 @@ import {
   uuid,
   integer,
   index,
+  uniqueIndex,
   vector
 } from 'drizzle-orm/pg-core'
 
@@ -63,6 +66,43 @@ export const gameSaves = pgTable(
 export type InsertGameSave = typeof gameSaves.$inferInsert
 /** game_saves 表的 TypeScript 类型（查询返回） */
 export type SelectGameSave = typeof gameSaves.$inferSelect
+
+/**
+ * device_credentials 表：设备凭据（存档归属鉴权）
+ *
+ * 为什么需要这张表：此前 `game_saves.device_id` 是「客户端自声明即凭证」——
+ * 任何人报上别人的 deviceId 就能列出/读取/删除其全部存档。本表把 deviceId 从
+ * 「自声明字符串」升格为「注册过的标识」：首绑时由服务端生成高熵凭据，
+ * 之后访问只认凭据，**已绑定的 deviceId 拒绝重复注册**，冒领方换不到凭据即无法访问。
+ *
+ * 字段说明：
+ *   - deviceId: 主键，与 game_saves.device_id 同值（不建 FK：存档行允许在凭据被吊销后留存，
+ *     且 2C2G 单实例下 FK 带来的迁移/删除顺序约束不值得）
+ *   - secretHash: sha256(明文凭据) 十六进制。库里**不存明文**——凭据只在注册响应里下发一次，
+ *     此后仅用于等值比对；库被拖走也无法反推可用凭据（256bit 随机，不可暴破）
+ *   - revokedAt: 非空即已吊销（拉黑单设备），凭据校验与注册都按「未吊销」过滤
+ *
+ * ⚠️ 明文凭据不落库意味着「用户清缓存后找回」在本方案内无解：
+ *    那需要真实身份（微信 openid），属后续 account linking 范畴，不在本次改动。
+ */
+export const deviceCredentials = pgTable(
+  'device_credentials',
+  {
+    deviceId: text('device_id').primaryKey(),
+    secretHash: text('secret_hash').notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    // 每次带凭据的请求都要按 secret_hash 等值查一次，必须是唯一索引
+    secretHashIdx: uniqueIndex('uq_device_credentials_secret_hash').on(table.secretHash)
+  })
+)
+
+/** device_credentials 表的 TypeScript 类型（插入用） */
+export type InsertDeviceCredential = typeof deviceCredentials.$inferInsert
+/** device_credentials 表的 TypeScript 类型（查询返回） */
+export type SelectDeviceCredential = typeof deviceCredentials.$inferSelect
 
 /**
  * game_events 表：情景记忆（本局发生了什么）

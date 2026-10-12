@@ -7,12 +7,14 @@
  *   - 网络层失败（fail 回调）抛 NETWORK 错误
  *   - 响应格式异常（非 {ok} 结构）抛 INVALID_RESPONSE
  *   - 自动注入 x-device-id header
+ *   - 有设备凭据时注入 x-device-token header，无凭据时不带该头
  *   - body 自动序列化
  *   - get/post/put/del 便捷方法
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, del, get, post, put, request } from '../../src/utils/api'
+import { clearDeviceCredential, setDeviceCredential } from '../../src/utils/device-id'
 
 // 捕获 uni.request 调用参数，便于断言
 let lastCall: {
@@ -242,6 +244,40 @@ describe('request - header 注入', () => {
 
     expect(lastCall!.header['x-device-id']).toBeTruthy()
     expect(lastCall!.header['Content-Type']).toBe('application/json')
+
+    lastCall!.success({
+      statusCode: 200,
+      data: { ok: true, data: {} },
+      header: {}
+    })
+
+    await promise
+  })
+
+  it('已有设备凭据时注入 x-device-token', async () => {
+    clearDeviceCredential()
+    setDeviceCredential('c'.repeat(64))
+
+    const promise = get('/api/game/saves')
+
+    expect(lastCall!.header['x-device-token']).toBe('c'.repeat(64))
+
+    lastCall!.success({
+      statusCode: 200,
+      data: { ok: true, data: {} },
+      header: {}
+    })
+
+    await promise
+    clearDeviceCredential()
+  })
+
+  it('无凭据时不带 x-device-token 头（服务端在双轨兼容期回落到 deviceId 声明）', async () => {
+    clearDeviceCredential()
+
+    const promise = get('/api/game/saves')
+
+    expect(lastCall!.header['x-device-token']).toBeUndefined()
 
     lastCall!.success({
       statusCode: 200,

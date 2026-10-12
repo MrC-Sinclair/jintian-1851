@@ -14,11 +14,12 @@
 
 ## 表清单
 
-当前含 3 张表：
+当前含 4 张表：
 
 | 表 | 用途 | 引入 |
 |---|---|---|
 | `game_saves` | 云端存档同步 | MVP |
+| `device_credentials` | 设备凭据（存档归属鉴权，替代「deviceId 自声明即凭证」） | 存档归属鉴权提案 |
 | `game_events` | 情景记忆（本局事件向量，供语义去重） | AI 长期记忆提案 |
 | `faction_memories` | 关系记忆（各势力对玩家印象，供 NPC 决策注入 / 军师检索） | AI 长期记忆提案 |
 
@@ -34,7 +35,7 @@
 |---|---|---|---|---|
 | `id` | `uuid` | `PRIMARY KEY` | `gen_random_uuid()` | 数据库自动生成的主键，不暴露给客户端 |
 | `save_id` | `uuid` | `NOT NULL UNIQUE` | — | 客户端生成的存档唯一标识，云端同步主键 |
-| `device_id` | `text` | `NOT NULL` | — | 设备指纹（MVP 占位，后续接登录系统） |
+| `device_id` | `text` | `NOT NULL` | — | 存档属主设备标识。收紧后其值一律来自 `device_credentials` 凭据反查，不再采信客户端自声明；`save_data` blob 内的同名字段只是客户端快照 |
 | `save_data` | `jsonb` | `NOT NULL` | — | 完整 GameSave JSON 数据（含 character/state/factions/events/advisorMessages 等） |
 | `save_version` | `integer` | `NOT NULL` | `1` | 存档结构版本号（默认 1；当前客户端已支持 v2，新增 pendingChainNodes/completedChainIds/activeChainIds 三字段） |
 | `ended_at` | `timestamptz` | `NULL` | `NULL` | 游戏结局时间（`NULL` 表示进行中） |
@@ -48,7 +49,7 @@
 |---|---|---|---|
 | `game_saves_pkey` | `id` | PRIMARY KEY | 主键索引（自动） |
 | `game_saves_save_id_unique` | `save_id` | UNIQUE | 唯一约束索引（自动） |
-| `idx_game_saves_device_id` | `device_id` | INDEX | 普通索引，便于按设备查列表（MVP 暂不使用，预留） |
+| `idx_game_saves_device_id` | `device_id` | INDEX | 普通索引，按设备查存档列表（`GET /api/game/saves` 命中） |
 
 ### 关键约束
 
@@ -129,6 +130,77 @@ LIMIT 1;
 ```
 
 未找到**或 deviceId 不匹配**统一返回 404 + `SAVE_NOT_FOUND`（不泄漏他人存档存在性）。
+
+---
+
+## device_credentials — 设备凭据（存档归属鉴权）
+
+源码：[server/server/db/schema.ts](file:///d:/code/codeWork/jintian-1851/server/server/db/schema.ts)
+实现：[server/server/utils/device-auth.ts](file:///d:/code/codeWork/jintian-1851/server/server/utils/device-auth.ts)
+
+> 存档归属提案新增。此前 `game_saves.device_id` 是「客户端自声明即凭证」——
+> 报上别人的 deviceId 就能列出/读取/删除其全部存档。本表把 deviceId 从
+> 「自声明字符串」升格为「注册过的标识」。
+
+### 字段说明
+
+| 列名 | 类型 | 约束 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `device_id` | `text` | `PRIMARY KEY` | — | 与 `game_saves.device_id` 同值；主键即「一个 deviceId 只能绑定一次」的约束载体 |
+| `secret_hash` | `text` | `NOT NULL UNIQUE` | — | `sha256(明文凭据)` 十六进制。**库里不存明文**：凭据只在注册响应里下发一次 |
+| `revoked_at` | `timestamptz` | `NULL` | `NULL` | 非空即已吊销（拉黑单设备），凭据校验与注册都按「未吊销」过滤 |
+| `created_at` | `timestamptz` | `NOT NULL` | `NOW()` | 首绑时间 |
+
+### 索引
+
+| 索引名 | 字段 | 类型 | 说明 |
+|---|---|---|---|
+| `device_credentials_pkey` | `device_id` | PRIMARY KEY | 首绑即锁的约束来源，兼作重复注册裁决（`ON CONFLICT DO NOTHING`） |
+| `uq_device_credentials_secret_hash` | `secret_hash` | UNIQUE | 每次带凭据的请求都按此列等值反查属主 |
+
+### 关键约束
+
+#### 首绑即锁（防事后冒领）
+
+- 注册走 `INSERT ... ON CONFLICT DO NOTHING RETURNING`，返回 0 行即「该 deviceId 已绑定」→ 409
+- **不读后写**：并发注册由主键约束裁决，无 Read-Modify-Write 竞态窗口
+- 已绑定的 deviceId 再注册一律被拒 → 事后获知他人 deviceId 的人换不到凭据，也就无法访问其存档
+- 边界（诚实标注）：本表防不住「首个声明者」——双轨兼容期任何人都能替**未注册**的 deviceId 抢下绑定。
+  这是「不要求老玩家重装、存量存档无损归属」的对价，靠 `DEVICE_AUTH_ALLOW_FIRST_BIND=false` 关注册来收窄
+
+#### 不建外键
+
+`device_credentials.device_id` 与 `game_saves.device_id` 之间**不建 FK**：
+存档行允许在凭据被吊销后继续留存（吊销是封禁访问，不是删数据），
+且 2C2G 单实例下 FK 带来的迁移/删除顺序约束不值得。
+
+#### 存量存档无需迁移
+
+`game_saves.device_id` 的既有值一个都不改——本方案只是让「写入这个值」必须先通过凭据校验。
+`save_data` JSONB blob 内的 `deviceId` 退化为客户端快照，服务端不采信、不回填。
+
+### Drizzle Schema 定义
+
+```ts
+// server/server/db/schema.ts
+import { pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
+
+export const deviceCredentials = pgTable(
+  'device_credentials',
+  {
+    deviceId: text('device_id').primaryKey(),
+    secretHash: text('secret_hash').notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    secretHashIdx: uniqueIndex('uq_device_credentials_secret_hash').on(table.secretHash)
+  })
+)
+
+export type InsertDeviceCredential = typeof deviceCredentials.$inferInsert
+export type SelectDeviceCredential = typeof deviceCredentials.$inferSelect
+```
 
 ---
 
