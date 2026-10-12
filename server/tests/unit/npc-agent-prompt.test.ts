@@ -128,3 +128,61 @@ describe('buildNpcAgentPrompt', () => {
     expect(jsonIdx).toBeGreaterThan(memIdx)
   })
 })
+
+describe('名望注入 NPC prompt（兑现 game-design.md:57「影响 NPC 态度」）', () => {
+  /** 只改名望，其余上下文与 makeCtx 一致；传 undefined 模拟客户端漏传该字段 */
+  function ctxWithReputation(reputation: number | undefined): ToolContext {
+    const base = makeCtx()
+    // resources.reputation 在类型上是必填，构造「缺字段」要绕开 delete 的类型限制
+    const resources = { ...base.stateSnapshot.resources } as Record<string, number>
+    delete resources.reputation
+    if (typeof reputation === 'number') resources.reputation = reputation
+    return {
+      ...base,
+      stateSnapshot: {
+        ...base.stateSnapshot,
+        resources: resources as unknown as ToolContext['stateSnapshot']['resources']
+      }
+    }
+  }
+
+  it('注入行恒定存在，且带档位称号', () => {
+    expect(buildNpcAgentPrompt(makeFaction(), ctxWithReputation(90))).toContain(
+      '玩家如今的朝野名望：天下归心'
+    )
+    expect(buildNpcAgentPrompt(makeFaction(), ctxWithReputation(10))).toContain(
+      '玩家如今的朝野名望：身败名裂'
+    )
+  })
+
+  it('高档与低档给出相反的态度倾向', () => {
+    const high = buildNpcAgentPrompt(makeFaction(), ctxWithReputation(90))
+    const low = buildNpcAgentPrompt(makeFaction(), ctxWithReputation(5))
+    expect(high).toContain('宜先示好或观望')
+    expect(low).toContain('毫不顾忌地进逼吞并')
+    expect(high).not.toContain('毫不顾忌地进逼吞并')
+  })
+
+  it('缺 resources.reputation 时落最低档而不是炸掉整回合', () => {
+    const p = buildNpcAgentPrompt(makeFaction(), ctxWithReputation(undefined))
+    expect(p).toContain('玩家如今的朝野名望：身败名裂')
+  })
+
+  it('只偏置文案：relationship 派生的决策目标不受名望影响', () => {
+    const hostile = makeFaction({ relationship: -60 })
+    const highRep = buildNpcAgentPrompt(hostile, ctxWithReputation(90))
+    const lowRep = buildNpcAgentPrompt(hostile, ctxWithReputation(5))
+    const goal = '你的目标是削弱玩家势力，可挑衅/备战/扩张针对玩家'
+    expect(highRep).toContain(goal)
+    expect(lowRep).toContain(goal)
+  })
+
+  it('注入行排在关系值之后、决策目标之前（先给局势再给目标）', () => {
+    const p = buildNpcAgentPrompt(makeFaction(), ctxWithReputation(70))
+    const relIdx = p.indexOf('关系值为')
+    const repIdx = p.indexOf('玩家如今的朝野名望')
+    const goalIdx = p.indexOf('决策目标：')
+    expect(relIdx).toBeLessThan(repIdx)
+    expect(repIdx).toBeLessThan(goalIdx)
+  })
+})

@@ -17,6 +17,7 @@ import {
   ATTRIBUTE_MAX,
   DIPLOMACY_RULES,
   NEGOTIATION_LETTER_DELTA_LIMIT,
+  REPUTATION_MAX,
   canAfford,
   clamp,
   getNegotiationDealById,
@@ -167,6 +168,10 @@ export const useGameStore = defineStore('game', () => {
     for (const key of Object.keys(newRes) as (keyof Resources)[]) {
       newRes[key] = Math.max(0, newRes[key])
     }
+    // 名望封顶 100：它是 game-design.md:57 的 0-100「朝野声望」刻度，
+    // 不封顶实测 200 局终局会涨到 116-305，档位与 UI 刻度全部失真。
+    // 银两/兵员/粮草是存量计数（起始 1000/500/800），不设上限。
+    newRes.reputation = Math.min(REPUTATION_MAX, newRes.reputation)
     updateState({ attributes: newAttrs, resources: newRes })
   }
 
@@ -264,6 +269,19 @@ export const useGameStore = defineStore('game', () => {
       endedAt: now,
       endedReason: reason,
       updatedAt: now
+    }
+  }
+
+  /**
+   * 锁定「中兴已定」年份（1 回合 = 1 年制）：综合实力首次达阈值时调用一次。
+   * 只写年份、**不结束游戏** —— 终局仍要走到 1912 年结算。已锁定则不覆盖。
+   */
+  function lockZenith(year: number): void {
+    if (!currentSave.value || currentSave.value.zenithYear) return
+    currentSave.value = {
+      ...currentSave.value,
+      zenithYear: year,
+      updatedAt: Date.now()
     }
   }
 
@@ -653,6 +671,7 @@ export const useGameStore = defineStore('game', () => {
     appendEvent,
     appendAdvisorMessage,
     markEnded,
+    lockZenith,
     updateChainState,
     applyDiplomacyAction,
     resetDiplomacy,

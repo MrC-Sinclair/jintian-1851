@@ -112,6 +112,10 @@ function simulate(mode: Mode, maxTurns = 120): SimResult {
 
   for (let t = 0; t < maxTurns; t++) {
     store.applyEffects(TURN_YIELD)
+    // 名望收入：真实对局里事件净发约 +4.4/回合（200 局模拟实测），本 fixture 不跑事件，
+    // 不补这一笔的话 TURN_YIELD 里 -3/回合的衰减会让名望第 4 回合归零，
+    // alliance-deal 的 5~10 点名望代价永远付不起（不是平衡回归，是 fixture 缺收入源）
+    store.applyEffects({ reputation: 4 })
     bumpAttributes(store)
 
     const silverBefore = store.currentSave!.state.resources.silver

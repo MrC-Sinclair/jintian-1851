@@ -8,12 +8,17 @@
  * AI 长期记忆（提案 任务6 / D8）：检索到该势力自身记忆时注入「你记得关于玩家势力的事」
  * 段落，正负分组呈现恩怨两面，只偏置意图与文案（不改数值结算）。
  *
+ * 名望注入（存档之外的第二个「玩家形象」维度）：按 `reputation-bands.ts` 的档位注入一句
+ * 态度倾向，与记忆段落同样**只偏置意图与文案**。此前 game-design.md:57 承诺名望
+ * 「影响 NPC 态度」，但本文件里 reputation 出现 0 次——承诺没落地。
+ *
  * 最后要求 LLM 只输出一个 JSON 对象（design.md D4：避免工具调用后的冗余文字），
  * 由 runNpcAgent 解析为 NpcAction 结构。
  */
 
 import type { Faction } from '../../../types/game'
 import type { ToolContext } from '../../utils/tool-context'
+import { getReputationBand } from '../../utils/reputation-bands'
 
 /** 注入 prompt 的势力记忆（已格式化为「第N回合：内容」字符串，按情感分组） */
 export interface NpcMemories {
@@ -65,10 +70,16 @@ export function buildNpcAgentPrompt(faction: Faction, ctx: ToolContext, memories
   }
 
   const playerFaction = `${ctx.character.factionName}（${ctx.character.background}出身）`
+  // 玩家名望 → 档位倾向（只偏置意图与文案，不改数值结算）。
+  // 实测注入约 40-50 个中文字符 ≈ +50 tokens/Agent，占 npc-actions 单次输入(~1200)的 +4%，
+  // 折算单局成本 +2%（口径见 docs/ai-cost.md）。
+  // 用可选链是因为 resources 来自客户端 body，缺字段时应落到低档而不是炸掉整回合。
+  const repBand = getReputationBand(ctx.stateSnapshot.resources?.reputation ?? 0)
 
   const lines = [
     `你是 ${faction.name} 的决策者。${faction.summary}`,
     `本势力当前实力 ${faction.power}，与玩家势力（${playerFaction}）的关系值为 ${relationship}（负数=敌对，正数=友好，±30 为分界）。`,
+    `玩家如今的朝野名望：${repBand.label}。${repBand.npcStance}。`,
     `决策目标：${goal}`,
     '可选行动类型：扩张 / 结盟 / 备战 / 休养 / 挑衅 / 外交',
     '需要了解其他势力详情、全局格局、势力间关系或玩家状态时，可自主调用工具查询，不要凭空编造数据。',

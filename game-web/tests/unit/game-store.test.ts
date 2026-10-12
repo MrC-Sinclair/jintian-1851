@@ -183,6 +183,27 @@ describe('applyEffects', () => {
     expect(r.food).toBe(700) // 未触底时照常累加
   })
 
+  it('名望封顶 100：它是 0-100 刻度，与银两等存量计数不同', () => {
+    const store = useGameStore()
+    store.setSave(createMockSave()) // reputation 起始 10 / silver 1000
+
+    store.applyEffects({ reputation: 200, silver: 5000 })
+
+    // 不封顶时 200 局模拟实测终局名望中位 162、最高 305，档位与 UI 刻度全失真
+    expect(store.currentSave!.state.resources.reputation).toBe(100)
+    // 银两没有刻度语义，不封顶
+    expect(store.currentSave!.state.resources.silver).toBe(6000)
+  })
+
+  it('名望扣到负数仍托底 0（下限沿用资源规则）', () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+
+    store.applyEffects({ reputation: -50 })
+
+    expect(store.currentSave!.state.resources.reputation).toBe(0)
+  })
+
   it('属性封顶 100：正向溢出不保留，负向仍照常累加', () => {
     const store = useGameStore()
     store.setSave(createMockSave()) // military 起始 50
