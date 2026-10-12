@@ -2,7 +2,7 @@
 
 ## MODIFIED Requirements
 
-### Requirement: 兜底事件池规模与覆盖
+### Requirement: 兜底事件池
 服务端 MUST 维护至少 90 条预置事件作为兜底，覆盖 5 类型各 18 条
 （民生/军事/外交/随机/历史剧情），且兜底事件一律不携带 `chainId`。
 
@@ -15,6 +15,15 @@
 - **WHEN** `avoidTitles` 传入近期已用标题
 - **THEN** 优先从同类型未用过的子池抽取；整池都被 avoid 时回退全池，绝不返回空
 - **AND** 避重只改变抽取顺序，池子总量决定长局多样性上限——这是扩容到 90 的理由
+
+#### Scenario: LLM 完全失败时返回兜底事件（既有）
+
+WHEN `generateObject()` 重试 1 次后仍失败
+THEN 服务端从 `fallback-events.ts` 随机抽 1 个事件
+AND 该事件类型与请求的 `eventType` 匹配（若池中无匹配则随机）
+AND 返回 `{ event, effects, fallback: true }`
+
+## ADDED Requirements
 
 ### Requirement: 兜底事件选项必须有权衡
 每个事件 SHALL 含 2-4 个选项，且**不得存在严格占优选项**：
@@ -44,8 +53,6 @@
 #### Scenario: 正向补给同样入池
 - **WHEN** 抽到「屯田实边」「招抚降众给田」「劝民改稻以济口粮」等条
 - **THEN** 玩家可通过选择恢复粮草/兵员，而不是只被单向抽血
-
-## ADDED Requirements
 
 ### Requirement: 兜底事件标题全局唯一
 系统 SHALL 保证 `FALLBACK_EVENTS` 内标题不重复，同类内不重复主题。
