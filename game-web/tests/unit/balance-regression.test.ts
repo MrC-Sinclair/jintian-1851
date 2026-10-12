@@ -78,6 +78,14 @@ import {
 /** 200 个种子，足够给出统计稳定的胜率估计 */
 const SEEDS = Array.from({ length: 200 }, (_, i) => i + 1)
 
+/**
+ * 模拟用例的单用例超时。vitest 默认 5000ms，而这几条各是 200 局 × 62 回合：
+ * 本机冷缓存实测 1.8s / 3.2s / 5.0s / 2.6s，CI runner 慢 2–3 倍，
+ * run #3（88de72f）就有三条被判 `Test timed out in 5000ms`。
+ * 刻意只放开这几条而不动全局 testTimeout —— 全局放宽会掩盖真实卡死。
+ */
+const SIM_TIMEOUT_MS = 30_000
+
 /** 严格 C1 基线：LLM 完全不可用（npc=none），含外交，不偏向短板事件 */
 const BASELINE: Omit<SimOptions, 'seed'> = {
   // 年钟（1 回合 = 1 年）下必须 ≥62 才可能走到 1912 结算；旧的 50 会让所有局在结算前被截断
@@ -125,7 +133,7 @@ describe('C1 跨提案联合平衡校验（通关模拟，mock LLM）', () => {
     expect(report.maxFinalYear).toBeGreaterThan(1912)
     // 无异常崩溃局
     expect(report.reasonCounts['crash'] ?? 0).toBe(0)
-  })
+  }, SIM_TIMEOUT_MS)
 
   it('外交开关对比：外交有财政代价，允许降胜率但必须有界（跨提案不变量已改写）', () => {
     const store = useGameStore()
@@ -147,7 +155,7 @@ describe('C1 跨提案联合平衡校验（通关模拟，mock LLM）', () => {
     // 外交机制在两条路径里确实被用上了（否则上面的对比是空的）
     expect(withDiplo.avgDiplomacyActions).toBeGreaterThan(0)
     expect(noDiplo.avgDiplomacyActions).toBe(0)
-  })
+  }, SIM_TIMEOUT_MS)
 
   it('剧情链开关对比：链是纯增益，年钟下它改为"缩短走完年代所需的回合"', () => {
     const store = useGameStore()
@@ -176,7 +184,7 @@ describe('C1 跨提案联合平衡校验（通关模拟，mock LLM）', () => {
     // 也就是"后半场无事可求"的问题被链放大了 —— 那是守成阶段缺目标，属设计侧，不靠数值掩盖。
     expect(chainsOnNpc.reasonCounts['crash'] ?? 0).toBe(0)
     expect(chainsOnNpc.total).toBe(SEEDS.length)
-  })
+  }, SIM_TIMEOUT_MS)
 
   // 注：event-weight-dynamic-adjust 的「短板偏置」依赖 LLM 实时生成「对症」事件，
   // 静态兜底事件池无法忠实还原（粗粒度 proxy 会产生误导信号），故 C1 基线刻意采用
@@ -190,7 +198,7 @@ describe('C1 跨提案联合平衡校验（通关模拟，mock LLM）', () => {
     // 仅保证模拟可跑通、无异常崩溃；崩溃维度分布供后续回归对比
     expect(report.reasonCounts['crash'] ?? 0).toBe(0)
     expect(report.total).toBe(SEEDS.length)
-  })
+  }, SIM_TIMEOUT_MS)
 
   it('底盘确定性：同种子两次运行结果完全一致（纯函数级保证）', () => {
     const store = useGameStore()
