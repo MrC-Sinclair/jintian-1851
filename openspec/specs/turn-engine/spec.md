@@ -1,7 +1,7 @@
 # turn-engine Specification
 
 ## Purpose
-编排单回合五段强制流程（局势展示 → AI 事件生成 → 玩家决策 → 状态演化 → NPC 势力行动）与游戏内时间按月推进（1851-01 至 1912-12）。它是连接事件引擎、决策应用、NPC 行动、结局判定的中枢，确保每回合步骤有序、可审计、不跳漏。此外，回合开始时 `startTurn` 会并行调用 `advisor-briefing` 获取军师局势简报（与事件生成 `Promise.all` 并行，失败降级不阻塞）。
+编排单回合五段强制流程（局势展示 → AI 事件生成 → 玩家决策 → 状态演化 → NPC 势力行动）与游戏内时间按年推进（1851—1912，1 回合 = 1 年）。它是连接事件引擎、决策应用、NPC 行动、结局判定的中枢，确保每回合步骤有序、可审计、不跳漏。此外，回合开始时 `startTurn` 会并行调用 `advisor-briefing` 获取军师局势简报（与事件生成 `Promise.all` 并行，失败降级不阻塞）。
 ## Requirements
 ### Requirement: 回合流程编排
 
@@ -55,26 +55,31 @@ AND 玩家可点击某行动查看详情
 
 ### Requirement: 时间推进
 
-游戏内时间 MUST 按月推进，起始 1851 年 1 月，结束 1912 年 12 月。每回合 +1 月。
+游戏内时间 MUST 按年推进，起始 1851 年，结束 1912 年。每回合 +1 年。
 
 #### Scenario: 每回合时间自动推进
 
 WHEN 玩家完成一回合决策并进入下一回合
-THEN `state.date.month` +1
-AND 若 month > 12 则 month = 1 且 year +1
-AND 顶部日期显示更新为「{year} 年 {month} 月」格式（如「1912 年 12 月」；当前未做清代年号映射，保持公元年-月）
+THEN `state.date.year` +1
+AND `state.date.month` 恒为 1（字段保留但停用，见下方"契约不变"要求）
+AND 顶部日期显示为「{year} 年」格式
 
-#### Scenario: 达到 1912 年触发结局
+#### Scenario: 六十年第一次真的能走完
 
-WHEN `state.date.year > 1912`（时光尽头判定仅看年份，`month > 12` 分支因月份溢出后 year 已 +1、逻辑上不可达，实际触发点为走到 1913 年）
-THEN 前端检测到时间超出
-AND 触发「时光尽头」结局画面显示：「大清已亡，你的势力在历史中存活了 N 年」
-AND 显示最终状态快照
-AND 提供按钮「返回首页」与「重新开始」
+WHEN 玩家从 1851 年开局且不提前触发任何结局
+THEN 约 61 回合后到达 1912 年
+AND 再下一回合 `state.date.year > 1912` 成立
+AND 触发「时光尽头」结局
+AND 该结局**必须可被模拟底盘复现**（`maxTurns` 上界须 ≥ 62，否则测不到）
+
+> 变更理由：月钟下 61 年需要 732 回合，而实测中位局长只有 37 回合 ——
+> **没有任何胜利存档走到过 1872 年**（关链 p90=1854、开链 p90=1865、最好的一组 p90=1872），
+> `time_up` 因此是死代码。这与 #3 之前 `economy_collapse` 从未触发是同一类缺陷。
 
 ### Requirement: 失败条件检测
 
-任一属性 ≤ 0 时 MUST 触发「势力崩溃」结局。
+任一属性 ≤ 0 时 MUST 触发「势力崩溃」结局，且该判定**不受时钟改造影响**：
+崩溃仍是立即结束，不因"还没走到 1912 年"而被救回。
 
 #### Scenario: 任一属性归零触发崩溃
 
@@ -85,13 +90,35 @@ AND 存档标记为 `ended: true`，禁止继续操作
 
 ### Requirement: 胜利条件检测
 
-综合实力 ≥ 90 MUST 触发胜利结局。「存活至 1912 年」并非胜利，而是独立的「时光尽头」结局（见"达到 1912 年触发结局"）。
+胜利 MUST 在 1912 年结算时判定，而不是在中途 power 达线时立即触发。
+`endedReason` 取值集合 MUST 保持现有的 7 种不变（不新增枚举值）。
 
-#### Scenario: 综合实力达到 90 触发胜利
+#### Scenario: 走到 1912 年且实力达标判中兴
 
-WHEN 状态演化后 `calcOverallPower(attributes)`（Power_WEIGHTS 加权平均，政治/民心权重更高）≥ 90
-THEN 跳转胜利结局画面「你的势力已雄踞天下」
-AND 存档标记为 `ended: true`
+WHEN `state.date.year > 1912` 且 `calcOverallPower(attributes) >= VICTORY_THRESHOLD`（当前 85）
+THEN 返回 `victory`
+AND 结局页按「实力 × 名望史评 × 链完成度」三层给出等级
+
+#### Scenario: 走到 1912 年但实力未达标
+
+WHEN `state.date.year > 1912` 且综合实力未达阈值
+THEN 返回 `time_up`（岁月如梭，未成中兴）
+AND 该结局**必须可达**——这是时钟改造的验收标准之一（月钟下实测无任何存档走到过 1872 年）
+
+#### Scenario: 中途达标只锁定评价，不结束游戏
+
+WHEN 玩家在 1873 年就把综合实力推到阈值之上
+THEN 游戏**不**立即结束，改为在历史时间线记一条"中兴已定"系统事件并锁定该评价
+AND 玩家继续推进至 1912 年结算
+AND 理由：现规则下实测 200 局全部恰好在第 22 回合必胜、终局 1865 年，
+      「1851—1912」这个跨度根本走不完；把胜利改到年代终点结算才让六十年成为被玩的对象
+
+#### Scenario: 为什么不新增结局枚举值
+
+WHEN 有人想为"提前锁定中兴"新增 `endedReason`
+THEN 不予采纳 —— `ended_reason` 虽为自由 TEXT 可塞新值，但会牵动前端两张
+      `Record<EndedReason, string>` 文案表、`isFailureEnd` 配色、既有存档可读性；
+      用「1912 结算时 power 是否达标」映射到既有 `victory` / `time_up` 即可表达全部语义
 
 ### Requirement: 回合数与存档联动
 
@@ -319,17 +346,329 @@ THEN `AdvisorDrawer` 当前消息显示"军师暂时无法回应，可重新提�
 AND `console.error` 记录错误
 
 ### Requirement: 回合资源自动产出（2026-08-07-resource-per-turn-yield）
+`endTurn` SHALL 按「毛产出 − 养饷」的净额经 `applyEffects` 入账，
+并以 `eventType: '系统'` 记录；文案 MUST NOT 写死数额（净额随兵员变化）。
 
-每回合结算时游戏 MUST 自动产出少量资源（初版 `silver +50`），避免长期消耗后无解；产出须以系统历史事件形式记录于 timeline，可追溯。
+#### Scenario: 结算顺序
+- **WHEN** 玩家结束回合
+- **THEN** 顺序为 破产判定（产出前）→ 净产出入账 → 断粮/兵溃判定（产出后）→ 势力存亡 → turn+1
 
-WHEN `useTurn.endTurn()` 完成 NPC 行动应用、追加玩家决策历史事件后、`turn+1` 之前
-THEN 调用 `store.applyEffects(calcTurnYield())` 注入固定资源增量（`TURN_YIELD` 常量，`utils/constants.ts`）
-AND `store.appendEvent` 追加一条 `eventType: '系统'`、`playerChoice: ''`、`effects: { silver: 50 }` 的历史事件（文案来自 `copywriting.SYSTEM_EVENT.turnYield`）
-AND 该产出发生在 `isProcessingTurn` 守卫内（防重复提交）
+#### Scenario: 名望衰减同批入账
+- **WHEN** 净产出入账
+- **THEN** 同一批 effects 含 `reputation: -3`（名望封顶 0-100），系统事件记录完整净额
 
-#### Scenario: 产出计入 timeline 且不破环结构
+#### Scenario: 产出计入历史时间线且时间线可渲染
+- **WHEN** 回合结束、净产出入账
+- **THEN** `GameSave.events` 末条为 `eventType: '系统'` 的产出事件，`effects` 记完整净额（不写死数额）
+- **AND** `TurnTimeline` 有 `'系统'` 分支，把它渲染成「系统」而不报错/不漏显
 
-WHEN 回合结束
-THEN `GameSave.events` 末条为 `eventType: '系统'` 的产出事件
-AND `TurnTimeline` 正确渲染该事件（`typeClass` 含 `'系统'` 分支，文本显示"系统"），不报错/不漏显
+### Requirement: 名望封顶 0-100
+`applyEffects` SHALL 把 `resources.reputation` 夹在 0-100 区间（上限 `REPUTATION_MAX = 100`，
+下限沿用资源托底 0），而银两/兵员/粮草 MUST NOT 封顶——它们是存量计数，没有刻度语义。
+
+#### Scenario: 正向溢出被夹住
+- **WHEN** `applyEffects({ reputation: 200, silver: 5000 })` 作用于起始名望 10 / 银两 1000 的存档
+- **THEN** 名望为 **100**，银两为 6000（不封顶）
+
+#### Scenario: 扣到负数仍触底 0
+- **WHEN** `applyEffects({ reputation: -50 })`
+- **THEN** 名望为 0，不出现负数
+
+### Requirement: 名望档位表是单一真值来源
+系统 SHALL 用一张按 `min` 降序、末档 `min = -Infinity` 兜底的五档表同时驱动结局史评与 NPC 态度文案；
+前后端各持一份镜像，由深比较测试防漂移。
+
+#### Scenario: 边界入档
+- **WHEN** 名望为 85 / 84 / 65 / 64 / 40 / 39 / 20 / 19 / 0 / -30
+- **THEN** 依次落入 天下归心 / 天下归心 / 朝野称望 / 朝野称望 / 声名平平 / 物议沸然 / 物议沸然 / 身败名裂 / 身败名裂 / 身败名裂
+- **AND** 划线取年钟重标定后的 78 / 60 / 42 / 22；旧的月钟划线 85 / 65 / 40 / 20 在 63 回合局长下会把五档压成两档
+
+#### Scenario: 每档三字段齐全
+- **WHEN** 取任意档
+- **THEN** `label`、`remark`、`npcStance` 均非空（结局页与 prompt 分别直接渲染后两者）
+
+### Requirement: 结局页展示史评
+结局页 SHALL 在 7 种结局之上叠加「史评」区块，显示名望档位的称号与评语；
+存档尚未加载时 MUST NOT 渲染该区块（否则会闪一下最低档）。
+
+#### Scenario: 胜利局显示称号与评语
+- **WHEN** 玩家以名望 90 达成 `victory`
+- **THEN** hero 区依次显示结局标签、标题、文案，以及「史评 / 天下归心 / 口碑载道，四方望风而归。」
+
+#### Scenario: 存档未加载不渲染
+- **WHEN** `onMounted` 的 `load()` 尚未返回、`save` 为空
+- **THEN** 史评区块不出现在 DOM 中（`v-if="save"`）
+
+### Requirement: 银两按在编兵员发饷
+回合结算 SHALL 按 `ceil(troops / 100) × TROOP_UPKEEP_SILVER_PER_100` 从银两中扣除养饷，
+`calcTurnYield(troops)` MUST 返回**净额**；兵员为 0 或非正数时养饷为 0。
+
+#### Scenario: 中等规模军队仍有净收入
+- **WHEN** 兵员 500、产出 +50、K=4
+- **THEN** 净银两为 **+30**，历史事件的 `effects.silver` 记 30（不是毛值 50）
+
+#### Scenario: 大军压垮财政
+- **WHEN** 兵员 1300
+- **THEN** 养饷 52 > 产出 50，净银两为 **−2**
+
+#### Scenario: 漏传兵员不得静默退化为不扣饷
+- **WHEN** 调用处未提供兵员数
+- **THEN** 类型层面即不可编译（`troops` 是必填参数），
+      并有 `use-turn` 用例锁住三档兵员对应的净银两，防止回归成固定值
+
+### Requirement: 财政破产惩罚在回合产出之前判定
+`silver ≤ 0` 时 SHALL 每回合造成 经济 −3 / 民心 −2，并在历史时间线记一条系统事件；
+该判定 MUST 发生在回合产出**之前**（与断粮/兵溃的时点刻意相反）。
+
+#### Scenario: 月初空库即触发
+- **WHEN** 进入回合结算时银两为 0（或负）
+- **THEN** 扣经济 −3、民心 −2，理由文案「府库耗尽，加赋失民心」
+
+#### Scenario: 赋税入库不能倒推抹掉本月的横征暴敛
+- **WHEN** 银两为 0 而本回合净产出为 +30
+- **THEN** 破产惩罚**仍然触发**（先判破产，再入库）
+- **AND** 理由：若放在产出之后判定，只要净产出为正就永远触发不了；
+      实测那样 K=4 胜率仍是 95.5%，而 K 只能调到 6 才有反应，一步跳到 59.0%（阶跃而非梯度）
+
+#### Scenario: 破产可通向经济崩溃结局
+- **WHEN** 经济属性被持续扣至 ≤ 0
+- **THEN** `checkEndConditions` 返回 `economy_collapse`
+- **AND** 该结局此前 200 局从未触发（设计承诺的 7 种结局里有 2 种是死代码）
+
+### Requirement: 通关模拟底盘与真实回合循环对齐
+`tests/sim/balance-sim.ts` MUST 建模资源枯竭惩罚（含破产），
+否则回归会报出与真实游戏相反的结论。
+
+#### Scenario: 不建模惩罚会掩盖难度回收
+- **WHEN** 底盘不跑破产惩罚
+- **THEN** 养饷 K=4 的胜率仍报 95.5%（与真实 86.0% 矛盾）
+- **AND** 因此底盘按真实时点跑三条惩罚；「剧情链与时光跳跃」的缺口由后续
+      `balance-sim-chain-fidelity` 变更以 `useStoryChains` 开关补上（默认关闭以保持本条基线可复现）
+
+#### Scenario: 可通关基线随钟改写
+- **WHEN** 200 局严格基线（LLM 不可用、含外交、均匀事件池）
+- **THEN** 胜率 ≥ 0.8，无 `crash`
+- **AND** 阈值由 0.9 下调是本轮有意回收难度的结果，不是回归
+- **AND** 回合数断言随时钟改写：月钟下实测 86.0% / `avgTurns` 落在 5~50；
+      年钟（1 回合 = 1 年、结局在 1912 之后结算）下实测关链 97.5% / `avgTurns` 恒为 63.0，
+      因为结算点固定在 1913 年，方差为 0 是设计使然而非巧合
+
+#### Scenario: 外交有财政代价但降幅有界
+- **WHEN** 对比开启与关闭玩家主动外交
+- **THEN** 开启方胜率可低于关闭方（外交花银两 → 触发破产），但降幅 ≤ 15pt
+- **AND** 两条路径胜率均 ≥ 0.8，且开启方外交次数 > 0、关闭方为 0
+- **AND** 原不变量「开启外交不应降低胜率」已随本轮改写：外交从无成本增益变成财政权衡是设计意图
+
+### Requirement: 「中兴已定」是存档级可选字段且必须进 sync-save 白名单
+`GameSave.zenithYear?: number` SHALL 作为存档级可选字段持久化，并 MUST 在
+`sync-save.ts` 的 `saveDataSchema`（**strictObject**）中显式声明。
+
+#### Scenario: 不声明就会整条存档被拒
+- **WHEN** 客户端上传带 `zenithYear` 的存档而 schema 未声明该字段
+- **THEN** strict 模式返回 400 INVALID_PARAMS —— 不是忽略未知字段，而是**拒绝整个存档**
+- **AND** 因此 API.md 的存档字段表与 `saveDataSchema` 必须同步更新（两处已有用例守着）
+
+#### Scenario: 旧存档无需迁移
+- **WHEN** 加载一个不含 `zenithYear` 的旧存档
+- **THEN** 视为"从未锁定"，结算时只看当时的综合实力
+- **AND** `lockZenith()` 在已锁定时直接返回，不覆盖首次锁定的年份
+
+### Requirement: 老存档按新时钟继续，不做双时钟
+时钟切换 MUST 以"直接生效"的方式落地：既有存档的 `date` 与 `turn` 原样保留，
+之后每回合 +1 年。MUST NOT 按 `saveVersion` 分叉出月钟与年钟两套推进逻辑。
+
+#### Scenario: 接受老档年代加速
+
+WHEN 玩家打开一个 1853 年的进行中存档
+THEN 之后每回合推进 1 年（而非 1 个月），该局会比新开局更快走完年代
+AND 这是**已知且接受**的代价：换来的是判定、文案、测试、模拟底盘只有一套时钟
+
+#### Scenario: 明确排除双时钟
+
+WHEN 有人提议按 `saveVersion` 让老档继续走月钟
+THEN 不予采纳 —— 结局判定、危机提示、链触发、prompt 日期语义、e2e 断言全都要分叉，
+      长期维护成本远高于"少数老档加速"这一一次性影响
+
+### Requirement: 结局等级由三层派生合成
+1912 结算时的结局叙述 SHALL 由三层独立派生值合成，
+且这三层 MUST NOT 互相进入胜负判定（各自只读自己的输入）。
+
+#### Scenario: 三层各自独立
+- **WHEN** 渲染结局页
+- **THEN** 第一层是结局类型本身（`victory` / `time_up` / 五类崩溃，由 power 与属性归零决定）
+- **AND** 第二层是名望史评档位（#2 的 `getHistoryRating`，封顶 0-100、每回合衰减）
+- **AND** 第三层是剧情链完成度与档位（#4 的 `getChainCompletion` / `getChainTier`，
+      分母为终局年份前可达链数）
+- **AND** 三层互不改写：完成度再高也不能把 `time_up` 变成 `victory`，反之亦然
+
+#### Scenario: 年钟后完成度分母第一次真正有意义
+- **WHEN** 存档走到 1912 年结算
+- **THEN** 可达链数等于链全集（23 条），完成度分母不再被"早停"截断
+- **AND** 月钟下该层几乎恒为 6/6 这类小样本（实测终局年份 p90 ≤ 1872），档位区分度极低
+
+### Requirement: 改时钟不得触碰对外契约
+本变更 MUST NOT 修改 HTTP 接口入参/返回结构、DB schema，或 `state.date` 的字段组成。
+`date.month` 以"保留且恒为 1"的方式停用，而不是删除。
+
+#### Scenario: zod 校验仍然全部通过
+- **WHEN** 前端提交 `date: { year: 1873, month: 1 }`
+- **THEN** 6 处 `z.object({ year, month: min(1).max(12) })` 全部照旧通过
+- **AND** `eventDate` 结构（`{ year, month: 1 }`）无需调整
+
+#### Scenario: 为什么不干脆删掉 month
+- **WHEN** 有人提议删字段以"保持数据干净"
+- **THEN** 不予采纳 —— 删除会牵动 6 处 schema、4 个 prompt、DB 中已存 JSON 与存档迁移，
+      把一个玩法决策升级成一次数据迁移
+
+### Requirement: 数值重标定必须先测量后调整
+时钟切换后 MUST 先跑 200 局实测终局年份分布、胜率、链完成数与每局 LLM 调用次数，
+再决定各常量取值；MUST NOT 在切换前预先调整数值。
+
+#### Scenario: 率量与存量的区分
+- **WHEN** 重标定某一常量
+- **THEN** 先判断它是「每回合发生的率」（产出 +50 银、养饷 K=4、外交配额 1 次/回合）
+      还是「跨回合累加的存量」（名望 −3/回合、事件属性增益、NPC 每回合压力）
+- **AND** 率量默认保持不变；存量按局长变化比例（37 → 61 回合，约 1.65×）重推
+- **AND** 反例：单独把 `TURN_YIELD.silver` 放大 12 倍会让养饷 K=4 的净余量标定失效，
+      破产后果（#3 才刚让它真的咬人）再次变成空转 —— 产出与养饷必须成对调
+
+#### Scenario: 22 回合必胜的解药在数值不在节奏
+- **WHEN** 年钟切完、数值未重标
+- **THEN** 胜率仍会接近 100%（时钟本身不减属性通胀）
+- **AND** 此时应压的是**每回合属性增益总量**（兜底事件与链节点的 effects 量级），
+      而不是链首密度 —— 后者已被 `chainHeadInterval` 的 K 扫描实测否掉：
+      K=2…10 胜率恒为 100%，而链完成数与终局年份随 K **双双下降**
+
+### Requirement: 无人消费的数据字段必须处置
+`triggerTurnOffset` 与 `endYear` MUST 被接上消费路径或删除，二者取一。
+现状：两者**无任何消费者**（前端入队写死 `currentTurn + 1`，服务端只取 `pendingChainNodes[0]`）。
+
+#### Scenario: 不允许留第三份假数据
+- **WHEN** 有人只把 23 条链的 `triggerTurnOffset` 从 0,1,2,3,4 改成真实年距而不接消费路径
+- **THEN** 不予采纳 —— 数值变了而行为不变，比不改更糟（读代码的人会以为年距已生效）
+- **AND** 若选择接上（入队用 `currentTurn + node.triggerTurnOffset`），则一条 5 节链
+      从"占满 5 个回合"变为"跨 13 回合、中间夹 8 个普通事件"，这是**行为变更**，
+      必须单独重跑平衡，不能算在改时钟的账里顺手做掉
+
+### Requirement: 剧情链完成度进入结局叙述但不参与胜负判定
+结局页 SHALL 展示玩家的剧情链完成度与派生称号（`getChainCompletion` / `getChainTier`），
+该值 MUST 为**纯派生**（读 `save.completedChainIds` / `activeChainIds`），
+不得写入 `endedReason`、不得新增结局枚举、不得进入 `checkEndConditions`。
+
+#### Scenario: 结局页展示
+- **WHEN** 玩家存档终局并打开结局页
+- **THEN** 在「史评」之下渲染「历史进程」：`亲历 N/M 段史事（至 X 年）`、称号、已完成链名列表、未收束段数
+- **AND** 称号三档：ratio ≥ 0.8 亲历全局 / ≥ 0.5 半壁经行 / < 0.5 未竟之局
+
+#### Scenario: 关键不变量——完成度不改变判定
+- **WHEN** 两份存档属性完全相同、完成度一个为 0 一个为满
+- **THEN** `checkEndConditions` 返回同一个结局
+- **AND** 单测锁住这条：若有人把完成度塞进胜利条件，模拟里「关链」路径的
+      `chainsCompleted` 恒为 0，胜率会一步归零，86.0% 基线整条作废
+
+#### Scenario: 为什么不做成胜利门槛
+- **WHEN** 提议「胜利需完成 ≥ N 条链」来治速通
+- **THEN** 不予采纳 —— 链节点 effects（±8~12）远大于兜底事件（±3~7），链是**奖励**；
+      用"吃了多少奖励"当胜利条件只会逼人拖着不完成链。治速通的正确工具是事件下发侧的链密度闸门
+
+### Requirement: 完成度分母取「终局年份之前可达链数」
+`getChainCompletion().reachable` MUST 以**终局年份**为界统计可达链数，
+而不是以链的总数为分母；`completed` 只计「可达 且 已完成」的交集。
+
+#### Scenario: 不惩罚通关太快
+- **WHEN** 存档在 1865 年通关（当时可达 6 条）
+- **THEN** 分母为 6 而不是 23，否则"越早赢显得越失败"
+- **AND** 反向验证：1912 年终局的存档分母等于链总数
+
+#### Scenario: 未来年份的链不计入
+- **WHEN** 终局年份为 1852 而 `completedChainIds` 里含有 1911 年的链
+- **THEN** 该链不计入 `completed`（防口径污染），`completedTitles` 亦不含它
+
+#### Scenario: 样本过小不给称号
+- **WHEN** `reachable < 3`（例如开局没几回合就结束）
+- **THEN** `getChainTier` 返回 null，结局页只展示原始数字
+- **AND** 理由：1/1 = 100% 这种"满级"毫无信息量，只会把早期存档吹成完人
+- **AND** `completed === 0` 同样返回 null
+
+#### Scenario: 存档尚未加载
+- **WHEN** `getChainCompletion(null)`
+- **THEN** 返回全零结构而不是抛错（结局页的 `save` 是 `onMounted` 才载入的，模板要能直接取值）
+
+### Requirement: 旧存档无需迁移即可展示完成度
+完成度 SHALL 在读取时即时计算，MUST NOT 落库或引入 schema 变更；
+`completedChainIds` / `activeChainIds` 缺失时按空数组处理。
+
+#### Scenario: 云存档往返
+- **WHEN** 存档经 `sync-save` 上传再下载
+- **THEN** 完成度仍正确 —— 两个字段随 `saveData`（jsonb）整体往返，无需服务端改动
+
+### Requirement: 通关模拟底盘可选建模剧情链
+`tests/sim/balance-sim.ts` SHALL 提供 `useStoryChains` 开关来建模剧情链触发与时光跳跃，
+该开关 MUST 默认为 `false`，使既有严格基线（86.0%）在开启前后仍可逐位复现。
+打开后底盘的事件优先级 MUST 与服务端 `generate-event` 一致：
+挂起链节点 → 下一条可触发链 → 兜底事件。
+
+#### Scenario: 默认关闭时基线一位都不动
+- **WHEN** 不传 `useStoryChains` 跑 200 局严格基线
+- **THEN** winRate 86.0%、avgTurns 37.5、median 37、range=[23,51]、
+      逐资源下限 银两0/兵员15/粮草160/名望0 —— 与建模链之前完全相同
+- **AND** 这不是巧合：开关为假时既不读链表也不消耗额外随机数，故种子序列不变
+
+#### Scenario: 时光跳跃让年份与链完成度第一次可测
+- **WHEN** 打开开关跑 200 局
+- **THEN** `SimReport.avgChainsCompleted > 0` 且 `maxFinalYear` 明显大于关链时的 1855
+- **AND** `SimOutcome.chainsCompleted` / `finalYear` 供结局年份跨度（`time_up`）与 #4 的链完成度分析使用
+
+#### Scenario: 未来锚点这条规则要一起复刻
+- **WHEN** 匹配下一条可触发链
+- **THEN** 条件为 `startYear >= 当前年`（允许锚点在未来），而非 `startYear === 当前年`
+- **AND** 理由同服务端：日历 1 回合只走 1 月，若要求同年则 14 条链里 12 条永不触发，
+      且时光跳跃的跳跃目标正是「下一条链的 startYear」
+
+### Requirement: 剧情链镜像必须与服务端真值对账
+底盘 SHALL 自存一份 `SIM_CHAINS` 镜像而**不 import** 服务端 `STORY_CHAINS`
+（保持「回归基线不随服务端内容漂移」的既有设计意图）；
+同时 MUST 有单元测试将镜像与 `STORY_CHAINS` 逐链、逐节点、逐选项深比对，
+使漂移表现为测试红而非静默的基线变质。
+
+#### Scenario: 结构漂移即红
+- **WHEN** 服务端某条链的 chainId / startYear / 节点数 / 前置链与镜像不符
+- **THEN** `sim-chain-mirror.test.ts` 失败，并指出具体是哪条链的哪个字段
+
+#### Scenario: 数值漂移同样即红
+- **WHEN** 服务端某节点某选项的 `effects` 与镜像不同（哪怕只差一个维度）
+- **THEN** 深比对失败，报错文案含链 id、节点序号与选项 id
+- **AND** 此时**必须重标定基线**，不允许只改测试让它变绿
+
+#### Scenario: 近似 effects 比缺值更危险
+- **WHEN** 镜像用手写近似数值填充
+- **THEN** 量出的结论可以方向相反：近似值下开链胜率 0%，服务端真值下开链胜率 100%
+- **AND** 因此镜像只允许从 `STORY_CHAINS` 拼接，禁止臆造数值
+
+### Requirement: 底盘结论中的剧情链挤占效应必须被记录
+底盘 SHALL 以对比用例的形式记录「开链 vs 关链」，
+断言只锁关系性结论（开链胜率不低于关链、开链平均回合数更短、链完成数大于 0），
+**不得**把当前数值下「22 回合定局」这一病症固化为长期成立的要求。
+
+#### Scenario: 挤占效应如实呈现
+- **WHEN** 打开开关跑 200 局
+- **THEN** 实测 winRate=100.0%、avgTurns=22.0、range=[22,22]、最晚年份 1865
+      （链完成均值随链条数变化：14 条时 6.00，补到 23 条后 5.00 —— 见 `story-chain-anchors-and-completion`）
+- **AND** 文件头快照记录该组数字并注明：链节点命中时不调 LLM 因而挤占普通事件，
+      叠加节点 effects 量级（±8~12）大于兜底事件（±3~7）且 bot 恒选最强项，导致提前撞线
+
+#### Scenario: NPC 压力档位下链的增益被抵消
+- **WHEN** 在 `npcModel='simple'` 下对比开关
+- **THEN** 开链 100% / 42.6 回合 / 链完成 13.47 / 走到 1911 年（14 条链时），
+      关链 7.0% / 47.4 回合 / 走到 1855 年
+- **AND** 难度主要由 NPC 供给；链一开即抵消，该事实供剧情链密度设计参考
+
+### Requirement: 资源枯竭惩罚在底盘中无条件生效
+底盘 MUST 按真实时点跑三条惩罚（破产在回合产出**之前**、断粮与兵溃在产出**之后**），
+且该建模**不设开关**：既有基线本身就是含惩罚的数字。
+
+#### Scenario: 不为惩罚增设第二档位
+- **WHEN** 提议为 `calcResourcePenalty` / `calcBankruptcyPenalty` 加模拟开关
+- **THEN** 不予采纳 —— 86.0% 基线已含惩罚，再开「关惩罚」分支只会维护一条没人跑的代码路径，
+      并会让人误以为存在另一组「旧基线」
 
