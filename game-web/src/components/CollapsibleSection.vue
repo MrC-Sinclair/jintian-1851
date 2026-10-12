@@ -88,11 +88,11 @@ function toggle(): void {
 
 <style lang="scss" scoped>
 .collapsible-section {
+  overflow: hidden;
   // P0-3：卡片层次用「背景分层 + 阴影」替代细描边
   background-color: $jt-bg-surface;
   border-radius: $jt-radius-xl;
   box-shadow: $jt-shadow-card;
-  overflow: hidden;
 
   // ====================== 标题栏 ======================
   &__header {
@@ -115,14 +115,14 @@ function toggle(): void {
 
   // 标题图标（可选 SVG）
   &__icon {
+    display: flex;
     flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
     width: 40rpx;
     height: 40rpx;
     margin-right: $jt-space-base;
     color: $jt-ink-secondary;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   // chevron 旋转图标（CSS border 画三角形，避免 Unicode ▼ 字符）
@@ -131,9 +131,9 @@ function toggle(): void {
     width: 0;
     height: 0;
     margin-right: $jt-space-md;
+    border-top: 14rpx solid $jt-ink-secondary;
     border-right: 10rpx solid transparent;
     border-left: 10rpx solid transparent;
-    border-top: 14rpx solid $jt-ink-secondary;
     // 折叠态朝下（0deg），展开态旋转 180deg 朝上
     transition: transform 200ms ease;
 
@@ -162,8 +162,8 @@ function toggle(): void {
   // ====================== 展开内容（max-height transition 折叠动画） ======================
   &__expand {
     max-height: 2000rpx;
-    opacity: 1;
     overflow: hidden;
+    opacity: 1;
     transition: max-height 300ms ease, opacity 200ms ease;
 
     &--collapsed {

@@ -416,8 +416,8 @@ function finishSettle(
 
   &__title-wrap {
     display: flex;
-    align-items: baseline;
     gap: 16rpx;
+    align-items: baseline;
   }
 
   &__title {
@@ -435,11 +435,11 @@ function finishSettle(
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 56rpx;
     // 图标按钮触摸目标 ≥ 36px（AGENTS.md 图标按钮规范，与 AdvisorDrawer 一致）
     min-width: 36px;
-    min-height: 36px;
-    width: 56rpx;
     height: 56rpx;
+    min-height: 36px;
     border-radius: 8rpx;
 
     &--hover {

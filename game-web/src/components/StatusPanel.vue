@@ -262,17 +262,17 @@ function flashClass(key: string): string {
   // 属性标签行（含图标 + 危机图标 + InfoHint）
   &__label-wrap {
     display: flex;
+    flex-shrink: 0;
     flex-direction: row;
     align-items: center;
     width: 160rpx;
-    flex-shrink: 0;
   }
 
   &__attr-icon {
+    flex-shrink: 0;
     width: 36rpx;
     height: 36rpx;
     margin-right: $jt-space-sm;
-    flex-shrink: 0;
   }
 
   &__warning-icon {
@@ -326,8 +326,8 @@ function flashClass(key: string): string {
   &__value {
     width: 60rpx;
     font-size: $jt-font-md;
-    text-align: right;
     color: $jt-ink;
+    text-align: right;
     transition: color 300ms ease, text-shadow 300ms ease;
 
     &--high {

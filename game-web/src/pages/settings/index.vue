@@ -529,12 +529,12 @@ function onBack(): void {
   }
 
   &__back {
-    // 触摸目标 ≥ 36px（用 rpx 跟随视口缩放）
-    min-width: 72rpx;
-    min-height: 72rpx;
     display: flex;
     align-items: center;
     justify-content: center;
+    // 触摸目标 ≥ 36px（用 rpx 跟随视口缩放）
+    min-width: 72rpx;
+    min-height: 72rpx;
     color: #fff;
     transition: background-color 150ms ease, transform 150ms ease;
 
@@ -566,8 +566,8 @@ function onBack(): void {
   }
 
   &__section {
-    margin-bottom: 32rpx;
     padding: 16rpx 24rpx;
+    margin-bottom: 32rpx;
     background-color: #fdf6e3;
     border: 2rpx solid #d4c5a0;
     border-radius: 12rpx;
@@ -626,8 +626,8 @@ function onBack(): void {
     display: block;
     margin-top: 6rpx;
     font-size: 24rpx;
-    color: #8d6e63;
     line-height: 1.5;
+    color: #8d6e63;
   }
 
   &__row-value {
@@ -641,12 +641,12 @@ function onBack(): void {
   }
 
   &__btn {
-    // 触摸目标 ≥ 44px（用 rpx 跟随视口缩放）
-    min-width: 88rpx;
-    min-height: 88rpx;
     display: flex;
     align-items: center;
     justify-content: center;
+    // 触摸目标 ≥ 44px（用 rpx 跟随视口缩放）
+    min-width: 88rpx;
+    min-height: 88rpx;
     padding: 12rpx 32rpx;
     background-color: #8b1a1a;
     border-radius: 8rpx;
@@ -661,8 +661,8 @@ function onBack(): void {
     }
 
     &--disabled {
-      opacity: 0.65;
       background-color: #e8e0d0;
+      opacity: 0.65;
 
       .settings__btn-text {
         color: #9e8e76;
@@ -701,11 +701,11 @@ function onBack(): void {
 
   // 自定义开关（uni-app 三端通用，避免原生 switch 样式差异）
   &__switch {
+    position: relative;
     width: 88rpx;
     height: 52rpx;
     background-color: #d4c5a0;
     border-radius: 26rpx;
-    position: relative;
     transition: background-color 200ms ease;
 
     &:active {
@@ -722,15 +722,15 @@ function onBack(): void {
   }
 
   &__switch-thumb {
+    position: absolute;
+    top: 4rpx;
+    left: 4rpx;
     width: 44rpx;
     height: 44rpx;
     background-color: #fff;
     border-radius: 50%;
-    position: absolute;
-    top: 4rpx;
-    left: 4rpx;
-    transition: transform 200ms ease;
     box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.2);
+    transition: transform 200ms ease;
   }
 
   // 开关打开时 thumb 右移（uni-app 不支持 SCSS 嵌套父引用 + 修饰符，用显式选择器）
@@ -748,10 +748,10 @@ function onBack(): void {
   }
 
   &__refresh-btn {
-    // 触摸目标 ≥ 44px
-    min-height: 88rpx;
     display: flex;
     align-items: center;
+    // 触摸目标 ≥ 44px
+    min-height: 88rpx;
     padding: 8rpx 24rpx;
     background-color: rgba(139, 26, 26, 0.08);
     border: 2rpx solid #d4c5a0;
@@ -781,8 +781,8 @@ function onBack(): void {
 
   &__list-hint-text {
     font-size: 24rpx;
-    color: #8d6e63;
     line-height: 1.6;
+    color: #8d6e63;
     text-align: center;
   }
 
@@ -808,9 +808,9 @@ function onBack(): void {
 
   &__save-name-row {
     display: flex;
-    align-items: center;
     flex-wrap: wrap;
     gap: 12rpx;
+    align-items: center;
   }
 
   &__save-name {
@@ -849,16 +849,16 @@ function onBack(): void {
 
   &__save-actions {
     display: flex;
-    align-items: center;
     gap: 16rpx;
+    align-items: center;
   }
 
   &__save-btn {
-    // 触摸目标 ≥ 44px（AGENTS/spec 硬性要求）
-    min-height: 88rpx;
     display: flex;
     align-items: center;
     justify-content: center;
+    // 触摸目标 ≥ 44px（AGENTS/spec 硬性要求）
+    min-height: 88rpx;
     padding: 8rpx 28rpx;
     background-color: rgba(139, 26, 26, 0.08);
     border: 2rpx solid #d4c5a0;
@@ -889,10 +889,10 @@ function onBack(): void {
   }
 
   &__save-import {
-    min-height: 88rpx;
     display: flex;
     align-items: center;
     justify-content: center;
+    min-height: 88rpx;
     margin-top: 16rpx;
     border: 2rpx dashed #d4c5a0;
     border-radius: 8rpx;

@@ -261,16 +261,16 @@ function onWriteLetter(fac: Faction): void {
 
 <style lang="scss" scoped>
 .diplomacy-panel {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  background-color: #fdf6e3;
   // 面板自身限制高度并支持内部滚动：势力较多（如 5 个）时内容会超出 80vh，
   // 必须由 overflow-y 提供滚动，否则底部势力/写信按钮将被裁切且不可达
   max-height: 80vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  box-sizing: border-box;
   padding: 24rpx 24rpx 40rpx;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background-color: #fdf6e3;
 
   // ====================== 标题栏 ======================
   &__header {
@@ -284,8 +284,8 @@ function onWriteLetter(fac: Faction): void {
 
   &__title-wrap {
     display: flex;
-    align-items: baseline;
     gap: 16rpx;
+    align-items: baseline;
   }
 
   &__title {
@@ -303,11 +303,11 @@ function onWriteLetter(fac: Faction): void {
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 56rpx;
     // 图标按钮触摸目标 ≥ 36px（AGENTS.md 图标按钮规范，与 AdvisorDrawer 一致）
     min-width: 36px;
-    min-height: 36px;
-    width: 56rpx;
     height: 56rpx;
+    min-height: 36px;
     border-radius: 8rpx;
 
     &--hover {
@@ -337,8 +337,8 @@ function onWriteLetter(fac: Faction): void {
 
   &__faction-head {
     display: flex;
-    align-items: center;
     gap: 12rpx;
+    align-items: center;
     margin-bottom: 10rpx;
   }
 
@@ -410,11 +410,11 @@ function onWriteLetter(fac: Faction): void {
   }
 
   &__action {
-    flex: 1 1 calc(33.33% - 12rpx);
-    min-height: 72rpx;
     display: flex;
+    flex: 1 1 calc(33.33% - 12rpx);
     align-items: center;
     justify-content: center;
+    min-height: 72rpx;
     padding: 8rpx 12rpx;
     background-color: #fdf6e3;
     border: 2rpx solid #8b1a1a;
@@ -426,9 +426,9 @@ function onWriteLetter(fac: Faction): void {
     }
 
     &--disabled {
-      opacity: 0.45;
-      border-color: #bca988;
       background-color: #f0e8d6;
+      border-color: #bca988;
+      opacity: 0.45;
     }
   }
 
@@ -439,8 +439,8 @@ function onWriteLetter(fac: Faction): void {
 
   // 写信谈判入口（faction-negotiation 提案）：整行按钮，与 6 动作区分
   &__action--letter {
-    margin-top: 12rpx;
     min-height: 88rpx;
+    margin-top: 12rpx;
     background-color: #f6ecd4;
     border-color: #c9a86a;
   }

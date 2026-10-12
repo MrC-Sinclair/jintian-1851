@@ -167,8 +167,8 @@ function formatEffects(evt: HistoryEvent): FormattedEffect[] {
 
   &__empty-text {
     font-size: 26rpx;
-    color: #8d6e63;
     font-style: italic;
+    color: #8d6e63;
   }
 
   &__list {
@@ -193,8 +193,8 @@ function formatEffects(evt: HistoryEvent): FormattedEffect[] {
       opacity: 1;
 
       .turn-timeline__event-title {
-        color: #2c1810;
         font-weight: 600;
+        color: #2c1810;
       }
     }
   }
@@ -210,13 +210,13 @@ function formatEffects(evt: HistoryEvent): FormattedEffect[] {
 
   // T4.2：剧情链事件左侧书卷图标（替代普通圆点）
   &__book {
+    display: flex;
     flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
     width: 24rpx;
     height: 24rpx;
     margin-top: 6rpx;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   &__book-icon {
@@ -232,8 +232,8 @@ function formatEffects(evt: HistoryEvent): FormattedEffect[] {
 
   &__head {
     display: flex;
-    align-items: center;
     gap: 8rpx;
+    align-items: center;
     margin-bottom: 4rpx;
   }
 
@@ -281,17 +281,17 @@ function formatEffects(evt: HistoryEvent): FormattedEffect[] {
   &__event-title {
     display: block;
     overflow: hidden;
+    text-overflow: ellipsis;
     font-size: 26rpx;
     line-height: 1.4;
     color: #5d4037;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   // T2.7：选择记录区
   &__choice {
-    margin-top: 8rpx;
     padding: 8rpx 12rpx;
+    margin-top: 8rpx;
     background-color: rgba(212, 197, 160, 0.2);
     border-radius: 6rpx;
   }

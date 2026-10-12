@@ -392,12 +392,12 @@ onUnmounted(() => {
   }
 
   &__close {
-    // 关闭按钮触摸目标 ≥ 36px（AGENTS.md 图标按钮规范）
-    min-width: 36px;
-    min-height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
+    // 关闭按钮触摸目标 ≥ 36px（AGENTS.md 图标按钮规范）
+    min-width: 36px;
+    min-height: 36px;
     color: #fff;
     border-radius: 8rpx;
     transition: background-color 150ms ease, transform 150ms ease;
@@ -426,8 +426,8 @@ onUnmounted(() => {
 
   &__empty-text {
     font-size: 26rpx;
-    color: #8d6e63;
     font-style: italic;
+    color: #8d6e63;
   }
 
   &__waiting {
@@ -453,25 +453,25 @@ onUnmounted(() => {
   // T2.5：工具调用过程展示（对话区上方，始终可见，max-height 可滚动）
   .advisor-tools {
     max-height: 300rpx;
-    overflow-y: auto;
-    margin: 0 16rpx;
     padding: 8rpx 12rpx;
+    margin: 0 16rpx;
+    overflow-y: auto;
     background-color: #faf7f0;
     border: 2rpx solid #e8ddc4;
     border-radius: 12rpx;
   }
 
   .advisor-tool {
-    // 触摸目标 ≥ 44px（88rpx），满足 AGENTS.md 输入区按钮规范（可点击展开详情）
-    min-height: 88rpx;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    // 触摸目标 ≥ 44px（88rpx），满足 AGENTS.md 输入区按钮规范（可点击展开详情）
+    min-height: 88rpx;
     padding: 12rpx 16rpx;
     margin-bottom: 8rpx;
-    border-radius: 8rpx;
     background-color: #f5f5f5; // 调用中：浅灰
     border-left: 6rpx solid #bdbdbd;
+    border-radius: 8rpx;
     transition: opacity 150ms ease, transform 150ms ease;
 
     &:last-child {
@@ -484,14 +484,14 @@ onUnmounted(() => {
 
     &__head {
       display: flex;
-      align-items: center;
       gap: 12rpx;
+      align-items: center;
     }
 
     &__icon {
+      flex-shrink: 0;
       width: 28rpx;
       height: 28rpx;
-      flex-shrink: 0;
       color: #616161; // 调用中图标色（配合 SVG fill=currentColor）
     }
 
@@ -501,8 +501,8 @@ onUnmounted(() => {
     }
 
     &__detail {
-      margin-top: 8rpx;
       padding-top: 8rpx;
+      margin-top: 8rpx;
       border-top: 2rpx dashed #cfcfcf;
     }
 
@@ -572,12 +572,12 @@ onUnmounted(() => {
   }
 
   &__send {
-    // 发送按钮 ≥ 44px（AGENTS.md 输入区按钮规范）
-    min-width: 44px;
-    min-height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
+    // 发送按钮 ≥ 44px（AGENTS.md 输入区按钮规范）
+    min-width: 44px;
+    min-height: 44px;
     padding: 0 24rpx;
     background-color: #8b1a1a;
     border-radius: 8rpx;
@@ -625,10 +625,10 @@ onUnmounted(() => {
 
 .advisor-msg {
   max-width: 85%;
-  margin-bottom: 12rpx;
   padding: 16rpx 20rpx;
-  border-radius: 12rpx;
+  margin-bottom: 12rpx;
   word-break: break-all;
+  border-radius: 12rpx;
 
   &--user {
     align-self: flex-end;
@@ -653,25 +653,25 @@ onUnmounted(() => {
   // T2.6：局势简报消息（浅色背景 + 左侧金色 border + 角标）
   &--briefing {
     align-self: flex-start;
+    padding-left: 24rpx;
     margin-right: auto;
     // 比 assistant 更浅的金色，配合左侧金色 border 强调「局势简报」
     background-color: #fff8e1;
     border-left: 6rpx solid #c9a063;
-    padding-left: 24rpx;
 
     .advisor-msg__content {
-      color: #5d4037;
       // 简报内容稍大，便于阅读
       font-size: 29rpx;
       line-height: 1.7;
+      color: #5d4037;
     }
   }
 
   // T2.6：局势简报角标容器（view 独占一行，宽度自适应内容）
   &__badge {
     width: fit-content;
-    margin-bottom: 8rpx;
     padding: 4rpx 12rpx;
+    margin-bottom: 8rpx;
     background-color: #c9a063;
     border-radius: 4rpx;
   }

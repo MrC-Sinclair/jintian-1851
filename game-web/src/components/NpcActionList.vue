@@ -247,10 +247,10 @@ function formatEffects(effects?: Partial<Attributes & Resources>): FormattedEffe
   &__cumulative {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
     gap: 8rpx;
-    margin-bottom: 12rpx;
+    align-items: center;
     padding: 12rpx 16rpx;
+    margin-bottom: 12rpx;
     background-color: rgba(139, 26, 26, 0.05);
     border: 2rpx solid rgba(139, 26, 26, 0.15);
     border-radius: 8rpx;
@@ -271,8 +271,8 @@ function formatEffects(effects?: Partial<Attributes & Resources>): FormattedEffe
 
   &__cumulative-empty {
     font-size: 22rpx;
-    color: #8d6e63;
     font-style: italic;
+    color: #8d6e63;
   }
 
   &__empty {
@@ -282,8 +282,8 @@ function formatEffects(effects?: Partial<Attributes & Resources>): FormattedEffe
 
   &__empty-text {
     font-size: 26rpx;
-    color: #8d6e63;
     font-style: italic;
+    color: #8d6e63;
   }
 
   &__items {
@@ -305,8 +305,8 @@ function formatEffects(effects?: Partial<Attributes & Resources>): FormattedEffe
 
   // T3.4：决策失败卡片（红色边框 + 浅红背景区分）
   &--failed {
-    border: 2rpx solid #EF4444;
     background-color: rgba(239, 68, 68, 0.08);
+    border: 2rpx solid #EF4444;
   }
 
   &__head {
@@ -341,8 +341,8 @@ function formatEffects(effects?: Partial<Attributes & Resources>): FormattedEffe
     display: block;
     margin-top: 4rpx;
     font-size: 22rpx;
-    color: #8d6e63;
     line-height: 1.5;
+    color: #8d6e63;
   }
 
   &__action {
@@ -383,8 +383,8 @@ function formatEffects(effects?: Partial<Attributes & Resources>): FormattedEffe
   &__impact {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
     gap: 8rpx;
+    align-items: center;
     padding: 8rpx 12rpx;
     background-color: rgba(139, 26, 26, 0.06);
     border-left: 4rpx solid #8b1a1a;
@@ -406,8 +406,8 @@ function formatEffects(effects?: Partial<Attributes & Resources>): FormattedEffe
 
   &__impact-none {
     font-size: 22rpx;
-    color: #8d6e63;
     font-style: italic;
+    color: #8d6e63;
   }
 
   &__effect {

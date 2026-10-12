@@ -199,19 +199,19 @@ function onOverlayClick(e: Event): void {
     align-items: center;
     justify-content: center;
     width: 44rpx;
-    height: 44rpx;
     min-width: 44rpx;
+    height: 44rpx;
     min-height: 44rpx;
     margin-left: 10rpx;
+    // touch-action: manipulation 是 Pointer Events 规范的一部分：
+    // 禁用浏览器 300ms click 延迟和双击缩放，使 @click 在触摸端即时响应，
+    // 且浏览器不再合成 ghost click，从根源消除穿透问题。
+    touch-action: manipulation;
     // 实心暖棕填充，与浮层模态框（#fdf6e3 / #d4c5a0）和关闭按钮（#8d6e63）色调统一，
     // 在米黄卡片背景上有足够的辨识度，同时呼应历史古风配色。
     background-color: #8d6e63;
     border-radius: 50%;
     transition: transform 150ms ease, background-color 150ms ease;
-    // touch-action: manipulation 是 Pointer Events 规范的一部分：
-    // 禁用浏览器 300ms click 延迟和双击缩放，使 @click 在触摸端即时响应，
-    // 且浏览器不再合成 ghost click，从根源消除穿透问题。
-    touch-action: manipulation;
 
     &:active {
       transform: scale(0.92);
@@ -225,8 +225,8 @@ function onOverlayClick(e: Event): void {
   &__icon-text {
     font-size: 26rpx;
     font-weight: 700;
-    color: #fdf6e3;
     line-height: 1;
+    color: #fdf6e3;
     // 微调问号位置，使其在圆圈内视觉居中（? 字符本身偏上）
     transform: translateY(1rpx);
   }
@@ -241,9 +241,9 @@ function onOverlayClick(e: Event): void {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: rgba(0, 0, 0, 0.5);
     // 同样禁用 300ms 延迟，遮罩/关闭按钮的 @click 即时响应
     touch-action: manipulation;
+    background-color: rgba(0, 0, 0, 0.5);
   }
 
   &__modal {
@@ -276,12 +276,12 @@ function onOverlayClick(e: Event): void {
     position: relative;
     flex-shrink: 0;
     width: 88rpx;
-    height: 88rpx;
     min-width: 88rpx;
+    height: 88rpx;
     min-height: 88rpx;
     margin: -16rpx -16rpx 0 0;
-    transition: transform 150ms ease;
     touch-action: manipulation;
+    transition: transform 150ms ease;
 
     &:active {
       transform: scale(0.95);
@@ -289,12 +289,12 @@ function onOverlayClick(e: Event): void {
 
     &::before,
     &::after {
-      content: '';
       position: absolute;
       top: 50%;
       left: 50%;
       width: 36rpx;
       height: 4rpx;
+      content: '';
       background-color: #8d6e63;
       border-radius: 2rpx;
     }

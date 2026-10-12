@@ -287,14 +287,14 @@ watch(currentStepIndex, () => {
 .onboarding-overlay__highlight {
   position: fixed;
   z-index: 1001;
+  // 高亮层不拦截点击（pointer-events:none），点击交由 __mask 拦截
+  pointer-events: none;
   background-color: transparent;
   border: 2rpx solid #f9a825;
   border-radius: 8rpx;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
   // 平滑过渡（步骤切换时高亮位置变化）
   transition: left 200ms ease, top 200ms ease, width 200ms ease, height 200ms ease;
-  // 高亮层不拦截点击（pointer-events:none），点击交由 __mask 拦截
-  pointer-events: none;
 }
 
 // 引导卡片
@@ -341,14 +341,16 @@ watch(currentStepIndex, () => {
   font-size: 28rpx;
   line-height: 1.6;
   color: #5d4037;
-  word-break: break-word;
+  // `word-break: break-word` 是非标准写法、CSS Text 3 已废弃该关键字，
+  // 标准等价是 overflow-wrap（本文件其余换行写法都是 break-all，只有这里是「先不断词」）
+  overflow-wrap: break-word;
 }
 
 .onboarding-overlay__actions {
   display: flex;
   flex-direction: row;
-  justify-content: flex-end;
   gap: 16rpx;
+  justify-content: flex-end;
 }
 
 // 按钮基础样式（触摸目标 min-w/min-h: 88rpx）

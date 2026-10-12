@@ -90,9 +90,9 @@ onUnmounted(() => {
   align-items: center;
   width: 90%;
   max-width: 600rpx;
+  pointer-events: none;
   // 居中：通过 left:50% + transform translateX(-50%)
   transform: translateX(-50%);
-  pointer-events: none;
 }
 
 .toast {
@@ -102,9 +102,9 @@ onUnmounted(() => {
   width: 100%;
   padding: 20rpx 24rpx;
   color: #fff;
+  pointer-events: auto;
   border-radius: 12rpx;
   box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.2);
-  pointer-events: auto;
 
   &--success {
     background-color: #2e7d32;
@@ -124,9 +124,9 @@ onUnmounted(() => {
 
   &__icon {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
     width: 36rpx;
     height: 36rpx;
     color: #fff;
@@ -148,12 +148,12 @@ onUnmounted(() => {
 }
 
 .toast-enter-from {
-  transform: translateY(-20rpx);
   opacity: 0;
+  transform: translateY(-20rpx);
 }
 
 .toast-leave-to {
-  transform: translateY(-20rpx);
   opacity: 0;
+  transform: translateY(-20rpx);
 }
 </style>

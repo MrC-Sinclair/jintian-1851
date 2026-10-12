@@ -868,24 +868,24 @@ function onCloseNegotiation(): void {
 
   // ====================== 顶部导航栏（P0-2 自定义导航） ======================
   &__header {
+    display: flex;
     // 高度固定为视口后，header/footer 必须禁止被 flex 压缩，否则内容多时会被挤扁
     flex-shrink: 0;
-    display: flex;
-    align-items: center;
     gap: $jt-space-base;
+    align-items: center;
     padding: $jt-space-lg $jt-space-xl;
     background-color: $jt-primary;
     box-shadow: $jt-shadow-header;
   }
 
   &__back {
+    display: flex;
     flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
     // 触摸目标 ≥ 36px（用 rpx 跟随视口缩放，避免窄屏下固定 px 撑破宽度）
     min-width: 72rpx;
     min-height: 72rpx;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     color: $jt-ink-inverse;
     transition: background-color 150ms ease, transform 150ms ease;
 
@@ -899,18 +899,18 @@ function onCloseNegotiation(): void {
   }
 
   &__header-info {
-    flex: 1;
     display: flex;
+    flex: 1;
     flex-direction: column;
-    align-items: center;
     gap: $jt-space-xs;
+    align-items: center;
   }
 
   &__header-actions {
-    flex-shrink: 0;
     display: flex;
-    align-items: center;
+    flex-shrink: 0;
     gap: $jt-space-base;
+    align-items: center;
   }
 
   &__turn {
@@ -927,11 +927,11 @@ function onCloseNegotiation(): void {
 
   // P0-6 帮助入口（"?" 按钮，跳转「如何游戏」页）
   &__help-btn {
-    min-width: 72rpx;
-    min-height: 72rpx;
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 72rpx;
+    min-height: 72rpx;
     background-color: rgba(255, 255, 255, 0.15);
     border-radius: $jt-radius-base;
     transition: background-color 150ms ease, transform 150ms ease;
@@ -952,12 +952,12 @@ function onCloseNegotiation(): void {
   }
 
   &__sync-btn {
-    // 触摸目标 ≥ 36px（用 rpx 跟随视口缩放，避免窄屏下固定 px 撑破宽度）
-    min-width: 72rpx;
-    min-height: 72rpx;
     display: flex;
     align-items: center;
     justify-content: center;
+    // 触摸目标 ≥ 36px（用 rpx 跟随视口缩放，避免窄屏下固定 px 撑破宽度）
+    min-width: 72rpx;
+    min-height: 72rpx;
     padding: $jt-space-sm 20rpx;
     background-color: rgba(255, 255, 255, 0.15);
     border-radius: $jt-radius-base;
@@ -972,8 +972,8 @@ function onCloseNegotiation(): void {
     }
 
     &--disabled {
-      opacity: 0.65;
       background-color: $jt-bg-disabled;
+      opacity: 0.65;
     }
   }
 
@@ -1070,31 +1070,31 @@ function onCloseNegotiation(): void {
 
   // ====================== 决策应用势力反馈（T4） ======================
   &__faction-feedback {
+    padding: $jt-space-lg;
     background: $jt-primary-soft;
     border: 1rpx solid $jt-primary-light;
     border-radius: $jt-radius-xl;
-    padding: $jt-space-lg;
   }
 
   &__faction-feedback-title {
     display: block;
+    margin-bottom: $jt-space-base;
     font-size: $jt-font-md;
     font-weight: 600;
     color: $jt-ink-secondary;
-    margin-bottom: $jt-space-base;
   }
 
   &__faction-feedback-item {
     display: flex;
-    align-items: center;
     gap: $jt-space-md;
+    align-items: center;
     margin-top: $jt-space-sm;
   }
 
   &__faction-feedback-name {
     font-size: $jt-font-md;
-    color: $jt-ink;
     font-weight: 500;
+    color: $jt-ink;
   }
 
   &__faction-feedback-delta {
@@ -1118,8 +1118,8 @@ function onCloseNegotiation(): void {
 
   &__hint-text {
     font-size: $jt-font-md;
-    color: $jt-ink-muted;
     font-style: italic;
+    color: $jt-ink-muted;
   }
 
   // P0-4：推演失败后的「重新推演」按钮
@@ -1129,8 +1129,8 @@ function onCloseNegotiation(): void {
     justify-content: center;
     // 触摸目标 ≥ 44px
     min-height: 88rpx;
-    margin-top: $jt-space-lg;
     padding: $jt-space-md 48rpx;
+    margin-top: $jt-space-lg;
     background-color: $jt-primary;
     border-radius: $jt-radius-base;
     box-shadow: $jt-shadow-card;
@@ -1176,24 +1176,24 @@ function onCloseNegotiation(): void {
   // 流式生成中的事件文本：作为 spinner 下方的「生成进展」，弱化于主文案
   &__loading-stream {
     display: block;
+    // 长文本限高，避免生成过程中把下方内容顶飞
+    max-height: 240rpx;
     margin-top: $jt-space-sm;
+    overflow: hidden;
     font-size: $jt-font-base;
     line-height: 1.6;
     color: $jt-ink-muted;
-    // 长文本限高，避免生成过程中把下方内容顶飞
-    max-height: 240rpx;
-    overflow: hidden;
   }
 
   // ====================== 通用按钮 ======================
   &__btn {
+    display: flex;
     flex: 1;
+    align-items: center;
+    justify-content: center;
     // 触摸目标 ≥ 44px（用 rpx 跟随视口缩放，避免窄屏下固定 px 撑破宽度）
     min-width: 88rpx;
     min-height: 88rpx;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     padding: 20rpx 0;
     background-color: $jt-bg-surface;
     border: 2rpx solid $jt-primary;
@@ -1226,9 +1226,9 @@ function onCloseNegotiation(): void {
     }
 
     &--disabled {
-      opacity: 0.65;
       background-color: $jt-bg-disabled;
       border-color: $jt-border-disabled;
+      opacity: 0.65;
 
       .game-main__btn-text {
         color: $jt-ink-disabled;
@@ -1261,9 +1261,9 @@ function onCloseNegotiation(): void {
 
   // ====================== 底部操作栏 ======================
   &__footer {
+    display: flex;
     // 同 header：固定视口高度下禁止被 flex 压缩，保证底栏触摸目标完整可见
     flex-shrink: 0;
-    display: flex;
     gap: $jt-space-md;
     padding: $jt-space-md $jt-space-lg;
     // 比内容区略深的米色，拉开与滚动区的层次，强化固定底栏分隔感
@@ -1273,19 +1273,19 @@ function onCloseNegotiation(): void {
   }
 
   &__footer-btn {
+    display: flex;
     flex: 1;
+    gap: $jt-space-sm;
+    align-items: center;
+    justify-content: center;
     // 触摸目标 ≥ 44px（用 rpx 跟随视口缩放，避免窄屏下固定 px 撑破宽度）
     min-width: 88rpx;
     min-height: 88rpx;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: $jt-space-sm;
     padding: 20rpx 0;
+    color: $jt-primary;
     background-color: $jt-bg-surface;
     border: 2rpx solid $jt-primary;
     border-radius: $jt-radius-base;
-    color: $jt-primary;
     transition: background-color 150ms ease, transform 150ms ease, opacity 150ms ease;
 
     &:active {
@@ -1297,10 +1297,10 @@ function onCloseNegotiation(): void {
     }
 
     &--disabled {
-      opacity: 0.65;
-      background-color: $jt-bg-disabled;
       color: $jt-ink-disabled;
+      background-color: $jt-bg-disabled;
       border-color: $jt-border-disabled;
+      opacity: 0.65;
 
       .game-main__footer-btn-text {
         color: $jt-ink-disabled;
@@ -1340,8 +1340,8 @@ function onCloseNegotiation(): void {
     &-icon {
       width: 36rpx;
       height: 36rpx;
-      border-radius: 50%;
       overflow: hidden;
+      border-radius: 50%;
 
       &--advisor {
         width: 48rpx;
@@ -1355,9 +1355,9 @@ function onCloseNegotiation(): void {
   &__diplomacy-mask {
     position: fixed;
     top: 0;
-    left: 0;
     right: 0;
     bottom: 0;
+    left: 0;
     // 高于 uni 页面头（z-index 998）：蒙层需盖住头部，否则抽屉顶区被标题栏压住
     z-index: 1100;
     display: flex;
@@ -1378,9 +1378,9 @@ function onCloseNegotiation(): void {
   &__negotiation-mask {
     position: fixed;
     top: 0;
-    left: 0;
     right: 0;
     bottom: 0;
+    left: 0;
     // 高于外交抽屉（1100）：谈判弹窗从外交面板内发起，需盖在其上
     z-index: 1110;
     display: flex;

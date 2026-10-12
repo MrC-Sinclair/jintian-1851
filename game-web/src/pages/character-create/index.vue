@@ -350,8 +350,8 @@ function toFactionCardProps(f: InitFaction): Pick<Faction, 'name' | 'summary' | 
     display: flex;
     flex: 1;
     flex-direction: column;
-    align-items: center;
     gap: 8rpx;
+    align-items: center;
     padding: 16rpx 8rpx;
     background-color: rgba(245, 230, 200, 0.5);
     border: 2rpx solid #d4c5a0;
@@ -484,12 +484,12 @@ function toFactionCardProps(f: InitFaction): Pick<Faction, 'name' | 'summary' | 
   }
 
   &__btn {
-    flex: 1;
-    min-width: 44px;
-    min-height: 44px;
     display: flex;
+    flex: 1;
     align-items: center;
     justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
     padding: 24rpx 0;
     background-color: #fdf6e3;
     border: 2rpx solid #8b1a1a;
@@ -526,8 +526,8 @@ function toFactionCardProps(f: InitFaction): Pick<Faction, 'name' | 'summary' | 
   &__loading {
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 16rpx;
+    align-items: center;
     padding: 80rpx 0;
   }
 
@@ -555,15 +555,15 @@ function toFactionCardProps(f: InitFaction): Pick<Faction, 'name' | 'summary' | 
 
   &__loading-hint {
     font-size: 22rpx;
-    color: #8d6e63;
     font-style: italic;
+    color: #8d6e63;
   }
 
   &__error {
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 24rpx;
+    align-items: center;
     padding: 80rpx 0;
   }
 

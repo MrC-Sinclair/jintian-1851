@@ -158,8 +158,8 @@ function relationshipFillClass(v: number): string {
     display: block;
     margin-bottom: 16rpx;
     font-size: 26rpx;
-    color: #5d4037;
     line-height: 1.5;
+    color: #5d4037;
   }
 
   &__bar {

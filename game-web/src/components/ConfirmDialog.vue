@@ -110,13 +110,13 @@ function onCancel(): void {
   }
 
   &__btn {
+    display: flex;
     flex: 1;
+    align-items: center;
+    justify-content: center;
     // 触摸目标 ≥ 44px
     min-width: 44px;
     min-height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     padding: 16rpx 0;
     border-radius: 8rpx;
     transition: background-color 150ms ease, transform 150ms ease;
@@ -160,13 +160,13 @@ function onCancel(): void {
 
 @keyframes confirm-dialog-pop {
   from {
-    transform: scale(0.9);
     opacity: 0;
+    transform: scale(0.9);
   }
 
   to {
-    transform: scale(1);
     opacity: 1;
+    transform: scale(1);
   }
 }
 </style>

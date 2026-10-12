@@ -214,26 +214,26 @@ function onHowToPlay(): void {
 
 <style lang="scss" scoped>
 .home {
-  display: flex;
-  flex-direction: column;
   // 显式 100% 宽度：确保在 uni-app H5 的容器嵌套中铺满视口
   // border-box 让 padding 计入宽高，避免 100% + padding 造成水平/垂直溢出
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   // 允许内容超出视口时滚动，避免小屏（如 iPhone SE）按钮被挤出可视区
   min-height: 100vh;
   min-height: 100dvh;
+  padding: 48rpx 32rpx;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 48rpx 32rpx;
   background: linear-gradient(180deg, #f5e6c8 0%, #fdf6e3 100%);
 
   &__hero {
     display: flex;
-    flex-direction: column;
-    align-items: center;
     // 用 flex 撑开 hero，替代固定 margin，避免小屏溢出
     flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
     margin: 32rpx 0;
   }
@@ -257,8 +257,8 @@ function onHowToPlay(): void {
 
   &__subtitle {
     font-size: 24rpx;
-    color: #5d4037;
     font-style: italic;
+    color: #5d4037;
   }
 
   &__actions {
@@ -299,9 +299,9 @@ function onHowToPlay(): void {
     }
 
     &--disabled {
-      opacity: 0.65;
       background-color: #e8e0d0;
       border-color: #c9bda3;
+      opacity: 0.65;
 
       .home__btn-text {
         color: #9e8e76;
@@ -327,8 +327,8 @@ function onHowToPlay(): void {
     &-hint {
       margin-top: 4rpx;
       font-size: 20rpx;
-      color: #8d6e63;
       font-style: italic;
+      color: #8d6e63;
     }
 
     &-spinner {
@@ -350,8 +350,8 @@ function onHowToPlay(): void {
   }
 
   &__footer {
-    margin-top: auto;
     padding: 24rpx 0;
+    margin-top: auto;
     text-align: center;
   }
 

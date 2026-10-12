@@ -121,25 +121,25 @@ onUnmounted(clearAutoHide)
     z-index: 999;
     max-width: 80%;
     padding: 16rpx 24rpx;
+    word-break: break-all;
+    pointer-events: none;
     background-color: rgba(0, 0, 0, 0.8);
     border-radius: 8rpx;
     box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.3);
-    pointer-events: none;
-    word-break: break-all;
 
     // 上方默认（top: 在 trigger 上方；left: 居中对齐 trigger）
     &--top {
       bottom: 100%;
       left: 50%;
-      transform: translateX(-50%);
       margin-bottom: 8rpx;
+      transform: translateX(-50%);
     }
 
     &--bottom {
       top: 100%;
       left: 50%;
-      transform: translateX(-50%);
       margin-top: 8rpx;
+      transform: translateX(-50%);
     }
   }
 

@@ -71,26 +71,26 @@ defineEmits<{
 .event-card {
   // P0-3：卡片层次用「背景分层 + 阴影」替代细描边；正文黑体、标题衬线
   padding: $jt-space-lg;
+  font-family: $jt-font-sans;
   background-color: $jt-bg-surface;
   border-radius: $jt-radius-xl;
   box-shadow: $jt-shadow-card;
-  font-family: $jt-font-sans;
 
   &__header {
     display: flex;
     flex-direction: row;
+    gap: $jt-space-base;
     align-items: flex-start;
     justify-content: space-between;
-    gap: $jt-space-base;
     margin-bottom: $jt-space-md;
   }
 
   &__header-main {
     display: flex;
     flex-direction: row;
-    align-items: center;
     flex-wrap: wrap;
     gap: $jt-space-base;
+    align-items: center;
   }
 
   &__type {

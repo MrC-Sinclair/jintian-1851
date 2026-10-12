@@ -222,17 +222,17 @@ async function onRestart(): Promise<void> {
   &__description {
     display: block;
     font-size: 28rpx;
+    font-style: italic;
     line-height: 1.6;
     color: #5d4037;
-    font-style: italic;
   }
 
   &__rating {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-top: 24rpx;
     padding-top: 24rpx;
+    margin-top: 24rpx;
     border-top: 2rpx dashed rgba(139, 26, 26, 0.3);
   }
 
@@ -253,17 +253,17 @@ async function onRestart(): Promise<void> {
   &__rating-remark {
     margin-top: 8rpx;
     font-size: 26rpx;
+    font-style: italic;
     line-height: 1.6;
     color: #5d4037;
-    font-style: italic;
   }
 
   &__chains {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-top: 24rpx;
     padding-top: 24rpx;
+    margin-top: 24rpx;
     border-top: 2rpx dashed rgba(139, 26, 26, 0.3);
   }
 
@@ -290,15 +290,15 @@ async function onRestart(): Promise<void> {
   &__chains-remark {
     margin-top: 6rpx;
     font-size: 26rpx;
+    font-style: italic;
     line-height: 1.6;
     color: #5d4037;
-    font-style: italic;
   }
 
   // 链名逐条列出，长度不定（最多 23 条），必须允许折行
   &__chains-list {
-    margin-top: 12rpx;
     max-width: 90%;
+    margin-top: 12rpx;
     font-size: 24rpx;
     line-height: 1.7;
     color: #6d5c4c;
@@ -313,8 +313,8 @@ async function onRestart(): Promise<void> {
   }
 
   &__summary {
-    margin-bottom: 24rpx;
     padding: 24rpx;
+    margin-bottom: 24rpx;
     background-color: rgba(253, 246, 227, 0.6);
     border: 2rpx solid #d4c5a0;
     border-radius: 12rpx;
@@ -360,12 +360,12 @@ async function onRestart(): Promise<void> {
   }
 
   &__btn {
-    flex: 1;
-    min-width: 44px;
-    min-height: 44px;
     display: flex;
+    flex: 1;
     align-items: center;
     justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
     padding: 24rpx 0;
     background-color: #fdf6e3;
     border: 2rpx solid #8b1a1a;

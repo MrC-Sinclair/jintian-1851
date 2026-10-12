@@ -148,10 +148,10 @@ function handleClick(): void {
 
   &--disabled,
   &--loading {
-    // 灰底 + 降饱和边框 + 半透明，比单纯 opacity 更明确表达「不可操作」
-    opacity: 0.65;
     background-color: #e8e0d0;
     border-color: #c9bda3;
+    // 灰底 + 降饱和边框 + 半透明，比单纯 opacity 更明确表达「不可操作」
+    opacity: 0.65;
 
     .decision-button__label {
       color: #9e8e76;

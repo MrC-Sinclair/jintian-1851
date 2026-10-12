@@ -24,6 +24,15 @@ export default {
     'value-no-vendor-prefix': null,
     // 允许 ID 选择器（部分场景需要）
     'selector-max-id': null,
+    // 类名按 BEM 写（block__elem--mod），而 stylelint-config-standard 默认的
+    // selector-class-pattern 只允许 kebab-case，会把双下划线/双连字符判为违规
+    // ——项目里 12 个组件、35 处选择器都是这个写法（如 .settings__switch--on、
+    // .onboarding-overlay__btn-text--next），命名法刻意为之，这里配正则而不是改名。
+    // resolveNestedSelectors 必须开：SCSS 里写的是 `&__elem`，不展开就检不到完整名。
+    'selector-class-pattern': [
+      '^(?:[a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?:__[a-z0-9]+(?:-[a-z0-9]+)*)?(?:--[a-z0-9]+(?:-[a-z0-9]+)*)?$',
+      { resolveNestedSelectors: true }
+    ],
     // 允许使用 !important（z-index/tooltip 场景需要）
     'declaration-no-important': null,
     // 允许 // 单行注释（PostCSS 插件支持）
@@ -43,8 +52,14 @@ export default {
     // 允许空 style 块（App.vue 等 bootstrap 组件的 <style></style> 可以为空）
     'no-empty-source': null,
     // ── 严格规则：捕获真实 bug ─────────────────────────────
-    // 禁止重复声明（捕获意外的同名属性覆盖）
-    'declaration-block-no-duplicate-properties': true,
+    // 禁止重复声明（捕获意外的同名属性覆盖），但放行「相邻同名、值不同」这一类
+    // 渐进增强兜底：game-main 的 height:100vh→100dvh、首页的 min-height 同款。
+    // dvh 用于躲开移动端地址栏造成的 100vh 虚高，不支持 dvh 的浏览器自动沿用上一行；
+    // 删掉任何一行都会破坏兜底，所以是配置让路，不是改代码。
+    'declaration-block-no-duplicate-properties': [
+      true,
+      { ignore: ['consecutive-duplicates-with-different-values'] }
+    ],
     // 禁止重复的自定义属性
     'declaration-block-no-duplicate-custom-properties': true,
     // 禁止无效的 URL

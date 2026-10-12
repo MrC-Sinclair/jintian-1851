@@ -336,12 +336,12 @@ function onBack(): void {
   }
 
   &__back {
-    // 触摸目标 ≥ 72rpx（任务规范）
-    min-width: 72rpx;
-    min-height: 72rpx;
     display: flex;
     align-items: center;
     justify-content: center;
+    // 触摸目标 ≥ 72rpx（任务规范）
+    min-width: 72rpx;
+    min-height: 72rpx;
     color: #fff;
     transition: background-color 150ms ease, transform 150ms ease;
 
@@ -373,8 +373,8 @@ function onBack(): void {
   }
 
   &__section {
-    margin-bottom: 24rpx;
     padding: 24rpx;
+    margin-bottom: 24rpx;
     background-color: #fdf6e3;
     border: 2rpx solid #d4c5a0;
     border-radius: 12rpx;
@@ -399,16 +399,16 @@ function onBack(): void {
     display: block;
     margin-bottom: 16rpx;
     font-size: 24rpx;
-    color: #8d6e63;
     line-height: 1.5;
+    color: #8d6e63;
   }
 
   &__paragraph {
     display: block;
     margin-bottom: 12rpx;
     font-size: 28rpx;
-    color: #2c1810;
     line-height: 1.7;
+    color: #2c1810;
   }
 
   &__item {
@@ -454,8 +454,8 @@ function onBack(): void {
   &__item-desc {
     display: block;
     font-size: 26rpx;
-    color: #5d4037;
     line-height: 1.6;
+    color: #5d4037;
   }
 
   &__tip {
@@ -474,25 +474,25 @@ function onBack(): void {
     width: 40rpx;
     height: 40rpx;
     margin-right: 16rpx;
-    background-color: #8b1a1a;
-    border-radius: 50%;
     font-size: 24rpx;
     font-weight: 600;
+    line-height: 40rpx;
     color: #fff;
     text-align: center;
-    line-height: 40rpx;
+    background-color: #8b1a1a;
+    border-radius: 50%;
   }
 
   &__tip-text {
     flex: 1;
     font-size: 28rpx;
-    color: #2c1810;
     line-height: 1.6;
+    color: #2c1810;
   }
 
   &__faq {
-    margin-bottom: 20rpx;
     padding: 16rpx;
+    margin-bottom: 20rpx;
     background-color: rgba(245, 230, 200, 0.5);
     border-radius: 8rpx;
 
@@ -506,15 +506,15 @@ function onBack(): void {
     margin-bottom: 8rpx;
     font-size: 28rpx;
     font-weight: 600;
-    color: #8b1a1a;
     line-height: 1.5;
+    color: #8b1a1a;
   }
 
   &__faq-a {
     display: block;
     font-size: 26rpx;
-    color: #5d4037;
     line-height: 1.6;
+    color: #5d4037;
   }
 
   &__body-pad {

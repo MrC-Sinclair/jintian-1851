@@ -302,22 +302,22 @@ function nextNodeTitleOf(node: PendingChainNode): string {
     position: relative;
     flex-shrink: 0;
     width: 36rpx;
-    height: 36rpx;
     min-width: 36rpx;
+    height: 36rpx;
     min-height: 36rpx;
     margin-right: 12rpx;
 
     // 用 border 画三角形（与 GoalPanel 折叠图标同款技巧）
     &::before {
-      content: '';
       position: absolute;
       top: 0;
       left: 0;
       width: 0;
       height: 0;
+      content: '';
       border-right: 18rpx solid transparent;
-      border-left: 18rpx solid transparent;
       border-bottom: 32rpx solid #c62828;
+      border-left: 18rpx solid transparent;
       border-radius: 4rpx;
     }
   }
@@ -352,13 +352,13 @@ function nextNodeTitleOf(node: PendingChainNode): string {
 
   &__suggestion-icon {
     display: flex;
+    flex-shrink: 0;
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
     width: 36rpx;
-    height: 36rpx;
     min-width: 36rpx;
+    height: 36rpx;
     min-height: 36rpx;
     margin-right: 12rpx;
     color: #f9a825;
@@ -381,13 +381,13 @@ function nextNodeTitleOf(node: PendingChainNode): string {
   &__pending {
     display: flex;
     flex-direction: column;
-    margin-top: 12rpx;
+    // T4.3：触摸目标 min-h 88rpx（tasks.md 规范）
+    min-height: 88rpx;
     padding: 12rpx 16rpx;
+    margin-top: 12rpx;
     background-color: #fff8e1;
     border: 2rpx solid #e6d9a8;
     border-radius: 8rpx;
-    // T4.3：触摸目标 min-h 88rpx（tasks.md 规范）
-    min-height: 88rpx;
   }
 
   &__pending-head {
@@ -399,9 +399,9 @@ function nextNodeTitleOf(node: PendingChainNode): string {
 
   &__pending-icon {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
     width: 32rpx;
     height: 32rpx;
     margin-right: 8rpx;

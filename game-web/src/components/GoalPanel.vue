@@ -96,9 +96,9 @@ function toggle(): void {
     width: 0;
     height: 0;
     margin-right: $jt-space-md;
+    border-top: 14rpx solid $jt-ink-secondary;
     border-right: 10rpx solid transparent;
     border-left: 10rpx solid transparent;
-    border-top: 14rpx solid $jt-ink-secondary;
     transition: transform 200ms ease;
 
     &--expanded {
@@ -116,8 +116,8 @@ function toggle(): void {
   // 折叠动画（max-height transition，禁止 v-if 直接切换）
   &__expand {
     max-height: 1000rpx;
-    opacity: 1;
     overflow: hidden;
+    opacity: 1;
     transition: max-height 300ms ease, opacity 200ms ease;
 
     &--collapsed {
