@@ -1,10 +1,13 @@
 /**
  * @file 历史剧情链数据
  *
- * 14 条预定义历史剧情链，覆盖 1851-1912 关键历史节点。
+ * 23 条预定义历史剧情链，覆盖 1851-1912 关键历史节点。
  * 每条链含线性节点（nextNodeIds 单元素数组，预留 DAG 扩展）。
  * 节点 event 的 chainId/chainNodeId/chainProgress 由 generate-event API 动态注入，
  * 本文件仅维护静态剧情数据，不调 LLM、不入库。
+ *
+ * 数组顺序**不是**触发顺序：generate-event 按 `startYear >= 当前年` 取最早一条可触发链，
+ * 同年份按 chainId 定序。下方编号只是分组可读性，新增链一律追加在表尾。
  *
  * effects 数值平衡：属性类（military/economy/politics/people/diplomacy/reputation）±5~15，
  * 资源类（silver/troops/food）按史实量级 ±50~500。
@@ -358,13 +361,13 @@ export const STORY_CHAINS: readonly StoryChain[] = [
     ]
   },
 
-  // ============ 6. 左宗棠收复新疆（1865-1878，3 节点）============
+  // ============ 6. 左宗棠收复新疆（1865-1884，4 节点）============
   {
     chainId: 'zuo-zong-tang-xin-jiang',
     title: '左宗棠收复新疆',
     description: '阿古柏窃据新疆，俄英觊觎，左宗棠舆榇西征，力撑塞防，终复故土。',
     startYear: 1865,
-    endYear: 1878,
+    endYear: 1884,
     nodes: [
       {
         nodeId: 'node-1',
@@ -401,29 +404,45 @@ export const STORY_CHAINS: readonly StoryChain[] = [
       {
         nodeId: 'node-3',
         triggerTurnOffset: 2,
+        nextNodeIds: ['node-4'],
+        isLastNode: false,
+        event: {
+          title: '收复伊犁',
+          description: '使臣改约，伊犁终归版图，然边界与偿费仍有损失，西北全局待以建置而定。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '筹边改约保疆土', effects: { politics: 9, reputation: 14, diplomacy: 5 }, nextChainNodeId: 'node-4' },
+            { id: 'b', label: '移民屯垦实边', effects: { people: 8, economy: 6, silver: -200 } },
+            { id: 'c', label: '留重兵镇西域', effects: { military: 7, troops: -120, reputation: 6 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-4',
+        triggerTurnOffset: 3,
         nextNodeIds: [],
         isLastNode: true,
         event: {
-          title: '收复伊犁',
-          description: '左宗棠威逼兼外谈判，伊犁终归版图，新疆建省，百年边疆自此奠定。',
+          title: '新疆建省',
+          description: '关内既安，督臣疏请行省，朝廷准设新疆省、置巡抚，军府旧制自此改为与内地一体之郡县。',
           eventType: '历史剧情',
           options: [
-            { id: 'a', label: '筹边建省安民', effects: { politics: 9, reputation: 14, diplomacy: 5 } },
-            { id: 'b', label: '移民屯垦实边', effects: { people: 8, economy: 6, silver: -200 } },
-            { id: 'c', label: '留重兵镇西域', effects: { military: 7, troops: -120, reputation: 6 } }
+            { id: 'a', label: '请即建省固边防', effects: { politics: 7, military: 4, reputation: 5, silver: -200 } },
+            { id: 'b', label: '先治屯政徐议建置', effects: { economy: 5, food: 200, politics: 2 } },
+            { id: 'c', label: '仍循军府旧制', effects: { military: 3, politics: -4, reputation: -3 } }
           ]
         }
       }
     ]
   },
 
-  // ============ 7. 琉球台湾事件（1871-1874，2 节点）============
+  // ============ 7. 琉球台湾事件（1871-1885，4 节点）============
   {
     chainId: 'liu-qiu-tai-wan',
     title: '琉球台湾事件',
-    description: '琉球漂民遇害，日本借端兴兵犯台，清廷隐忍立约，琉球自此渐亡于日。',
+    description: '琉球漂民遇害，日本借端兴兵犯台，清廷隐忍立约，琉球自此渐亡，台湾亦因之建省。',
     startYear: 1871,
-    endYear: 1874,
+    endYear: 1885,
     nodes: [
       {
         nodeId: 'node-1',
@@ -444,16 +463,48 @@ export const STORY_CHAINS: readonly StoryChain[] = [
       {
         nodeId: 'node-2',
         triggerTurnOffset: 1,
-        nextNodeIds: [],
-        isLastNode: true,
+        nextNodeIds: ['node-3'],
+        isLastNode: false,
         event: {
           title: '北京专条',
           description: '清日立约，清廷偿银五十万两，默许日本侵台为"保民义举"，琉球宗主权动摇。',
           eventType: '历史剧情',
           options: [
-            { id: 'a', label: '忍让维系数十年', effects: { diplomacy: 4, reputation: -6, silver: -200 } },
+            { id: 'a', label: '忍让维系数十年', effects: { diplomacy: 4, reputation: -6, silver: -200 }, nextChainNodeId: 'node-3' },
             { id: 'b', label: '力拒条约不成', effects: { politics: 5, reputation: 4, diplomacy: -3 } },
             { id: 'c', label: '密图联琉抗衡', effects: { diplomacy: 3, reputation: 3, politics: 2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-3',
+        triggerTurnOffset: 2,
+        nextNodeIds: ['node-4'],
+        isLastNode: false,
+        event: {
+          title: '废琉置县',
+          description: '日本强制迁琉球王，废琉球藩置冲绳县；清廷与日使争论存祀，分球之议数易其稿终未成。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '力诘日使争存祀', effects: { diplomacy: -4, politics: 4, reputation: 5 }, nextChainNodeId: 'node-4' },
+            { id: 'b', label: '用延宕策缓其谋', effects: { diplomacy: 5, politics: 3, reputation: -3 } },
+            { id: 'c', label: '置为缓图不深争', effects: { politics: 2, reputation: -4, silver: 150 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-4',
+        triggerTurnOffset: 3,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '台湾建省',
+          description: '法役既罢，清廷以台湾远隔海疆、为外人所注目，准建省份，简首任巡抚，清赋抚番、铁路炮台次第兴办。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '简任贤员首开帅府', effects: { politics: 6, reputation: 5, silver: -200 } },
+            { id: 'b', label: '清赋抚番以固疆本', effects: { economy: 5, military: 3, people: 3 } },
+            { id: 'c', label: '缓议建省以节经费', effects: { economy: 3, politics: -3, reputation: -2, silver: 200 } }
           ]
         }
       }
@@ -839,6 +890,467 @@ export const STORY_CHAINS: readonly StoryChain[] = [
             { id: 'a', label: '拥护共和新建', effects: { politics: 10, reputation: 12, people: 8 } },
             { id: 'b', label: '遗老缅怀故朝', effects: { reputation: -6, politics: -3 } },
             { id: 'c', label: '整军经武图强', effects: { military: 8, troops: -100, economy: 4 } }
+          ]
+        }
+      }
+    ]
+  },
+
+  // ============ 15. 轮船招商局与电矿商股（1872-1883，3 节点，前置 yang-wu-yun-dong）============
+  // 与第 5 条洋务链刻意分工：那条讲军工厂局与海军，这条讲民用商股与市面，节点文案须显地区别。
+  {
+    chainId: 'min-yong-gong-shang',
+    title: '民用工矿与商股',
+    description: '军工厂局之外，轮船、电报、煤铁次第集股兴办，官督商办收回利权，然市面投机亦随之而起。',
+    startYear: 1872,
+    endYear: 1883,
+    prerequisiteChainIds: ['yang-wu-yun-dong'],
+    nodes: [
+      {
+        nodeId: 'node-1',
+        triggerTurnOffset: 0,
+        nextNodeIds: ['node-2'],
+        isLastNode: false,
+        event: {
+          title: '轮船招商局',
+          description: '集华商股金创轮船招商局，官督商办，收江海漕运之利以敌洋商，开风气之先。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '集股创办官督商办', effects: { economy: 7, politics: 4, reputation: 4, silver: -200 }, nextChainNodeId: 'node-2' },
+            { id: 'b', label: '奏拨帑项官款独办', effects: { economy: 4, politics: 6, silver: -300 } },
+            { id: 'c', label: '任洋商专其利', effects: { economy: -4, diplomacy: 3, reputation: -3 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-2',
+        triggerTurnOffset: 1,
+        nextNodeIds: ['node-3'],
+        isLastNode: false,
+        event: {
+          title: '电线与开平矿务',
+          description: '津沪电报线路成，开平矿局采煤，运煤铁路继筑，风水顽固之论与利便实用之争并进。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '展设电线以通军报', effects: { economy: 5, military: 4, diplomacy: 2, silver: -250 }, nextChainNodeId: 'node-3' },
+            { id: 'b', label: '招集华股开采煤铁', effects: { economy: 6, people: 2, silver: -150 } },
+            { id: 'c', label: '以电线有碍风水而止', effects: { economy: -3, people: 3, politics: -2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-3',
+        triggerTurnOffset: 2,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '上海倒款风潮',
+          description: '边警日急，房产丝茶投机顿败，钱庄倒账、商号关闭，市面几坏，商办事业大受牵累。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '拨官款持平周转', effects: { economy: 6, politics: 3, reputation: 5, silver: -300 } },
+            { id: 'b', label: '任其倒闭以儆取巧', effects: { economy: -5, people: -3, politics: 2 } },
+            { id: 'c', label: '严究舞弊商董', effects: { politics: 5, economy: 2, reputation: 3, silver: -80 } }
+          ]
+        }
+      }
+    ]
+  },
+
+  // ============ 16. 同光接替（1874-1877，3 节点，前置 tong-zhi-hui-luan）============
+  {
+    chainId: 'tong-zhi-guang-xu',
+    title: '同光接替',
+    description: '同治帝崩而无嗣，醇邸之子入承大统，两宫垂帘训政，帝师进讲暗长后来党议之根。',
+    startYear: 1874,
+    endYear: 1877,
+    prerequisiteChainIds: ['tong-zhi-hui-luan'],
+    nodes: [
+      {
+        nodeId: 'node-1',
+        triggerTurnOffset: 0,
+        nextNodeIds: ['node-2'],
+        isLastNode: false,
+        event: {
+          title: '同治帝崩',
+          description: '帝崩于养心殿，年甫十九，尚无子嗣，神器虚悬，礼臣拘于家法，中外望择统甚切。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '速议迎立以安社稷', effects: { politics: 6, reputation: 4, silver: -100 }, nextChainNodeId: 'node-2' },
+            { id: 'b', label: '疏请简择贤长', effects: { politics: 4, reputation: 3, diplomacy: -3 } },
+            { id: 'c', label: '观望不言坐视其定', effects: { reputation: -4, politics: -2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-2',
+        triggerTurnOffset: 1,
+        nextNodeIds: ['node-3'],
+        isLastNode: false,
+        event: {
+          title: '光绪即位',
+          description: '幼帝入承大统，改元光绪，两宫皇太后垂帘听政，枢臣与内廷之分由此而定。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '整饬衙门以应新政', effects: { politics: 6, people: 3, silver: -120 }, nextChainNodeId: 'node-3' },
+            { id: 'b', label: '结援醇邸以固根本', effects: { politics: 4, diplomacy: 3, reputation: -3 } },
+            { id: 'c', label: '守静待时不预枢要', effects: { economy: 2, reputation: -2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-3',
+        triggerTurnOffset: 2,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '帝师进讲',
+          description: '师傅入侍讲幄，经史之外渐及洋务经济，新君左右渐成一班，后来党议之萌实基于此。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '延请名儒主讲', effects: { politics: 3, reputation: 4, economy: 2 } },
+            { id: 'b', label: '兼课天文算学', effects: { politics: 4, economy: 3, diplomacy: 2, silver: -100 } },
+            { id: 'c', label: '一切循旧例举行', effects: { politics: -2, reputation: -2, economy: 4 } }
+          ]
+        }
+      }
+    ]
+  },
+
+  // ============ 17. 滇案与烟台条约（1875-1876，2 节点，前置 er-ci-ya-pian）============
+  {
+    chainId: 'yan-tai-tiao-yue',
+    title: '滇案与烟台条约',
+    description: '英人入滇被戕，藉端要挟，烟台一约开四口、许游藏，并遣使英谢罪，中国驻使之始。',
+    startYear: 1875,
+    endYear: 1876,
+    prerequisiteChainIds: ['er-ci-ya-pian'],
+    nodes: [
+      {
+        nodeId: 'node-1',
+        triggerTurnOffset: 0,
+        nextNodeIds: ['node-2'],
+        isLastNode: false,
+        event: {
+          title: '马嘉理案',
+          description: '英员马嘉理自滇边被戕，英使威妥玛藉口索赔，语涉决裂，译署与滇督章奏往返争辩。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '缉凶赔款以全邦交', effects: { diplomacy: 5, politics: -3, reputation: -3, silver: -150 }, nextChainNodeId: 'node-2' },
+            { id: 'b', label: '严诘英人擅入边地', effects: { diplomacy: -5, military: 2, reputation: 5 } },
+            { id: 'c', label: '缓议托词查办', effects: { diplomacy: -2, politics: 2, reputation: -2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-2',
+        triggerTurnOffset: 1,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '烟台条约',
+          description: '议成于烟台：开宜昌芜湖温州北海四口，许英人游历西藏，且派使臣往英国谢罪，遣使出洋自此为常。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '签约换约以免兵祸', effects: { diplomacy: 6, economy: 3, reputation: -5, silver: -100 } },
+            { id: 'b', label: '力争裁去入藏一条', effects: { diplomacy: -3, politics: 5, reputation: 4 } },
+            { id: 'c', label: '借约促办洋务自强', effects: { economy: 5, military: 3, politics: 2, silver: -200 } }
+          ]
+        }
+      }
+    ]
+  },
+
+  // ============ 18. 丁戊奇荒（1876-1878，3 节点）============
+  // 全盘唯一以粮草为主轴的剧情链：#3/#5 之后粮草与兵员两条惩罚近乎休眠，缺口在此类内容而非数值。
+  {
+    chainId: 'ding-wu-qi-huang',
+    title: '丁戊奇荒',
+    description: '晋陕连年大旱，赤地千里，斗米千钱，饿殍载道，各省筹赈捐纳并行，百年奇荒数见。',
+    startYear: 1876,
+    endYear: 1878,
+    nodes: [
+      {
+        nodeId: 'node-1',
+        triggerTurnOffset: 0,
+        nextNodeIds: ['node-2'],
+        isLastNode: false,
+        event: {
+          title: '晋陕赤地',
+          description: '两年不雨，井泉告涸，粮价腾贵，饥民扶老携幼四出，州县报灾章奏交驰于道。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '捐廉劝募急筹赈', effects: { people: 6, reputation: 5, silver: -300 }, nextChainNodeId: 'node-2' },
+            { id: 'b', label: '奏请截留漕粮', effects: { people: 4, politics: 3, diplomacy: -3, food: -200 } },
+            { id: 'c', label: '讳灾不报以避处分', effects: { people: -8, reputation: -6, politics: 2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-2',
+        triggerTurnOffset: 1,
+        nextNodeIds: ['node-3'],
+        isLastNode: false,
+        event: {
+          title: '易子而食',
+          description: '直隶山东河南相继告饥，流民南输，道殣相望，地方既忧生计，又虞教匪乘隙。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '设厂以工代赈', effects: { people: 7, economy: 3, silver: -200, food: -250 }, nextChainNodeId: 'node-3' },
+            { id: 'b', label: '劝分借粮于富户', effects: { politics: 4, economy: -3, people: 2 } },
+            { id: 'c', label: '驱遣游民勒令回籍', effects: { military: 2, people: -6, politics: 2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-3',
+        triggerTurnOffset: 2,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '捐纳与吏治',
+          description: '赈需孔亟，户部广开捐输，异途人员填塞仕版，名器一滥，日后考成吏治俱难。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '力陈捐纳之弊请止', effects: { politics: 6, reputation: 5, economy: -3 } },
+            { id: 'b', label: '趁势筹饷以济时艰', effects: { economy: 5, silver: 300, politics: -4 } },
+            { id: 'c', label: '择要举办不废常经', effects: { politics: 2, reputation: 2, economy: 2 } }
+          ]
+        }
+      }
+    ]
+  },
+
+  // ============ 19. 朝鲜壬午甲申（1882-1885，3 节点）============
+  // 中法链与甲午链之间原本整段空白：朝鲜宗藩问题只有"前置 yang-wu"一条孤线，此链补其因。
+  {
+    chainId: 'ren-wu-jia-shen',
+    title: '朝鲜壬午甲申',
+    description: '属邦两遭兵变，清军入京定乱，日本随之要挟，朝鲜自属国渐成两国角力之场。',
+    startYear: 1882,
+    endYear: 1885,
+    nodes: [
+      {
+        nodeId: 'node-1',
+        triggerTurnOffset: 0,
+        nextNodeIds: ['node-2'],
+        isLastNode: false,
+        event: {
+          title: '壬午兵变',
+          description: '朝鲜戍兵因粮饷不给鼓噪入宫，杀大臣及王族，王妃匿民间，国王上疏请天兵救援。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '迅派劲旅定其乱', effects: { military: 8, reputation: 6, diplomacy: 3, troops: -200 }, nextChainNodeId: 'node-2' },
+            { id: 'b', label: '缓师观望使其自敉', effects: { diplomacy: -4, reputation: -3, silver: 150 } },
+            { id: 'c', label: '仅遣使臣诘问', effects: { politics: 2, diplomacy: -2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-2',
+        triggerTurnOffset: 1,
+        nextNodeIds: ['node-3'],
+        isLastNode: false,
+        event: {
+          title: '甲申政变',
+          description: '开化党劫国王改政，三日而败，将弁带营入宫扶翼，日韩交涉随即而起，袁世凯之名由此显。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '出兵速平复其国王', effects: { military: 6, reputation: 8, troops: -150, diplomacy: -3 }, nextChainNodeId: 'node-3' },
+            { id: 'b', label: '与日同心退兵', effects: { diplomacy: 5, politics: 3, reputation: -4 } },
+            { id: 'c', label: '守成宪不勤远略', effects: { diplomacy: -3, military: -2, economy: 2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-3',
+        triggerTurnOffset: 2,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '朝鲜派兵合同',
+          description: '中日订约：两国派兵朝鲜须先行文知照，宗藩名分第一次与邻邦对等，属国之体自此渐弛。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '力争册封旧典独尊', effects: { diplomacy: -5, politics: 5, reputation: 3 } },
+            { id: 'b', label: '依约互文知照', effects: { diplomacy: 6, economy: 2, politics: -3 } },
+            { id: 'c', label: '密练新兵为东顾备', effects: { military: 6, silver: -200, troops: -100 } }
+          ]
+        }
+      }
+    ]
+  },
+
+  // ============ 20. 甲申易枢（1884，2 节点，前置 yang-wu-yun-dong）============
+  {
+    chainId: 'jia-shen-yi-shu',
+    title: '甲申易枢',
+    description: '恭亲王并全班军机一日而去，新进者平庸畏谨，时论谓中兴之局实转于是。',
+    startYear: 1884,
+    endYear: 1885,
+    prerequisiteChainIds: ['yang-wu-yun-dong'],
+    nodes: [
+      {
+        nodeId: 'node-1',
+        triggerTurnOffset: 0,
+        nextNodeIds: ['node-2'],
+        isLastNode: false,
+        event: {
+          title: '恭亲王罢',
+          description: '言路承风交章弹劾，亲贤并用之局骤改，枢垣尽换，老成谋国者俱退，政事无所统纪。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '直言极谏争大局', effects: { reputation: 6, politics: -3, diplomacy: -2 }, nextChainNodeId: 'node-2' },
+            { id: 'b', label: '结纳新贵以自固', effects: { politics: 5, reputation: -4 } },
+            { id: 'c', label: '引疾退避不预枢要', effects: { economy: 2, reputation: -2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-2',
+        triggerTurnOffset: 1,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '枢臣平庸边事棘',
+          description: '法越之事日亟而庙算无人，海防江防各为其是，兵饷二端俱无统筹之人。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '条陈统筹防务', effects: { military: 5, politics: 4, reputation: 3, silver: -150 } },
+            { id: 'b', label: '请速筹兵饷', effects: { economy: 4, military: 3, silver: -200 } },
+            { id: 'c', label: '坐视中枢无人', effects: { diplomacy: -3, politics: -4, reputation: 2 } }
+          ]
+        }
+      }
+    ]
+  },
+
+  // ============ 21. 中葡北京条约（1887-1888，2 节点）============
+  {
+    chainId: 'zhong-gu-ao-men',
+    title: '中葡北京条约',
+    description: '以鸦片税厘并征为换，许葡永驻管理澳门，界址终未勘定，东南海疆多一既成之局。',
+    startYear: 1887,
+    endYear: 1888,
+    nodes: [
+      {
+        nodeId: 'node-1',
+        triggerTurnOffset: 0,
+        nextNodeIds: ['node-2'],
+        isLastNode: false,
+        event: {
+          title: '永管澳门之议',
+          description: '为办洋药税厘并征，葡使要求许其永驻管理澳门，署议章程，衙门内外争议不断。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '坚拒文字不许永管', effects: { diplomacy: -4, politics: 5, reputation: 3 }, nextChainNodeId: 'node-2' },
+            { id: 'b', label: '签约并索税厘', effects: { economy: 6, diplomacy: 5, reputation: -4, silver: 250 } },
+            { id: 'c', label: '借约防他国窥伺', effects: { diplomacy: 3, military: 2, economy: 2 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-2',
+        triggerTurnOffset: 1,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '界址终未勘定',
+          description: '约虽换而界未勘，关闸以内官督商办之事渐非我所能过问，华民税务两受其扰。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '催勘界址定久远', effects: { politics: 4, diplomacy: 3, silver: -80 } },
+            { id: 'b', label: '增筑炮台固前哨', effects: { military: 5, diplomacy: -3, silver: -200 } },
+            { id: 'c', label: '一仍其旧不加深究', effects: { diplomacy: 2, politics: -3, reputation: -2 } }
+          ]
+        }
+      }
+    ]
+  },
+
+  // ============ 22. 大婚与亲政（1889，2 节点，前置 jia-shen-yi-shu）============
+  // 戊戌链的前因：帝党后党之分起于大婚亲政，此链填补 1889 空档并为 1898 之变张本。
+  {
+    chainId: 'guang-xu-da-hun',
+    title: '大婚与亲政',
+    description: '皇帝大婚、亲政、训政三事同时并举，典礼靡费与归政之名相激，帝后两府之势由此而分。',
+    startYear: 1889,
+    endYear: 1889,
+    prerequisiteChainIds: ['jia-shen-yi-shu'],
+    nodes: [
+      {
+        nodeId: 'node-1',
+        triggerTurnOffset: 0,
+        nextNodeIds: ['node-2'],
+        isLastNode: false,
+        event: {
+          title: '皇帝大婚',
+          description: '拣选皇后，大典采办衣色皮革器物，所费不訾，部款支绌而言官交章请撙节。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '撙节备采以杜中饱', effects: { economy: 5, politics: 4, reputation: 3, silver: -100 }, nextChainNodeId: 'node-2' },
+            { id: 'b', label: '丰备典礼以彰国体', effects: { reputation: 6, politics: 3, silver: -300 } },
+            { id: 'c', label: '请速归政以定根本', effects: { politics: 5, reputation: 4, diplomacy: -3 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-2',
+        triggerTurnOffset: 1,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '亲政犹训政',
+          description: '亲政之礼既成，太后仍训政，凡用人行政大典悉禀懿旨，新进言官渐为帝党，枢臣多附后府。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '调和两宫以安大局', effects: { politics: 6, reputation: 5, diplomacy: 3 } },
+            { id: 'b', label: '阴附后府以固其位', effects: { politics: 7, reputation: -5 } },
+            { id: 'c', label: '力陈变计以佐新政', effects: { politics: 5, reputation: 3, economy: 3 } }
+          ]
+        }
+      }
+    ]
+  },
+
+  // ============ 23. 兴中会前夜（1892-1894，2 节点）============
+  // 甲午之役同年发生的"革命暗流"：与甲午链分工明确——那条讲战争，这条讲鼎革之谋始于何处。
+  {
+    chainId: 'xing-zhong-hui',
+    title: '兴中会前夜',
+    description: '布衣上书不遇，乃悟和平无可复施；华侨集会香山海外，鼎革之谋实肇基于此。',
+    startYear: 1892,
+    endYear: 1894,
+    nodes: [
+      {
+        nodeId: 'node-1',
+        triggerTurnOffset: 0,
+        nextNodeIds: ['node-2'],
+        isLastNode: false,
+        event: {
+          title: '上书不遇',
+          description: '粤人孙文自乡里历港澳习西医，撰书数千言条陈致富强之本，辗转投呈当轴，竟不获一当。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '延揽人才以备非常', effects: { reputation: 4, politics: 3, silver: -100 }, nextChainNodeId: 'node-2' },
+            { id: 'b', label: '主农商立国之本', effects: { economy: 5, people: 3, politics: 2 } },
+            { id: 'c', label: '以其布衣而忽之', effects: { reputation: -3, people: -2, politics: 2, silver: 100 } }
+          ]
+        }
+      },
+      {
+        nodeId: 'node-2',
+        triggerTurnOffset: 1,
+        nextNodeIds: [],
+        isLastNode: true,
+        event: {
+          title: '檀香山集会',
+          description: '海外华侨立会，以驱除鞑虏、恢复中国、创立合众政府为誓，会党、学堂与商埠暗通声气。',
+          eventType: '历史剧情',
+          options: [
+            { id: 'a', label: '密察其党报知其谋', effects: { politics: 5, reputation: 3, military: 2, silver: -100 } },
+            { id: 'b', label: '申饬海防杜其内衅', effects: { military: 4, politics: 3, silver: -200 } },
+            { id: 'c', label: '引为同调默加护持', effects: { reputation: 5, diplomacy: 2, politics: -4 } }
           ]
         }
       }

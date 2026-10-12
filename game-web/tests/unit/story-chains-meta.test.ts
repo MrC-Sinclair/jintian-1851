@@ -2,9 +2,10 @@
  * @file CHAIN_META 前端元数据镜像一致性测试
  *
  * 校验 game-web/src/data/story-chains.ts 与后端 STORY_CHAINS 的关键不变量保持一致：
- *   - 共 14 条剧情链
+ *   - 链数与链 ID 清单与后端一致（清单直接从后端取，**不再硬编码条数**——
+ *     上一版把 14 写死在这里，后端补链时这里静默过期，是真实踩过的坑）
  *   - 每条链 ≥ 2 个节点，节点 ID 在链内唯一且有序
- *   - 已知 chainId 存在（与设计文档"14 条剧情链清单"对应）
+ *   - 线性链拓扑（getNextNodeId / isLastNode）自洽
  *
  * 说明：本测试不复制后端完整 effects，仅校验元数据拓扑，避免前后端节点拓扑漂移。
  */
@@ -16,27 +17,14 @@ import {
   getNextNodeId,
   isLastNode
 } from '../../src/data/story-chains'
+import { STORY_CHAINS as SERVER_CHAINS } from '../../../server/server/runtime/story-chains'
 
-const EXPECTED_CHAIN_IDS = [
-  'tai-ping-tian-guo',
-  'er-ci-ya-pian',
-  'nian-jun-zhi-luan',
-  'tong-zhi-hui-luan',
-  'yang-wu-yun-dong',
-  'zuo-zong-tang-xin-jiang',
-  'liu-qiu-tai-wan',
-  'zhong-fa-zhan-zheng',
-  'jia-wu-zhan-zheng',
-  'wu-xu-bian-fa',
-  'yi-he-tuan',
-  'ri-e-zhan-zheng',
-  'qing-mo-xin-zheng',
-  'xin-hai-ge-ming'
-]
+const EXPECTED_CHAIN_IDS = SERVER_CHAINS.map((c) => c.chainId)
 
 describe('CHAIN_META 元数据完整性', () => {
-  it('共 14 条剧情链', () => {
-    expect(Object.keys(CHAIN_META)).toHaveLength(14)
+  it('链条数与链 ID 清单与后端一致（不硬编码条数）', () => {
+    expect(Object.keys(CHAIN_META)).toHaveLength(SERVER_CHAINS.length)
+    expect(Object.keys(CHAIN_META).sort()).toEqual([...EXPECTED_CHAIN_IDS].sort())
   })
 
   it('已知 chainId 全部存在', () => {

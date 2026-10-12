@@ -4,6 +4,29 @@
       <text class="end-game__label">{{ endLabel }}</text>
       <text class="end-game__title">{{ endTitle }}</text>
       <text class="end-game__description">{{ endDescription }}</text>
+      <!-- 史评：由名望档位决定，刻意不参与「是否胜利」的判定（理由见 utils/end-conditions.ts）
+           v-if="save"：存档是 onMounted 才载入的，未加载时不渲染，避免闪一下最低档 -->
+      <view v-if="save" class="end-game__rating">
+        <text class="end-game__rating-label">史评</text>
+        <text class="end-game__rating-title">{{ rating.label }}</text>
+        <text class="end-game__rating-remark">{{ rating.remark }}</text>
+      </view>
+      <!-- 历史进程：剧情链完成度。分母是「终局年份之前可达的链数」而不是全集，
+           否则 1865 年通关的存档会因为"没走完 1911 的剧本"被判成低档 -->
+      <view v-if="save" class="end-game__chains">
+        <text class="end-game__chains-label">历史进程</text>
+        <text class="end-game__chains-count">
+          亲历 {{ chainStats.completed }}/{{ chainStats.reachable }} 段史事（至 {{ chainStats.endYear }} 年）
+        </text>
+        <text v-if="chainTier" class="end-game__chains-tier">{{ chainTier.label }}</text>
+        <text v-if="chainTier" class="end-game__chains-remark">{{ chainTier.remark }}</text>
+        <text v-if="chainStats.completedTitles.length" class="end-game__chains-list">
+          {{ chainStats.completedTitles.join(' · ') }}
+        </text>
+        <text v-if="chainStats.inProgress > 0" class="end-game__chains-open">
+          另有 {{ chainStats.inProgress }} 段未及收束
+        </text>
+      </view>
     </view>
 
     <view class="end-game__summary">
@@ -18,6 +41,11 @@
       <view class="end-game__row">
         <text class="end-game__row-label">势力</text>
         <text class="end-game__row-value">{{ factionName }}（{{ background }}）</text>
+      </view>
+      <!-- 中兴锁定年份：年钟下胜利不再中途结束游戏，这里交代"哪一年成的局" -->
+      <view v-if="save?.zenithYear" class="end-game__row">
+        <text class="end-game__row-label">中兴已定</text>
+        <text class="end-game__row-value">{{ save.zenithYear }} 年（其后仍须守住这副局面）</text>
       </view>
     </view>
 
@@ -61,8 +89,11 @@ import StatusPanel from '@/components/StatusPanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
 import {
+  getChainCompletion,
+  getChainTier,
   getEndReasonDescription,
   getEndReasonLabel,
+  getHistoryRating,
   isFailureEnd
 } from '@/utils/end-conditions'
 import type { EndedReason, GameSave } from '@/types/game'
@@ -87,6 +118,13 @@ const endTitle = computed(() => getEndReasonLabel(endReason.value))
 const endDescription = computed(() => getEndReasonDescription(endReason.value))
 const isFailure = computed(() => isFailureEnd(endReason.value))
 
+/** 史评：名望档位（称号 + 评语）。存档未加载时取 0，模板用 v-if="save" 兜住不闪 */
+const rating = computed(() => getHistoryRating(save.value?.state.resources.reputation ?? 0))
+
+/** 历史进程：剧情链完成度（派生值，不参与胜负判定） */
+const chainStats = computed(() => getChainCompletion(save.value))
+const chainTier = computed(() => getChainTier(chainStats.value))
+
 /** 存活年数（开局 1851 → 结束 year） */
 const survivedYears = computed(() => {
   const endYear = save.value?.state.date.year ?? 1851
@@ -96,7 +134,8 @@ const survivedYears = computed(() => {
 const saveTurn = computed(() => save.value?.state.turn ?? 0)
 const saveDate = computed(() => {
   const d = save.value?.state.date
-  return d ? `${d.year} 年 ${d.month} 月` : ''
+  // 年钟：month 恒为 1，只显示年
+  return d ? `${d.year} 年` : ''
 })
 const factionName = computed(() => save.value?.character.factionName ?? '')
 const background = computed(() => save.value?.character.background ?? '')
@@ -186,6 +225,91 @@ async function onRestart(): Promise<void> {
     line-height: 1.6;
     color: #5d4037;
     font-style: italic;
+  }
+
+  &__rating {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 24rpx;
+    padding-top: 24rpx;
+    border-top: 2rpx dashed rgba(139, 26, 26, 0.3);
+  }
+
+  &__rating-label {
+    font-size: 22rpx;
+    color: #8d6e63;
+    letter-spacing: 6rpx;
+  }
+
+  &__rating-title {
+    margin-top: 8rpx;
+    font-size: 40rpx;
+    font-weight: 700;
+    color: #8b1a1a;
+    letter-spacing: 6rpx;
+  }
+
+  &__rating-remark {
+    margin-top: 8rpx;
+    font-size: 26rpx;
+    line-height: 1.6;
+    color: #5d4037;
+    font-style: italic;
+  }
+
+  &__chains {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 24rpx;
+    padding-top: 24rpx;
+    border-top: 2rpx dashed rgba(139, 26, 26, 0.3);
+  }
+
+  &__chains-label {
+    font-size: 22rpx;
+    color: #8d6e63;
+    letter-spacing: 6rpx;
+  }
+
+  &__chains-count {
+    margin-top: 8rpx;
+    font-size: 28rpx;
+    color: #5d4037;
+  }
+
+  &__chains-tier {
+    margin-top: 8rpx;
+    font-size: 34rpx;
+    font-weight: 700;
+    color: #4e6b3e;
+    letter-spacing: 4rpx;
+  }
+
+  &__chains-remark {
+    margin-top: 6rpx;
+    font-size: 26rpx;
+    line-height: 1.6;
+    color: #5d4037;
+    font-style: italic;
+  }
+
+  // 链名逐条列出，长度不定（最多 23 条），必须允许折行
+  &__chains-list {
+    margin-top: 12rpx;
+    max-width: 90%;
+    font-size: 24rpx;
+    line-height: 1.7;
+    color: #6d5c4c;
+    text-align: center;
+    word-break: break-all;
+  }
+
+  &__chains-open {
+    margin-top: 6rpx;
+    font-size: 22rpx;
+    color: #a1887f;
   }
 
   &__summary {
