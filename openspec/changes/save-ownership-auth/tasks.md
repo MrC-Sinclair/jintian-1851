@@ -122,7 +122,18 @@
       另记一条：既无 token 又无 `deviceId` 的请求由 `resolveOwnerDeviceId` 拒为
       400 `INVALID_PARAMS`（消息「缺少 x-device-token 请求头或 deviceId 参数」），
       新老客户端都不会撞上，属预期。
-- [ ] 3. 再发前端（新客户端开始注册换凭据）——**本次未做**，所以线上仍无真实设备走凭据通道
+- [x] 3. 前端已发（2026-10-13）：本机 `pnpm build:h5` → 备份 `deploy/dist/h5.bak-20261013`
+      → 原地解包上传 → `up -d --force-recreate caddy`。
+      验证是**按产物哈希比对**的：线上 `index.html` 引用的入口是
+      `assets/index-D7WNvjz8.js`，与本次构建一致；按名取懒加载 chunk
+      `assets/useSaveSync.CwVwE_50.js` 返回 200 且含 `device-credential` 调用。
+      之所以不只看 200：caddy 直接 serve 静态目录，旧产物同样会返回 200。
+      风险面已核：注册失败时 `ensureCredential()` 返回空串并回落旧参数通道，
+      `enrollmentBlocked` 只在服务端确定性判定（`CREDENTIAL_EXISTS` / `ENROLLMENT_CLOSED`）
+      时置位，网络抖动与 429 会在下次同步重试 —— 最坏情况等于退回今天的行为。
+      **仍未验证的一环**：凭据全链路（注册拿 token → 带 `x-device-token` 读写存档）
+      没有对线上做过端到端探测，因为那要往线上写一行测试凭据再删。
+      要么由一次真实游玩覆盖，要么单独授权我做"注册→带token拉列表→删除该行"的自检。
 - [ ] 4. 观察 `[auth-compat]` 日志直至归零（`grep '\[auth-compat\]'`，容器 stdout）
 - [ ] 5. 置 `NUXT_DEVICE_AUTH_ENFORCED=true` 关掉无凭据旧通道
 - [ ] 6. 确认无新设备需要首绑后置 `NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND=false` 收窄抢注窗口
