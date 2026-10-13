@@ -57,6 +57,25 @@ interface ErrorResponse {
   }
 }
 
+/**
+ * 拆掉 Nitro 的错误信封
+ *
+ * 路由用 `createError({ statusCode, data: { ok:false, error:{…} } })` 返回时，
+ * 线上实测（401 INVALID_DEVICE_TOKEN）响应体是
+ * `{ statusCode, statusMessage, message, data: { ok:false, error:{…} } }`：
+ * 约定的业务错误体被嵌了一层，顶层没有 `ok`。不拆包就只能得到 code='INVALID_RESPONSE'，
+ * 所有按 code 分支的处理（凭据失效自愈、注册被封禁后停止重试）会静默失效。
+ * 中间件直接 return 的 400/429 是顶层形态，所以两种都要认。
+ */
+function unwrapErrorEnvelope(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body
+  const record = body as Record<string, unknown>
+  if ('ok' in record) return body
+  const nested = record.data
+  if (nested && typeof nested === 'object' && 'ok' in (nested as object)) return nested
+  return body
+}
+
 /** uni.request 成功回调的响应结构 */
 interface UniRequestResult {
   /** HTTP 状态码 */
@@ -177,7 +196,11 @@ function requestRaw<T = unknown>(
         },
         timeout: timeoutMs,
         success: (res: UniRequestResult) => {
-          const { statusCode, data } = res
+          const { statusCode } = res
+          const data = unwrapErrorEnvelope(res.data) as
+            | SuccessResponse<unknown>
+            | ErrorResponse
+            | unknown
 
           // 网络层成功，但服务端可能返回业务错误（4xx/5xx + ok:false）
           if (data && typeof data === 'object' && 'ok' in data) {

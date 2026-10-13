@@ -45,6 +45,15 @@
 }
 ```
 
+> ⚠️ 失败体在线上有**两种封装形态**，取决于服务端怎么返回：
+> - 中间件直接 `return`（如 429 `RATE_LIMITED`、400 `MISSING_DEVICE_ID`）→ 就是上面的顶层形态；
+> - 路由 `return createError({ statusCode, data: { ok:false, error:{…} } })`（绝大多数业务错误，
+>   含 401 `INVALID_DEVICE_TOKEN`、409 `CREDENTIAL_EXISTS`）→ H3/Nitro 会把它包成
+>   `{ statusCode, statusMessage, message, data: { ok:false, error:{…} } }`，业务错误体多了一层 `data`。
+>
+> 前端 `game-web/src/utils/api.ts` 的 `unwrapErrorEnvelope()` 负责拆这一层，两种形态都归一到
+> `ApiError.code`。新增按 `code` 分支的逻辑时不必自己处理嵌套，但**不要**在前端直接读裸响应体。
+
 ### 请求头
 
 | 头 | 必填 | 说明 |

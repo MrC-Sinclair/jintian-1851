@@ -6,6 +6,7 @@
  *   - 业务失败（ok:false + 4xx/5xx）抛 ApiError
  *   - 网络层失败（fail 回调）抛 NETWORK 错误
  *   - 响应格式异常（非 {ok} 结构）抛 INVALID_RESPONSE
+ *   - Nitro 对 createError 的嵌套信封（业务错误体在 data 下）拆包后仍按 code 分支
  *   - 自动注入 x-device-id header
  *   - 有设备凭据时注入 x-device-token header，无凭据时不带该头
  *   - body 自动序列化
@@ -181,6 +182,92 @@ describe('request - 业务失败', () => {
       expect(apiErr.code).toBe('SAVE_NOT_FOUND')
       expect(apiErr.statusCode).toBe(404)
     }
+  })
+})
+
+describe('request - Nitro 错误信封拆包', () => {
+  it('createError 的响应体（业务错误嵌在 data 里）也能拿到服务端 code', async () => {
+    const promise = get('/api/game/saves?limit=20')
+
+    // 线上实测的 401 响应体：顶层没有 ok，约定的 {ok:false,error} 被包在 data 下
+    lastCall!.success({
+      statusCode: 401,
+      data: {
+        error: true,
+        url: 'https://example.invalid/api/game/saves?limit=20',
+        statusCode: 401,
+        statusMessage: 'INVALID_DEVICE_TOKEN',
+        message: 'INVALID_DEVICE_TOKEN',
+        data: {
+          ok: false,
+          error: { code: 'INVALID_DEVICE_TOKEN', message: '设备凭据无效或已吊销' }
+        }
+      },
+      header: {}
+    })
+
+    try {
+      await promise
+      throw new Error('应当抛出 ApiError')
+    } catch (err) {
+      const apiErr = err as ApiError
+      expect(apiErr.code).toBe('INVALID_DEVICE_TOKEN')
+      expect(apiErr.statusCode).toBe(401)
+      expect(apiErr.message).toBe('设备凭据无效或已吊销')
+    }
+  })
+
+  it('detail 随嵌套信封一起透出', async () => {
+    const promise = post('/api/game/device-credential', { deviceId: 'not-a-uuid' })
+
+    lastCall!.success({
+      statusCode: 400,
+      data: {
+        statusCode: 400,
+        statusMessage: 'INVALID_PARAMS',
+        data: {
+          ok: false,
+          error: { code: 'INVALID_PARAMS', message: 'deviceId 必须是 UUID', detail: ['bad'] }
+        }
+      },
+      header: {}
+    })
+
+    await expect(promise).rejects.toMatchObject({
+      code: 'INVALID_PARAMS',
+      detail: ['bad']
+    })
+  })
+
+  it('Nitro 自带 404 页（data 里只有 path，无 ok）仍判为 INVALID_RESPONSE，不误认业务错误', async () => {
+    const promise = get('/api/game/nope')
+
+    lastCall!.success({
+      statusCode: 404,
+      data: {
+        error: true,
+        statusCode: 404,
+        statusMessage: 'Page not found: /api/game/nope',
+        message: 'Page not found: /api/game/nope',
+        data: { path: '/api/game/nope' }
+      },
+      header: {}
+    })
+
+    await expect(promise).rejects.toMatchObject({ code: 'INVALID_RESPONSE', statusCode: 404 })
+  })
+
+  it('顶层 ok:true 优先，不会被当成信封再拆一层', async () => {
+    const promise = get('/api/game/sync-save?saveId=x')
+
+    lastCall!.success({
+      statusCode: 200,
+      // 存档内容里恰好有名为 ok 的字段时，不能因为"看起来像错误信封"就被拆包
+      data: { ok: true, data: { save: { ok: false, updatedAt: 1 } } },
+      header: {}
+    })
+
+    await expect(promise).resolves.toEqual({ save: { ok: false, updatedAt: 1 } })
   })
 })
 
