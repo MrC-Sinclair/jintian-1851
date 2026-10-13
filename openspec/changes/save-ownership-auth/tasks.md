@@ -137,8 +137,13 @@
       复查 `device_credentials` 行数 = 0，`game_saves` 仍是 1 行 1 属主，线上无残留。
 - [x] 3c. 401 自愈已实现并顺带修掉一个静默失效（见第 8.5 节）
 - [ ] 4. 观察 `[auth-compat]` 日志直至归零（`grep '\[auth-compat\]'`，容器 stdout）
-      当前读数（2026-10-13，`--since 24h`）：2 条。
+      当前读数（2026-10-13，`--since 24h`）：6 条 —— 其中 4 条是本次 401 自愈演练
+      （兼容回落那一次 GET）打出来的，不是真实玩家。**看趋势前先扣掉这 4 条**，
+      演练前读数是 2 条。
 - [ ] 5. 置 `NUXT_DEVICE_AUTH_ENFORCED=true` 关掉无凭据旧通道
+      前置已满足（8.5/8.6：自愈 + 错误码可读，且线上演练真跑过一次）。
+      仍建议先等 `[auth-compat]` 归零，否则收紧当天老玩家会读不到云端档
+      （不至于丢本地档，但要重新注册才能同步）。
 - [ ] 6. 确认无新设备需要首绑后置 `NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND=false` 收窄抢注窗口
 - [ ] 7. 两个开关都收紧后，删除前端 `ownerParam()` 回落与三处 query `deviceId` 兜底
 
@@ -170,6 +175,31 @@
       新增 5 例 `withCredentialRetry` + 4 例信封拆包单测。`tests/unit/use-save-{list,sync}.test.ts`
       原先只 mock `ensureCredential`，调用点改走后 mock 拦不住（17 例失败），已改为同时透传
       `withCredentialRetry`，401 重试语义仍由 `device-credential.test.ts` 专测。
+
+## 8.6 上线与线上演练（2026-10-13）
+
+- [x] 提交：`e178e83`（信封拆包）+ `f488511`（401 自愈），已推 `origin/main`
+- [x] CI run #16 三个 job 全绿（game-web / server / openspec）
+- [x] 前端重发（低侵入，未动服务端产物）：本机 `build:h5` → 备份
+      `/root/jintian/deploy/dist/h5.bak-20261013-401fix`（不覆盖发布前的
+      `h5.bak-20261013`）→ 原地解包 → `up -d --force-recreate caddy`。
+      按哈希验证：线上 `index.html` 入口由 `index-D7WNvjz8.js` 变为 `index-C5gFYm65.js`；
+      懒加载 chunk `assets/useSaveSync.DpOx3kHG.js` 返回 200 且含 `INVALID_DEVICE_TOKEN`。
+- [x] **线上真 401 演练通过**（Playwright headless + `ignoreHTTPSErrors` 打真实站点，
+      hash 路由要写 `/#/pages/settings/index`；设置页 `onMounted` 会自动 `fetchList()`）：
+      1. 首绑：`200 POST device-credential` → `200 GET /saves?limit=20`（URL 里**没有** deviceId，
+         属主由请求头证明）；
+      2. 把 `localStorage.game_device_token` 改成格式合法但服务端没有的值 → 整页 reload：
+         `401 GET /saves` → `409 POST device-credential` → `200 GET /saves?limit=20&deviceId=b5fc…`，
+         本地凭据被清空，列表走兼容通道正常渲染。
+      这一次同时证伪了两个此前的空白：401 自愈分支真跑通了；409 能被识别为
+      `CREDENTIAL_EXISTS`（即信封拆包在真线上生效，不是只有单测）。
+      演练全程只调线上接口，没有直接写数据库。
+- [ ] **演练残留待清**：三轮演练各首绑了一个一次性 deviceId，线上 `device_credentials`
+      现为 3 行（`84c51b2a…` / `f58e5cfe…` / `b5fc22f9…`，演练前为 0）。这些浏览器上下文
+      已不存在，留着不影响玩家，但会污染「存量设备都已注册」的统计口径。清理要写线上库
+      （`DELETE FROM device_credentials WHERE device_id IN (…)`），需单独授权；
+      日后做吊销入口时应改为运营侧处理。
 
 ## 9. 遗留（另议）
 
