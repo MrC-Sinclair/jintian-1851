@@ -184,3 +184,114 @@ describe('resolveOwnerDeviceId', () => {
     expect(res.code).toBe('INVALID_DEVICE_TOKEN')
   })
 })
+
+/**
+ * [auth-event] 是收紧判断的唯一数据来源（auth-report 靠它算兼容占比与 401 分布），
+ * 所以"每条裁决都留痕、且只留掩码"必须当契约测住，而不是等聚合时发现少一类事件。
+ */
+describe('鉴权事件日志 [auth-event]', () => {
+  function eventsOf(spy: ReturnType<typeof vi.spyOn>): string {
+    return spy.mock.calls.map((c) => String(c[0])).join('\n')
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setConfig()
+    dbMock.limitMock.mockReturnValue([])
+  })
+
+  it('凭据反查成功：记 owner_by_token，且用权威 deviceId 而非客户端声明值', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const longOwner = '11111111-2222-4333-8444-555555555555'
+    dbMock.limitMock.mockReturnValueOnce([{ deviceId: longOwner }])
+
+    await resolveOwnerDeviceId(generateDeviceSecret(), 'ffffffff-0000-4000-8000-000000000000')
+
+    const out = eventsOf(spy)
+    expect(out).toContain('"kind":"owner_by_token"')
+    expect(out).toContain('"device":"11111111"')
+    // 冒领者的声明值不该进日志
+    expect(out).not.toContain('ffffffff-0000')
+    // 权威值也只做 8 位掩码
+    expect(out).not.toContain(longOwner)
+    spy.mockRestore()
+  })
+
+  it('无效凭据：记 invalid_token，device 为空（手上没有可信标识）', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    dbMock.limitMock.mockReturnValueOnce([])
+
+    await resolveOwnerDeviceId('bogus-token', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
+
+    const out = eventsOf(spy)
+    expect(out).toContain('"kind":"invalid_token"')
+    expect(out).toContain('"device":""')
+    expect(out).not.toContain('aaaaaaaa-bbbb')
+    spy.mockRestore()
+  })
+
+  it('收紧后无凭据：记 token_required 并带上声明值前缀', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    setConfig({ deviceAuthEnforced: true })
+
+    await resolveOwnerDeviceId(undefined, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
+
+    expect(eventsOf(spy)).toContain('"kind":"token_required"')
+    expect(eventsOf(spy)).toContain('"device":"aaaaaaaa"')
+    spy.mockRestore()
+  })
+
+  it('兼容通道：[auth-compat] 与 [auth-event] 各一条，两处都只有前 8 位', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const long = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+
+    await resolveOwnerDeviceId(undefined, long)
+
+    const out = eventsOf(spy)
+    expect(out).toContain('[auth-compat]')
+    expect(out).toContain('"kind":"owner_by_compat"')
+    expect(out).toContain('"device":"aaaaaaaa"')
+    expect(out).not.toContain(long)
+    spy.mockRestore()
+  })
+
+  it('注册成功/被拒分别留痕 enrolled / enroll_exists', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const long = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+
+    dbMock.returningMock.mockReturnValueOnce([{ deviceId: long }])
+    await registerDeviceCredential(long)
+    dbMock.returningMock.mockReturnValueOnce([])
+    await registerDeviceCredential(long)
+
+    const out = eventsOf(spy)
+    expect(out).toContain('"kind":"enrolled"')
+    expect(out).toContain('"kind":"enroll_exists"')
+    expect(out).not.toContain(long)
+    spy.mockRestore()
+  })
+
+  it('注册关闭：记 enroll_closed', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    setConfig({ deviceAuthAllowFirstBind: false })
+
+    await registerDeviceCredential('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
+
+    expect(eventsOf(spy)).toContain('"kind":"enroll_closed"')
+    spy.mockRestore()
+  })
+
+  it('事件里的 ts 是 ISO 字符串（聚合侧要按它排区间）', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await resolveOwnerDeviceId(undefined, undefined)
+
+    const line = eventsOf(spy)
+      .split('\n')
+      .find((l) => l.includes('[auth-event]'))
+    const parsed = JSON.parse((line || '').replace(/^\[auth-event\] /, ''))
+    expect(parsed.kind).toBe('missing_identity')
+    expect(new Date(parsed.ts).toISOString()).toBe(parsed.ts)
+    spy.mockRestore()
+  })
+})

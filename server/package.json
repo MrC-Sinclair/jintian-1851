@@ -25,7 +25,9 @@
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "check-models": "tsx --env-file=.env server/scripts/check-models.ts",
-    "cost-report": "tsx server/scripts/llm-cost-report.ts"
+    "cost-report": "tsx server/scripts/llm-cost-report.ts",
+    "auth-report": "tsx server/scripts/auth-report.ts",
+    "auth:revoke": "tsx server/scripts/revoke-credential.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.106",

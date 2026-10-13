@@ -956,7 +956,56 @@ x-device-id: {设备指纹}
 | 429 | `RATE_LIMITED` | 超 `auth` 桶 5 次/分钟 |
 | 500 | `DB_ERROR` | 数据库写入失败 |
 
-> 前端 `ensureCredential()` 对 409/403 会停止重试（`enrollmentBlocked`），对网络失败与 429 保留下次重试。
+> 前端侧：`ensureCredential()` 对 409/403 停止重试（`enrollmentBlocked`），网络失败与 429 保留下次重试；
+> 存档请求遇 401 `INVALID_DEVICE_TOKEN` 时由 `withCredentialRetry()` **清本地凭据并重试一次**
+> （重注册成功→新凭据；被判已绑定→空凭据回落 `deviceId` 兼容通道）。
+> ⚠ 服务端对路由级 `createError` 的响应体把业务错误嵌在顶层 `data` 下，前端 `unwrapErrorEnvelope()` 负责拆包，
+> 否则 `code` 一律读成 `INVALID_RESPONSE`，上述两条分支都不会生效。
+
+### 鉴权事件日志与运维
+
+每次属主裁决与注册裁决都输出**一行 JSON**（与 `[llm-usage]` 同一取向：不落库、不引常驻服务）：
+
+```
+[auth-event] {"ts":"2026-10-14T00:00:00.000Z","kind":"owner_by_compat","device":"11111111"}
+```
+
+| `kind` | 含义 | 对应 HTTP |
+|---|---|---|
+| `owner_by_token` | 带有效凭据，属主由凭据反查 | 放行 |
+| `owner_by_compat` | 无凭据、按客户端自声明的 `deviceId` 放行（兼容期残余） | 放行 + `[auth-compat]` |
+| `invalid_token` | 带了凭据但查不到/已吊销，**不降级** | 401 |
+| `token_required` | 收紧后无凭据 | 401 |
+| `missing_identity` | 既无凭据也无 `deviceId` | 400 |
+| `enrolled` / `enroll_exists` / `enroll_closed` | 首绑成功 / 重复注册被拒 / 注册已关闭 | 200 / 409 / 403 |
+
+`device` 只记 **前 8 位掩码**（完整标识不落盘，与 `[auth-compat]` 同一条纪律）；
+`invalid_token`/`missing_identity` 手上没有可信标识，该字段为空串。
+
+聚合与收紧闸门（兼容期观察、cron 可直接按退出码报警）：
+
+```bash
+docker logs --since 24h jintian-api 2>&1 | pnpm auth-report
+docker logs --since 24h jintian-api 2>&1 | pnpm auth-report --fail-if-compat   # 未归零退 2
+```
+
+- `兼容通道占比 = owner_by_compat / (owner_by_token + owner_by_compat)`，**分母只算成功裁决**。
+- 退出码：0 正常 / 1 用法或输入错误（含一行都没解析到，免得把"抓日志失败"读成"零流量"）/ 2 兼容通道未归零。
+- 三态判据：`resolved`（可收紧）/ `pending`（还有兼容流量）/ `no_data`（窗口内没有成功裁决样本）。
+  **`no_data` 不等于归零**，`--fail-if-compat` 下同样退 2。
+
+吊销设备凭据（`revoked_at` 的唯一写入路径，语义见 [db-schema.md](db-schema.md)）：
+
+```bash
+pnpm auth:revoke <deviceId> --dry-run   # 先看状态
+DATABASE_URL=... pnpm auth:revoke <deviceId>
+```
+
+> ⚠️ **兼容期吊销 ≠ 断访问**：吊销只让凭据失效，存档行按设计留存。未置
+> `DEVICE_AUTH_ENFORCED=true` 时，被吊销设备会「401 → 清本地凭据 → 重注册被 409 拒 →
+> 回落 `deviceId` 自声明通道」，**仍能读写自己的存档**。真要阻断须先收紧，或另行删除其存档行。
+> 脚本执行后会把这一点打进输出。
+> 本地跑须显式给 `DATABASE_URL`（脚本故意不做兜底连接串，免得拿默认串连到别的库去写）。
 
 ---
 

@@ -205,8 +205,8 @@
 
 - [ ] 清缓存 / 换浏览器 = 丢凭据且无法找回，本方案不解（需 openid 级真实身份，见 #7 域名提案）
 - [ ] 「首个声明者可为未注册 deviceId 抢绑」的窗口只能靠步骤 6 关闭，不能靠凭据本身消除
-- [ ] 未做吊销管理入口（`revoked_at` 列已留，但没有运营接口/CLI）
-- [ ] 未做 `[auth-compat]` 之外的鉴权指标（谁在走旧通道、401 分布），可与 #8 CI/可观测性提案合并考虑
+- [x] 吊销入口已做（2026-10-14，见第 11 节）：`pnpm auth:revoke <deviceId> [--dry-run]`
+- [x] `[auth-compat]` 之外的鉴权指标已做（2026-10-14，见第 11 节）：`[auth-event]` + `pnpm auth-report`
 
 ## 10. 真库端到端探针（补单元测试的空白：Drizzle 链式调用在单测里全是 mock）
 
@@ -227,3 +227,36 @@
 
 探针数据已清理（删 1 存档 / 1 记忆行 / 5 凭据行），库回到探针前状态 `2 saves / 23 memories / 0 credentials`；
 临时探针脚本与 `drizzle/` generate 产物均已删除（项目只用 push，不保留迁移文件）。
+
+## 11. 吊销入口 + 鉴权事件观测（2026-10-14，第 5 步收紧的另一块前置）
+
+形态选择：运维**脚本**而非 HTTP 管理接口。理由记在这儿免得日后翻案——Caddy 把 `/api/*` 全部反代给 app，
+挂一个带长期密钥的吊销接口等于在公网放一个「能封掉任意玩家凭据」的入口，漏一次密钥就是事故；
+而项目本就没有任何管理接口先例（运维能力全在 `server/scripts/*.ts`）。
+指标同样**不常驻**：沿用 `[llm-usage]` 的单行 JSON + 离线聚合，不引 Prometheus/statsd，也不动 `/api/health`
+（那里只有 `status/db/uptimeSec/probeMs` 四个字段且有测试白名单，塞计数器会把语义搞混）。
+
+改动清单：
+
+- [x] `server/utils/auth-event.ts`（新）：`logAuthEvent(kind, deviceIdHint)` + 8 种 kind + `maskDeviceId`
+- [x] `server/utils/device-auth.ts`：`resolveOwnerDeviceId` 四条分支与 `registerDeviceCredential` 三条分支全部留痕；
+      `[auth-compat]` 原样保留（上线手册按它 grep，不能换）
+- [x] `server/scripts/lib/revoke.ts` + `server/scripts/revoke-credential.ts`（`pnpm auth:revoke`）：
+      条件更新（`WHERE device_id=? AND revoked_at IS NULL`）不先查后改；`--dry-run`；幂等；
+      缺 `DATABASE_URL` 直接退 1（**不做兜底连接串**，免得拿默认串连到别的库去写）
+- [x] `server/scripts/lib/auth-report.ts` + `server/scripts/auth-report.ts`（`pnpm auth-report`）：
+      占比口径只算成功裁决；`--fail-if-compat` 三态里 `pending` 与 `no_data` 都退 2（**没样本≠已归零**）；
+      一行都没解析到时退 1（不把「抓日志失败」读成「零流量」）
+- [x] 文档：`docs/API.md` 新增「鉴权事件日志与运维」（kind 表、聚合命令、退出码、吊销语义警告），
+      并把前端 401 自愈与 `createError` 信封拆包补进 device-credential 小节；
+      `docs/db-schema.md` 的 `revoked_at` 行补了唯一写入路径与兼容期限制（**表结构未变，不需 `db:push`**）
+- [x] 单测：`tests/unit/auth-report.test.ts`(11) + `tests/unit/revoke-credential.test.ts`(8) +
+      `tests/unit/device-auth.test.ts` 增 7 例（每条分支的事件、掩码、权威值优先于声明值、ts 可排区间）
+- [x] 门禁：server 的 `lint` / `typecheck` / `test:unit`(23 文件 245 例) / `test:api`(12 文件 142 例) 全绿
+
+**未做的**：这批改动只在仓库里，**没有部署到线上**（线上 `.output` 仍是 2026-10-13 那版，不会打
+`[auth-event]`）。发后端后要做的第一件事是拿真日志跑一次 `auth-report` 验证口径，别直接信 `--fail-if-compat`
+的 0/2——没有事件行时它退 1，而 1 在 cron 里容易被当成「脚本坏了」而不是「还没数据」。
+
+**语义上要盯的一条**：吊销在兼容期只是「降级到 deviceId 自声明」，不是封禁。脚本输出与三份文档都写明了，
+但真有人按下去时会不会读到，取决于他是否看 stdout —— 若日后做面板，这个提醒要做成二次确认而不是脚本文案。

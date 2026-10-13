@@ -27,6 +27,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { deviceCredentials } from '../db/schema'
+import { logAuthEvent } from './auth-event'
 
 /** 凭据请求头名（与前端 utils/device-credential.ts 约定一致） */
 export const DEVICE_TOKEN_HEADER = 'x-device-token'
@@ -67,6 +68,7 @@ export function generateDeviceSecret(): string {
 export async function registerDeviceCredential(deviceId: string): Promise<RegisterResult> {
   const config = useRuntimeConfig()
   if (config.deviceAuthAllowFirstBind === false) {
+    logAuthEvent('enroll_closed', deviceId)
     return {
       ok: false,
       statusCode: 403,
@@ -84,6 +86,7 @@ export async function registerDeviceCredential(deviceId: string): Promise<Regist
 
   if (!row) {
     // 含两种情况：正常重复注册（冒领）/ 该设备已被吊销。两者都不再发凭据。
+    logAuthEvent('enroll_exists', deviceId)
     return {
       ok: false,
       statusCode: 409,
@@ -92,6 +95,7 @@ export async function registerDeviceCredential(deviceId: string): Promise<Regist
     }
   }
 
+  logAuthEvent('enrolled', deviceId)
   return { ok: true, deviceId, secret }
 }
 
@@ -119,7 +123,12 @@ export async function resolveOwnerDeviceId(
       )
       .limit(1)
 
-    if (cred) return { ok: true, deviceId: cred.deviceId, via: 'token' }
+    if (cred) {
+      logAuthEvent('owner_by_token', cred.deviceId)
+      return { ok: true, deviceId: cred.deviceId, via: 'token' }
+    }
+    // 反查落空时手上只有坏凭据，没有可记的标识（device 字段留空）
+    logAuthEvent('invalid_token')
     return {
       ok: false,
       statusCode: 401,
@@ -130,6 +139,7 @@ export async function resolveOwnerDeviceId(
 
   // 无凭据：收紧后直接拒绝
   if (config.deviceAuthEnforced === true) {
+    logAuthEvent('token_required', declaredDeviceId)
     return {
       ok: false,
       statusCode: 401,
@@ -142,10 +152,12 @@ export async function resolveOwnerDeviceId(
   if (declaredDeviceId) {
     // 只记前 8 位：deviceId 本身是敏感标识，日志不该把它完整落盘
     console.log(`[auth-compat] deviceId=${declaredDeviceId.slice(0, 8)}*** 走无凭据旧通道`)
+    logAuthEvent('owner_by_compat', declaredDeviceId)
     return { ok: true, deviceId: declaredDeviceId, via: 'legacy' }
   }
 
   // 兼容期且什么都没声明：维持原 INVALID_PARAMS 语义（老客户端漏传参数）
+  logAuthEvent('missing_identity')
   return {
     ok: false,
     statusCode: 400,

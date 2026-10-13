@@ -65,6 +65,29 @@
 - **WHEN** 无凭据且无 `deviceId`
 - **THEN** 返回 400 + `INVALID_PARAMS`（保持改造前的缺参语义）
 
+### Requirement: 吊销入口与鉴权事件观测
+系统 SHALL 提供 `revoked_at` 的写入路径与可判读的鉴权事件流，使「能不能收紧」有数据依据、
+「拉黑一台设备」有可执行动作；两者都不引入常驻服务或新密钥。
+
+#### Scenario: 每次裁决留一行结构化事件
+- **WHEN** 发生属主裁决（成功或失败）或注册裁决（成功/已存在/已关闭）
+- **THEN** 输出一行 `[auth-event] {"ts":ISO,"kind":...,"device":<前8位掩码>}`（与 `[llm-usage]` 同一取向：不落库、不引常驻服务）
+- **AND** `device` 只允许前 8 位；`invalid_token`/`missing_identity` 无可信标识时为空串
+- **AND** 兼容通道额外保留既有的 `[auth-compat]` 人读日志（上线手册按它 grep，不能换掉）
+
+#### Scenario: 聚合出兼容占比与 401 分布
+- **WHEN** 把容器日志管道给 `pnpm auth-report`
+- **THEN** 得到 `兼容通道占比 = owner_by_compat / (owner_by_token + owner_by_compat)`（**分母只算成功裁决**）与按 kind 的计数
+- **AND** 一行 `[auth-event]` 都没解析到时退 1，不得把「抓日志失败」当「零流量」
+- **AND** `--fail-if-compat` 下：仍有兼容流量或**没有成功裁决样本**都退 2（`no_data` 不等于已归零）
+
+#### Scenario: 吊销一台设备
+- **WHEN** 运维执行 `pnpm auth:revoke <deviceId> [--dry-run]`
+- **THEN** 以 `UPDATE ... WHERE device_id = ? AND revoked_at IS NULL` 条件写入（不做先查后改），幂等退出
+- **AND** `deviceId` 非 UUID / 缺 `DATABASE_URL` / 该设备无凭据行 → 退 1，且不回落任何兜底连接串
+- **AND** 输出必须说明真实效果：兼容期内该设备会退回 `deviceId` 自声明通道，**仍能读写自己的存档**；
+  要阻断须先置 `DEVICE_AUTH_ENFORCED=true` 或另行删除其存档行
+
 ## MODIFIED Requirements
 
 ### Requirement: 上传存档接口

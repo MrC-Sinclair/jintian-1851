@@ -148,7 +148,7 @@ LIMIT 1;
 |---|---|---|---|---|
 | `device_id` | `text` | `PRIMARY KEY` | — | 与 `game_saves.device_id` 同值；主键即「一个 deviceId 只能绑定一次」的约束载体 |
 | `secret_hash` | `text` | `NOT NULL UNIQUE` | — | `sha256(明文凭据)` 十六进制。**库里不存明文**：凭据只在注册响应里下发一次 |
-| `revoked_at` | `timestamptz` | `NULL` | `NULL` | 非空即已吊销（拉黑单设备），凭据校验与注册都按「未吊销」过滤 |
+| `revoked_at` | `timestamptz` | `NULL` | `NULL` | 非空即已吊销（拉黑单设备），凭据校验与注册都按「未吊销」过滤。写入路径只有一个：`pnpm auth:revoke <deviceId>`（条件更新，幂等）。⚠ 兼容期只封凭据：被吊销设备会退回 `deviceId` 自声明通道继续读写自己的存档，须先置 `DEVICE_AUTH_ENFORCED=true` 才真正阻断（详见 [API.md 鉴权事件日志与运维](API.md#鉴权事件日志与运维)） |
 | `created_at` | `timestamptz` | `NOT NULL` | `NOW()` | 首绑时间 |
 
 ### 索引
