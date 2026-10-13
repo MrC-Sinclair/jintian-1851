@@ -51,6 +51,13 @@ export default defineNuxtConfig({
     //   - enforced=true ：收紧，所有存档读写必须带有效 x-device-token
     //   - allowFirstBind=false：关闭新设备注册，收窄「抢注未绑定 deviceId」的窗口
     deviceAuthEnforced: process.env.DEVICE_AUTH_ENFORCED === 'true',
-    deviceAuthAllowFirstBind: process.env.DEVICE_AUTH_ALLOW_FIRST_BIND !== 'false'
+    deviceAuthAllowFirstBind: process.env.DEVICE_AUTH_ALLOW_FIRST_BIND !== 'false',
+
+    // 备份新鲜度（/api/health 的 backup 字段）：
+    //   - 状态文件由 deploy/backup-db.sh 每次运行时落，容器只读挂载所在目录
+    //   - 留空即"未配置"，健康端点报 disabled 且不报警（开发期默认）
+    // 阈值默认 30 小时：cron 是每日 03:17，留 6 小时余量避免"每天最后几小时误报 stale"
+    backupStatusFile: process.env.NUXT_BACKUP_STATUS_FILE || '',
+    backupMaxAgeHours: Number(process.env.NUXT_BACKUP_MAX_AGE_HOURS || 30) || 30
   }
 })

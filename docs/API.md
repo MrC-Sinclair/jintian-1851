@@ -131,13 +131,13 @@ GET /api/health
 DB 可用（HTTP 200）：
 
 ```json
-{ "ok": true, "data": { "status": "ok", "db": "up", "uptimeSec": 1834, "probeMs": 3 } }
+{ "ok": true, "data": { "status": "ok", "db": "up", "uptimeSec": 1834, "probeMs": 3, "backup": "fresh", "backupAgeHours": 2.4 } }
 ```
 
 DB 不可用（HTTP 503）：
 
 ```json
-{ "ok": false, "data": { "status": "degraded", "db": "down", "uptimeSec": 12, "probeMs": 3001 } }
+{ "ok": false, "data": { "status": "degraded", "db": "down", "uptimeSec": 12, "probeMs": 3001, "backup": "stale", "backupAgeHours": 55.0, "backupDetail": "距上次成功备份 55 小时，超过阈值 30 小时" } }
 ```
 
 | 字段 | 类型 | 说明 |
@@ -146,6 +146,15 @@ DB 不可用（HTTP 503）：
 | `db` | `up` / `down` | `select 1` 是否在 3 秒内成功 |
 | `uptimeSec` | number | 进程运行秒数，用于判断是否刚重启过 |
 | `probeMs` | number | DB 探针耗时（毫秒）。接近 3000 说明库在超时边缘，即使仍返回 up 也值得关注 |
+| `backup` | `fresh` / `stale` / `missing` / `invalid` / `disabled` | 每日备份的新鲜度，读 `NUXT_BACKUP_STATUS_FILE` 指向的状态文件（由 [deploy/backup-db.sh](file:///d:/code/codeWork/jintian-1851/deploy/backup-db.sh) 每次运行时落）。`disabled`=未配置路径（开发期默认），`missing`=配了但文件不在，`invalid`=文件不是合法 JSON 或时间格式不合 ISO 8601 |
+| `backupAgeHours` | number \| null | 距**上次成功**备份的小时数；算不出时为 null |
+| `backupDetail` | string（仅异常时出现） | 一句话诊断，含最近一次失败原因。刻意不含路径与凭据 |
+
+> ⚠️ **备份状态不参与 HTTP 状态码与 `ok`**：`deploy/docker-compose.deploy.yml` 里 caddy 是
+> `depends_on: app: condition: service_healthy`，让"备份过期"返 503 会让 app 容器转 unhealthy，
+> 之后任何一次 `compose up` 都会因为等不到 healthy 而把**静态站一起卡住** —— 备份坏了反而让站点起不来。
+> 所以备份故障只体现为 `backup` 字段；监控要判备份必须读字段，不能只看 200 / `ok:true`。
+> 阈值由 `NUXT_BACKUP_MAX_AGE_HOURS` 控制（默认 30，cron 是每日 03:17，留 6 小时余量避免误报）。
 
 响应体刻意不含环境变量、连接串、版本号等信息。
 
@@ -153,6 +162,7 @@ DB 不可用（HTTP 503）：
 
 `deploy/docker-compose.deploy.yml` 的 app 服务 healthcheck 要求 **HTTP 200 且响应体 `ok === true`**，
 `timeout: 10s` 必须大于服务端 3s 的 DB 探针超时，否则「慢」会被 Docker 误判成「死」。
+探活**不检查 `backup` 字段**（理由见上），人工排查时才需要看它。
 
 ---
 

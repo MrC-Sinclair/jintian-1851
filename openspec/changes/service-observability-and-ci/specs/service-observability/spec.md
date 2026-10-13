@@ -23,7 +23,48 @@
 
 #### Scenario: 响应体不泄漏环境信息
 - **WHEN** 任意调用方请求 `/api/health`
-- **THEN** 响应字段仅有 `status`/`db`/`uptimeSec`/`probeMs`，不含连接串、环境变量、版本号
+- **THEN** 响应字段仅有 `status`/`db`/`uptimeSec`/`probeMs`/`backup`/`backupAgeHours`
+      （异常时多一个 `backupDetail`），不含连接串、环境变量、版本号、文件路径
+
+### Requirement: 备份失败必须可被探活发现
+`backup-db.sh` 每次运行 SHALL 把结果落到状态文件，`GET /api/health` SHALL 读取并输出
+`backup`（`fresh` / `stale` / `missing` / `invalid` / `disabled`）与 `backupAgeHours`；
+该状态 MUST NOT 改变 HTTP 状态码与 `ok` 字段。
+
+#### Scenario: 为什么不能让它影响状态码
+- **WHEN** 备份连续失败超过阈值
+- **THEN** `/api/health` 仍返回 200 + `ok:true`，只是 `backup=stale`
+- **AND** 理由：caddy 服务是 `depends_on: app: condition: service_healthy`，
+      让备份故障返 503 会把 app 容器打成 unhealthy，之后任何一次 `compose up`
+      都会因为等不到 healthy 而**把静态站一起卡住** —— 备份坏了不该让站点起不来，
+      两个故障不能互相掩盖
+
+#### Scenario: 新鲜与过期
+- **WHEN** `lastSuccessAt` 距现在不超过 `NUXT_BACKUP_MAX_AGE_HOURS`（默认 30）
+- **THEN** `backup=fresh`，`backupAgeHours` 为小时数（保留 1 位）
+- **WHEN** 超过阈值，或 `lastSuccessAt` 为 null（从未成功过一次）
+- **THEN** `backup=stale`；「从未成功」时 `backupAgeHours` 为 null 而不是 0
+
+#### Scenario: 连续失败不得抹掉上次成功时间
+- **WHEN** 某次备份失败
+- **THEN** 状态文件的 `lastSuccessAt` 保留上一次成功的时间，只更新 `ok=false` / `lastAttemptAt` / `error`
+- **AND** 否则 ageHours 会从"很久没成功"退化成"从未成功"，把排查方向带偏
+
+#### Scenario: 最近一次失败但仍在阈值内
+- **WHEN** `ok=false` 而 `lastSuccessAt` 仍然新鲜
+- **THEN** `backup=fresh` 且 `backupDetail` 带出失败原因
+- **AND** 不能因为"今天还新鲜"就把连续失败藏起来
+
+#### Scenario: 状态文件本身坏了要能看出来
+- **WHEN** 配了路径但文件不存在 → `missing`；不是合法 JSON / 不是对象 / 缺 `ok` 或 `lastAttemptAt`
+      / 时间不是 ISO 8601 的 `Z` 或 `±HH:MM` 形式 → `invalid`
+- **THEN** 均返回 200 + 对应 `backup` 值，不抛异常（容器每 20s 探一次，报错会刷屏）
+- **AND** 拒绝 `+0800` 这类无冒号偏移：`Date.parse` 会按读方本地时区解释，
+      同一字符串在不同机器上算出不同时刻，静默算错年龄比直接报错危险
+
+#### Scenario: 未配置即关闭
+- **WHEN** `NUXT_BACKUP_STATUS_FILE` 为空（开发期默认）
+- **THEN** `backup=disabled`、`backupAgeHours=null`，不做任何判定也不报警
 
 ### Requirement: 健康端点的路径与豁免
 `/api/health` SHALL 位于 `/api/` 前缀下（Caddy 只反代 `/api/*`，裸 `/health` 会被静态站点的

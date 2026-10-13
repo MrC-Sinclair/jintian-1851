@@ -14,10 +14,16 @@
  *
  * 不会引发重启风暴：compose 里没有 autoheal 之类的东西，unhealthy 只是状态标记；
  * 且 `depends_on: condition: service_healthy` 只作用于启动顺序。
+ *
+ * 另外输出备份新鲜度（`backup` / `backupAgeHours`，见 utils/backup-status.ts）：
+ * cron 的失败过去只体现在退出码与 backup.log 里，没人读。这里把它变成探活即可见的状态，
+ * 但**不参与状态码**——caddy 依赖本容器 healthy，让备份故障返 503 会把静态站一起卡住。
  */
 
 import { sql } from 'drizzle-orm'
+import { readFile } from 'node:fs/promises'
 import { db } from '../db'
+import { evaluateBackupStatus } from '../utils/backup-status'
 
 /**
  * DB 探针超时（毫秒）。必须明显小于容器 healthcheck 的 timeout，
@@ -65,6 +71,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const probeMs = Date.now() - startedAt
+  const backup = await readBackupVerdict()
 
   if (!dbUp) {
     setResponseStatus(event, 503)
@@ -75,7 +82,8 @@ export default defineEventHandler(async (event) => {
         status: 'degraded',
         db: 'down',
         uptimeSec: uptimeSeconds(),
-        probeMs
+        probeMs,
+        ...backupFields(backup)
       }
     }
   }
@@ -86,7 +94,43 @@ export default defineEventHandler(async (event) => {
       status: 'ok',
       db: 'up',
       uptimeSec: uptimeSeconds(),
-      probeMs
+      probeMs,
+      ...backupFields(backup)
     }
   }
 })
+
+/**
+ * 读备份状态文件并判定新鲜度
+ *
+ * 读失败（不存在 / 无权限 / IO 错）一律归入判定函数的 `raw=null` 分支，
+ * 让「备份从没跑过」和「备份跑失败了」都是可观测状态，而不是 500。
+ */
+async function readBackupVerdict(): Promise<ReturnType<typeof evaluateBackupStatus>> {
+  const config = useRuntimeConfig()
+  const file = (config.backupStatusFile as string | undefined) || ''
+  const maxAgeHours = Number(config.backupMaxAgeHours)
+
+  let raw: string | null = null
+  if (file) {
+    try {
+      raw = await readFile(file, 'utf8')
+    } catch {
+      raw = null
+    }
+  }
+  return evaluateBackupStatus({ configured: !!file, raw, nowMs: Date.now(), maxAgeHours })
+}
+
+/**
+ * 备份状态字段
+ *
+ * ⚠ 刻意不影响 HTTP 状态码与 `ok`：caddy 的 `depends_on: app: condition: service_healthy`
+ * 会让 503 把整个静态站的启动卡住（备份坏 ≠ 服务死）。监控要判备份，就读 `backup` 字段，
+ * 别只看 200 / ok:true。
+ */
+function backupFields(v: ReturnType<typeof evaluateBackupStatus>): Record<string, unknown> {
+  const out: Record<string, unknown> = { backup: v.state, backupAgeHours: v.ageHours }
+  if (v.detail) out.backupDetail = v.detail
+  return out
+}

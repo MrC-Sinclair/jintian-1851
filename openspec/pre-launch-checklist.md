@@ -23,8 +23,13 @@
 - [x] 验证接口可达 → 已新增 `GET /api/health`（真查 DB，不可用返 503），
       容器 healthcheck 改为「HTTP 200 且响应体 `ok===true`」。实测：DB 正常 200 / `probeMs=1ms`；
       DB 不可达 503 + `db:"down"`，同款探活命令退 1（会正确翻 unhealthy）
-- [ ] 备份/健康告警接线：`/api/health` 与 `pnpm cost-report --daily-limit` 的退出码都可作 cron 报警钩子，
-      **尚未接**（当前 cron 只跑备份，失败无人知晓）
+- [x] 备份失败**变成可观测状态**：`backup-db.sh` 每次运行落 `backups/health-status.json`，
+      `GET /api/health` 读出 `backup`（fresh/stale/missing/invalid/disabled）与 `backupAgeHours`。
+      刻意**不让它影响状态码**：caddy `depends_on: app: service_healthy`，备份过期返 503 会让
+      整站起不来（备份坏了 ≠ 服务死，两个故障不能互相掩盖）
+- [ ] 推送通道仍未接：cron 的失败退出码、`/api/health` 的 `backup=stale`、`cost-report` 退 2
+      三处都只有"可被查"，没有"主动通知"。且宿主机上没有 node/tsx，
+      `cost-report` 类聚合脚本目前**无法在服务器上运行**（要么装依赖，要么让日志聚合在本机/CI 侧跑）
 - [x] 验证 SSE：`POST /api/game/generate-event?stream=1` 首包实测 **830ms / 1024ms**，
       单次生成收到 68–72 个 delta 帧后给出完整事件对象；缓存命中 140ms
 - [ ] ~~微信开发者工具关闭「不校验合法域名」后请求成功~~ → 同上，随小程序接入一并搁置
@@ -60,7 +65,10 @@
       只验证「能备份」而不验证「能恢复」的备份等于没有备份
 - [ ] ⚠️ **未解决的局限**：备份与数据库在**同一块系统盘**上，整机丢失 / 误删卷会同时带走数据和备份。
       真正可靠需要以下任一：腾讯云 COS 异地转储、CVM 自动快照策略、或独立云硬盘挂载给 `/root/jintian/backups`
-- [ ] 备份尚未纳入任何监控：cron 连续失败不会有人知道（`backup.log` 需人工查看）
+- [x] 备份已可被探活发现：`backup-db.sh` 每次运行都落 `backups/health-status.json`，
+      `GET /api/health` 据此输出 `backup` / `backupAgeHours`（阈值 `NUXT_BACKUP_MAX_AGE_HOURS`，默认 30h）。
+      cron 连续失败不再只藏在 `backup.log` 里 —— 但仍是"查得到"而不是"有人被通知"，
+      见本节开头那条未勾项
 
 > ⚠️ 踩坑记录（务必保留）：`server/db/index.ts` 读 `process.env.DATABASE_URL`、
 > `server/utils/embeddings.ts` 读 `process.env.OPENAI_API_KEY`，而 **runtimeConfig 不会反向写回

@@ -76,6 +76,45 @@
 ## 5. 遗留（本提案未覆盖，另议）
 
 - [ ] cron 报警通道（备份失败、health 转 unhealthy、cost-report 退 2 三处都只有退出码，无人接收）
+      → **备份这一路已在 2026-10-14 改成可观测**（见第 6 节），但仍是"查得到"不是"被通知"；
+      cost-report 那条更麻烦：宿主机上既没有 node 也没有 tsx，脚本压根跑不起来
+
+## 6. 备份失败可被探活发现（2026-10-14）
+
+出发点仍然是那句：**没有监控系统，能自动发现故障的信号面只有容器状态**。备份 cron 的失败
+只体现在退出码和 `backups/backup.log` 里，没人读日志 = 没有告警。把它搬进 `/api/health`
+的字段，任何一次探活（人 curl / 将来的监控 / 事后回看）都能撞到。
+
+- [x] `deploy/backup-db.sh`：每次运行落 `backups/health-status.json`
+      （`{ok, lastAttemptAt, lastSuccessAt, file, bytes, error}`，先写 `.tmp` 再 `mv`，
+      免得 health 每 20s 读到半截 JSON）。`--list` / `--restore` 不参与判定
+- [x] **顺手修掉一个真实缺口**：原来写的是 `pg_dump | gzip`，管道退出码取最后一个命令，
+      pg_dump 失败被 gzip 的成功盖掉，只能靠体积猜、报成"字节过小"。dash 没有 `pipefail`，
+      所以改成「裸 SQL 落 `.part` → 单独 gzip → 两步各自判退出码」，失败信息终能说清是谁挂了
+- [x] `server/utils/backup-status.ts`（新，纯函数）+ `api/health.get.ts` 输出
+      `backup` / `backupAgeHours` / 异常时的 `backupDetail`
+- [x] `runtimeConfig.backupStatusFile`（`NUXT_BACKUP_STATUS_FILE`）与
+      `backupMaxAgeHours`（默认 30，cron 每日 03:17 留 6 小时余量）；compose 里以 `:-` 给默认值
+- [x] compose 的 app 服务新增只读挂载 `../backups:/data/backups:ro`
+      —— **挂目录不挂文件**：文件还不存在时 Docker 会在宿主路径上建一个同名目录，
+      备份脚本写不进去、health 永远读到一个目录，属于静默失效
+- [x] 关键设计：**备份状态不参与 HTTP 状态码**。caddy 是 `depends_on: app: service_healthy`，
+      让 stale 返 503 会让 app 转 unhealthy，之后 `compose up` 因为等不到 healthy 把整个静态站卡住
+      —— 备份坏了反而让站点起不来，比原问题更糟。DB 故障与备份过期同时发生时仍按 DB 走 503，
+      两个故障不互相掩盖
+- [x] 文档：`docs/API.md` 的 health 字段表与探活说明、`deploy/.env.example` 新增阈值项、
+      `openspec/pre-launch-checklist.md` 两条相关项改写为"可观测已做 / 推送通道未做"
+- [x] 单测：`tests/unit/backup-status.test.ts`（15 例：五种状态、阈值边界、失败保住上次成功、
+      时钟回拨算出负年龄仍 fresh、非法阈值回落 30 而不是"全都 stale"）
+      + `tests/api/health.test.ts` 增 5 例（disabled/missing/fresh/stale 不改状态码/两个故障并存）
+- [x] 用假 `docker` 命令把脚本在临时目录里真跑过：成功、pg_dump 失败、空产物、容器未运行、
+      `--list` 不改动状态文件，五个路径的退出码与 JSON 内容逐条核对
+      （测出的两处真问题：`+0800` 时间戳 `Date.parse` 按本地时区猜 → 脚本改落 UTC `Z`、
+      health 端点读到 `null` 会抛 TypeError → 加非对象守卫）
+- [ ] **未部署**：以上只进仓库。线上要生效需要 `pnpm build` + 上传 `.output` + 更新宿主机上的
+      `backup-db.sh` + `--force-recreate app`（挂载变了，必须重建容器才吃得到）
+- [ ] 推送通道仍未接。且要注意：宿主机没有 node/tsx，`cost-report` / `auth-report`
+      这类聚合脚本**当前无法在服务器上运行**，只能在本地或 CI 里跑
 - [ ] `advisor-briefing` 的 saveId 归因缺口
 - [ ] CI 未覆盖 Playwright e2e（需装浏览器 + 起 dev server；另有 `full-journey-real` /
       `faction-negotiation` / `free-action-faction-effects` 三条依赖真实后端与 AI key，

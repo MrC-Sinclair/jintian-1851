@@ -59,6 +59,12 @@ services:
     command: ["node", "server/index.mjs"]
     volumes:
       - ./dist/.output:/app:ro
+      # 备份状态文件（由 deploy/backup-db.sh 每次运行时落在此目录）。
+      # ⚠ 挂目录而不是挂单个文件：文件还不存在时 Docker 会在宿主路径上建一个**同名目录**，
+      #   结果备份脚本写不进去、健康端点永远读到一个目录 —— 静默失效且很难看出来。
+      # 该目录里的 .sql.gz 对本容器只是"多可读了一遍"：同一个容器本来就能直连这个库把它 dump 出来，
+      # 没有新增泄露面。
+      - ../backups:/data/backups:ro
     environment:
       # 运行时以 NUXT_ 前缀覆盖 runtimeConfig：
       # 构建时 nuxt.config 已把本机 .env 的值烘进默认值，
@@ -74,6 +80,11 @@ services:
       # 默认值刻意与开发期一致：兼容期开、注册开。收紧时机看 [auth-compat] 日志。
       NUXT_DEVICE_AUTH_ENFORCED: ${NUXT_DEVICE_AUTH_ENFORCED:-false}
       NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND: ${NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND:-true}
+      # 备份新鲜度：health 读这个文件判定 backup=fresh|stale|missing|invalid|disabled。
+      # 默认就开启（文件读不到时报 missing，仅是一个字段，不改状态码、不影响容器健康），
+      # 所以「装没装新版备份脚本」都不会让现有探活变红。
+      NUXT_BACKUP_STATUS_FILE: ${NUXT_BACKUP_STATUS_FILE:-/data/backups/health-status.json}
+      NUXT_BACKUP_MAX_AGE_HOURS: ${NUXT_BACKUP_MAX_AGE_HOURS:-30}
       # ⚠️ 同一批值还要以「无前缀」形式再给一遍：
       # server/db/index.ts 读的是 process.env.DATABASE_URL，server/utils/embeddings.ts 读的是
       # process.env.OPENAI_API_KEY —— runtimeConfig 不会反向写回 process.env，
