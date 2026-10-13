@@ -99,6 +99,32 @@ describe('POST /api/game/npc-actions（多 Agent）', () => {
     expect(res.data.failedFactionIds).toBeUndefined()
   })
 
+  it('首轮 reject（provider 空流）转无工具兜底轮，而不是丢掉该势力本回合', async () => {
+    // 复刻 AI SDK v5 的真实形态：recordedSteps 为 0 时 result 的 promise 被 **reject**，
+    // 不是返回空串（见 streamText 事件流 flush 分支）。旧写法里 `await result.text` 的异常
+    // 直接跳到外层 catch，把一次便宜的无工具补完整个跳过，该势力的行动就静默消失了。
+    streamTextMock.mockImplementationOnce(() => ({
+      text: Promise.reject(new Error('No output generated. Check the stream for errors.'))
+    }) as any)
+    streamTextMock.mockImplementationOnce((opts: any) => {
+      // 兜底轮必须不带 tools —— 没有工具可调，模型只能直接给结论
+      expect(opts.tools).toBeUndefined()
+      return {
+        text: Promise.resolve(
+          JSON.stringify({ action: '挑衅', description: '兜底结论', effects: { military: -2 } })
+        )
+      } as any
+    })
+    readBodyMock.mockResolvedValueOnce(makeBody([makeFaction('huai-jun', '淮军', -40)]))
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(res.data.actions).toHaveLength(1)
+    expect(res.data.actions[0].factionId).toBe('huai-jun')
+    expect(res.data.failedFactionIds).toBeUndefined()
+    expect(streamTextMock).toHaveBeenCalledTimes(2)
+  })
+
   it('NPC 决策差异化：敌对 vs 友好产生不同行动', async () => {
     mockSuccessByRelationship()
     readBodyMock.mockResolvedValueOnce(

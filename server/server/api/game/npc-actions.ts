@@ -256,13 +256,24 @@ async function runNpcAgent(
         })
     })
 
-    let fullText = await result.text
+    let fullText = ''
+    let generated: ModelMessage[] = []
+    try {
+      fullText = await result.text
+      if (!fullText.trim()) generated = (await result.response).messages
+    } catch (firstPassErr) {
+      // 这种情况 AI SDK 是 **reject promise**，不是返回空串：recordedSteps 为 0
+      // （provider 空流 / 中途出错）或 abort 时都走这里。原先异常直接跳到外层 catch，
+      // 把一次便宜的无工具补完整个跳过，于是该势力本回合的行动静默丢失。
+      // 单独留一条日志，便于区分「有对话但没文本」与「根本没产出」两种形态。
+      console.warn(`[npc-actions] NPC ${faction.name} 首轮未产出，转无工具兜底:`, firstPassErr)
+    }
 
-    // 末步兜底：预算被工具调用吃光时模型根本没输出文本。此时复用已含工具结果的对话，
-    // 但不再注册 tools —— 没有工具可调，模型只能直接给结论，比整轮重跑便宜且确定。
+    // 末步兜底：预算被工具调用吃光、或首轮根本没产出时，模型没有可用文本。
+    // 此时复用已含工具结果的对话（没有就只带原始 user 一轮），但不再注册 tools ——
+    // 没有工具可调，模型只能直接给结论，比整轮重跑便宜且确定。
     // 实测该形态下硅基流动接受「assistant(tool_calls)+tool」消息但不带 tools 参数。
     if (!fullText.trim()) {
-      const { messages: generated } = await result.response
       // response.messages 只含生成的 assistant/tool，不含 system 与原始 user，
       // 两者都要补回，否则请求里没有用户意图那一轮
       const forcedMessages: ModelMessage[] = [{ role: 'user', content: prompt }, ...generated]
