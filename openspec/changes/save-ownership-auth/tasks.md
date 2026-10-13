@@ -131,13 +131,45 @@
       风险面已核：注册失败时 `ensureCredential()` 返回空串并回落旧参数通道，
       `enrollmentBlocked` 只在服务端确定性判定（`CREDENTIAL_EXISTS` / `ENROLLMENT_CLOSED`）
       时置位，网络抖动与 429 会在下次同步重试 —— 最坏情况等于退回今天的行为。
-      **仍未验证的一环**：凭据全链路（注册拿 token → 带 `x-device-token` 读写存档）
-      没有对线上做过端到端探测，因为那要往线上写一行测试凭据再删。
-      要么由一次真实游玩覆盖，要么单独授权我做"注册→带token拉列表→删除该行"的自检。
+- [x] 3b. 线上凭据全链路自检（2026-10-13，已当场清理）：用一次性 UUID 调
+      `POST /api/game/device-credential` 注册 → 拿到 64 位凭据 → 带 `x-device-token`
+      请求存档端点，按凭据反查属主成功（不再走 `[auth-compat]`）→ 删除该凭据行。
+      复查 `device_credentials` 行数 = 0，`game_saves` 仍是 1 行 1 属主，线上无残留。
+- [x] 3c. 401 自愈已实现并顺带修掉一个静默失效（见第 8.5 节）
 - [ ] 4. 观察 `[auth-compat]` 日志直至归零（`grep '\[auth-compat\]'`，容器 stdout）
+      当前读数（2026-10-13，`--since 24h`）：2 条。
 - [ ] 5. 置 `NUXT_DEVICE_AUTH_ENFORCED=true` 关掉无凭据旧通道
 - [ ] 6. 确认无新设备需要首绑后置 `NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND=false` 收窄抢注窗口
 - [ ] 7. 两个开关都收紧后，删除前端 `ownerParam()` 回落与三处 query `deviceId` 兜底
+
+## 8.5 收紧前必须补的两个洞（步骤 5 的前置，已完成）
+
+- [x] **401 不自愈 = 玩家被 brick**：服务端对「带了无效 `x-device-token`」直接 401
+      `INVALID_DEVICE_TOKEN`，**不**回落兼容通道（回落只留给"根本没带凭据"的老客户端）。
+      本地凭据一旦被运维删行 / 将来做吊销 / 收紧意外弄脏，客户端会永远带着同一个坏凭据，
+      存档读写彻底卡死。`device-id.ts` 的 `clearDeviceCredential()` 此前**零调用点**，就是这块缺口。
+      修法：`game-web/src/utils/device-credential.ts` 新增 `withCredentialRetry()`
+      —— 仅对 `INVALID_DEVICE_TOKEN` 清缓存并重试一次（重注册成功→新凭据；
+      被判已绑定→空串→调用方按 `ownerParam` 回落），第二次再失败照抛，不循环。
+      5 个存档调用点全部改走它：`useSaveList` 的 fetchList / fetchFullSave / deleteSave，
+      `useSaveSync` 的 sync GET 与 uploadLocal POST。
+      POST 重试安全性已核：`sync-save.ts` 的 `resolveOwnerDeviceId` 在
+      `INSERT ... ON CONFLICT` 之前裁决，401 时写入尚未发生，故不会重复写。
+- [x] **前端读不到服务端错误码**（本次发现的真 bug，波及面比自愈更大）：
+      路由用 `createError({ data: { ok:false, error:{…} } })` 返回时，H3/Nitro 序列化把
+      约定的业务错误体**嵌在顶层 `data` 下**，而 `api.ts` 只认顶层 `ok` → 一律退化成
+      `ApiError('INVALID_RESPONSE')`，`code` 永远是错的。线上实测已确认
+      （401 响应体：`{statusCode:401, statusMessage:'INVALID_DEVICE_TOKEN', data:{ok:false, error:{…}}}`）。
+      后果：`register()` 里 `err.code === 'CREDENTIAL_EXISTS' | 'ENROLLMENT_CLOSED'` 的
+      `enrollmentBlocked` 分支在生产上从未生效过 —— 已绑定的设备每次同步都白撞一次 409。
+      修法：`api.ts` 加 `unwrapErrorEnvelope()`，中间件直出（顶层 `ok`）与 createError 嵌套
+      两种形态都归一到 `ApiError.code`；`docs/API.md`「响应格式」补了两种封装的说明。
+      未采信的替代方案：改服务端全部 `return` 而非 `createError`（要动 11 个路由 + 一批断言
+      `res.data.error.code` 的 API 测试，收益不抵风险）。
+- [x] 验证：`game-web` 的 `pnpm lint` / `typecheck` / `test:unit`(483) / `test:component`(354) 全绿；
+      新增 5 例 `withCredentialRetry` + 4 例信封拆包单测。`tests/unit/use-save-{list,sync}.test.ts`
+      原先只 mock `ensureCredential`，调用点改走后 mock 拦不住（17 例失败），已改为同时透传
+      `withCredentialRetry`，401 重试语义仍由 `device-credential.test.ts` 专测。
 
 ## 9. 遗留（另议）
 

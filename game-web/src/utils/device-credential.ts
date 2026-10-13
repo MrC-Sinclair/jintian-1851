@@ -14,7 +14,12 @@
  */
 
 import { ApiError, post } from './api'
-import { getDeviceCredential, getDeviceId, setDeviceCredential } from './device-id'
+import {
+  clearDeviceCredential,
+  getDeviceCredential,
+  getDeviceId,
+  setDeviceCredential
+} from './device-id'
 
 interface RegisterResponse {
   deviceId: string
@@ -41,6 +46,32 @@ export async function ensureCredential(): Promise<string> {
     pending = null
   })
   return pending
+}
+
+/**
+ * 带凭据执行一次存档请求，凭据失效时自愈一次。
+ *
+ * 为什么必须有：服务端对「带了无效 x-device-token」是直接 401 `INVALID_DEVICE_TOKEN`，
+ * **不会**回落到兼容通道（回落只留给"根本没带凭据"的老客户端）。而本地凭据可能因为
+ * 运维删行、日后做吊销、或收紧过程中的意外而失效 —— 不清本地缓存的话，客户端会一直
+ * 带着同一个坏凭据，存档读写彻底卡死且无法自愈。收紧（`DEVICE_AUTH_ENFORCED=true`）
+ * 之后没有兼容通道可退，这个缺口就会把玩家 brick 在"同步失败"上。
+ *
+ * 清掉后重试一次，两种结果都是恢复：
+ *   - 服务端已无此行 → 重新注册拿到新凭据；
+ *   - 行还在（本端凭据被吊销）→ 注册返回 CREDENTIAL_EXISTS，`ensureCredential()`
+ *     给出空串，调用方按 `ownerParam` 回落兼容通道。
+ * 只重试一次：第二次再失败就照抛，绝不循环打服务端。
+ */
+export async function withCredentialRetry<T>(call: (token: string) => Promise<T>): Promise<T> {
+  const token = await ensureCredential()
+  try {
+    return await call(token)
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.code !== 'INVALID_DEVICE_TOKEN') throw err
+    clearDeviceCredential()
+    return call(await ensureCredential())
+  }
 }
 
 /**

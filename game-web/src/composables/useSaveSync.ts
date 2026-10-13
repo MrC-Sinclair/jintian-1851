@@ -15,14 +15,14 @@
  *   - 全程 isSyncing 守卫，禁止重复点击
  *   - 失败 toast.error 不影响本地，isSyncing 必须在 catch 重置
  *   - POST body 不含 updatedAt（strict 模式拒绝）
- *   - 属主由 `ensureCredential()` 拿到的设备凭据证明（x-device-token 头）；
+ *   - 属主由 `withCredentialRetry()` 带上的设备凭据证明（x-device-token 头，失效时自愈一次）；
  *     body 里的 deviceId 只是存档内容快照，服务端不再拿它当权限凭证
  */
 
 import { computed } from 'vue'
 import { useGameStore } from '@/stores/game'
 import { ApiError, get, post } from '@/utils/api'
-import { ensureCredential, ownerParam } from '@/utils/device-credential'
+import { ownerParam, withCredentialRetry } from '@/utils/device-credential'
 import { loadSave, saveSave } from '@/utils/storage'
 import type { EndedReason, GameSave } from '@/types/game'
 
@@ -83,12 +83,13 @@ export function useSaveSync(options: UseSaveSyncOptions = {}) {
 
     try {
       // 1. 查询云端状态（属主由设备凭据证明；凭据拿不到才回落成 query 里的 deviceId）
-      const token = await ensureCredential()
       // 不用 URLSearchParams：小程序端无此全局对象（跨端兼容）
       let cloud: SyncSaveGetResponse | null = null
       try {
-        cloud = await get<SyncSaveGetResponse>(
-          `/api/game/sync-save?saveId=${encodeURIComponent(localSave.saveId)}${ownerParam(token, localSave.deviceId)}`
+        cloud = await withCredentialRetry((token) =>
+          get<SyncSaveGetResponse>(
+            `/api/game/sync-save?saveId=${encodeURIComponent(localSave.saveId)}${ownerParam(token, localSave.deviceId)}`
+          )
         )
       } catch (err) {
         if (err instanceof ApiError && err.statusCode === 404) {
@@ -165,7 +166,11 @@ export function useSaveSync(options: UseSaveSyncOptions = {}) {
       endedAt: localSave.endedAt,
       endedReason: localSave.endedReason
     }
-    const res = await post<SyncSavePostResponse>('/api/game/sync-save', savePayload)
+    // 凭据失效时自愈一次。401 发生在属主裁决阶段、写入尚未发生，
+    // 所以这里重试同一个 POST 不会造成重复写入
+    const res = await withCredentialRetry(() =>
+      post<SyncSavePostResponse>('/api/game/sync-save', savePayload)
+    )
 
     // 用服务端权威 updatedAt 写回本地
     const updated: GameSave = {

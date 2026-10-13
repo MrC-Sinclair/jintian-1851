@@ -40,7 +40,15 @@ vi.mock('../../src/utils/device-credential', async () => {
   const actual = await vi.importActual<typeof import('../../src/utils/device-credential')>(
     '../../src/utils/device-credential'
   )
-  return { ...actual, ensureCredential: credentialMocks.ensureCredential }
+  return {
+    ...actual,
+    ensureCredential: credentialMocks.ensureCredential,
+    // 调用点已改走 withCredentialRetry，它内部调的是同模块真 ensureCredential，
+    // 只 mock 前者拦不住。这里只做「取凭据 → 执行」的透传，
+    // 401 清缓存重试的语义由 tests/unit/device-credential.test.ts 专门覆盖。
+    withCredentialRetry: async <T>(call: (token: string) => Promise<T>): Promise<T> =>
+      call(await credentialMocks.ensureCredential())
+  }
 })
 
 // ====================== mock storage ======================

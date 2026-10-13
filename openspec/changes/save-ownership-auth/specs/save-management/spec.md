@@ -3,8 +3,9 @@
 ## ADDED Requirements
 
 ### Requirement: 前端凭据换取与兼容回落
-前端 SHALL 在执行任何云端存档操作前 `await ensureCredential()`：本地已有凭据直接用，
+前端 SHALL 在执行任何云端存档操作前经 `withCredentialRetry()` 取得设备凭据：本地已有凭据直接用，
 没有则用 `deviceId` 注册换取并持久化；换取失败**不阻断**操作，回落到兼容通道。
+存档的 5 个调用点（列表 / 拉全量 / 删除 / 同步 GET / 上传 POST）一律走该包装，不得直接调 `ensureCredential()`。
 
 #### Scenario: 首次换取
 - **WHEN** 本地存储无 `game_device_token`
@@ -18,6 +19,18 @@
 #### Scenario: 被拒后停止重试
 - **WHEN** 服务端返回 409 `CREDENTIAL_EXISTS` 或 403 `ENROLLMENT_CLOSED`
 - **THEN** 标记 blocked，本次会话不再重试；网络失败与 429 **不**标记（下次仍试）
+
+#### Scenario: 凭据失效后自愈（收紧的前置条件）
+- **WHEN** 存档请求返回 401 `INVALID_DEVICE_TOKEN`（本地凭据被删行 / 被吊销 / 收紧意外弄脏）
+- **THEN** SHALL 清除本地凭据并**只重试一次**：重注册成功则带新凭据，被判已绑定则带空凭据回落兼容通道
+- **AND** 第二次仍失败时照原样抛出，不得循环打服务端
+- **AND** 非 `INVALID_DEVICE_TOKEN` 的错误（429 / 网络抖动 / 并发守卫）不自愈、不清本地凭据
+- **WHY** 服务端对"带了坏凭据"不回落兼容通道，不自愈会把玩家永久卡在同步失败上
+
+#### Scenario: 服务端错误码必须可读
+- **WHEN** 路由以 `createError()` 返回业务错误，响应体形如 `{statusCode, statusMessage, data:{ok:false, error:{…}}}`
+- **THEN** `utils/api.ts` SHALL 拆掉 `data` 信封，把 `error.code` 归一为 `ApiError.code`
+- **AND** 中间件直出的顶层 `{ok:false, error:{…}}` 形态同样支持；两种都不含 `ok` 时仍判 `INVALID_RESPONSE`
 
 #### Scenario: 有凭据时不再在 URL 声明 deviceId
 - **WHEN** `ensureCredential()` 返回非空
