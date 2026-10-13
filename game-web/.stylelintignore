@@ -8,3 +8,7 @@ test-results/
 # 自动生成的文件
 src/manifest.json
 src/pages.json
+
+# src/uni.scss 不再忽略：忽略它的理由是「需独立 postcss-scss 处理」，而 postcss-scss
+# 已声明为直接依赖、stylelint.config.js 的 overrides 也对 **/*.scss 指定了 customSyntax，
+# 实测该文件 0 违规（见对应 commit），所以没有继续屏蔽的依据。
