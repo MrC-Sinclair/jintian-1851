@@ -80,5 +80,6 @@
 - [ ] CI 未覆盖 Playwright e2e（需装浏览器 + 起 dev server；另有 `full-journey-real` /
       `faction-negotiation` / `free-action-faction-effects` 三条依赖真实后端与 AI key，
       接进 CI 前要先决定它们怎么跑或怎么标退）
-- [ ] CI 未覆盖 `build`（game-web `build:h5` 与 server `nuxi build` 本地退 0，runner 上未验）
+- [x] CI 已覆盖 `build`：game-web 跑 `build:h5`、server 跑 `nuxi build`（`6250cb7`）。
+      runner 实测：game-web job 85s、server job 39s 均 success，job 名已同步带上 / build
 - [ ] 长期成本趋势需要落库或接 Loki/Prometheus；当前设计只保证日志格式可被直接消费
