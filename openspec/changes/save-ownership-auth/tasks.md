@@ -18,7 +18,10 @@
         `server/.env` 指向 5534，即本仓库开发时连的一直就是它
       - 执行后复核：`game_saves` 仍 2 行、`faction_memories` 仍 23 行（未受影响）
       - 回滚方式（如需）：`DROP TABLE device_credentials;`
-- [ ] 未做：线上 CVM 执行同一迁移（同样只需 `CREATE TABLE device_credentials` + 唯一索引）
+- [x] 线上 CVM 已执行同一迁移（2026-10-13）：只跑 `CREATE TABLE device_credentials` +
+      唯一索引这 2 条（`drizzle-kit generate` 出来的文件含**全部四张表**，虽然都是
+      `IF NOT EXISTS`，但索引名若与线上不同会给已有表造重复索引，故手工摘取）。
+      线上表清单复验：device_credentials / faction_memories / game_events / game_saves ✓
 
 ## 2. 服务端：凭据与属主解析
 
@@ -106,9 +109,20 @@
 
 ## 8. 迁移与收紧（本提案未覆盖，需按序执行）
 
-- [x] 1. 开发库建表已完成（见第 1 节）；**线上 CVM 库仍需执行同一 `CREATE TABLE`**
-- [ ] 2. **先发后端**（兼容期：`ENFORCED=false`、`ALLOW_FIRST_BIND=true`），老客户端行为不变
-- [ ] 3. 再发前端（新客户端开始注册换凭据）
+- [x] 1. 开发库与线上库均已建表（线上于 2026-10-13 执行，见第 2 节）
+- [x] 2. **后端已上线**（2026-10-13，走兼容期：线上不设 `NUXT_DEVICE_AUTH_*`，
+      即 `enforced=false` / `allowFirstBind=true`，与代码默认一致，所以没改任何 env）。
+      发布方式：本机 `pnpm build` → 上传 `/root/jintian/deploy/dist/.output`
+      （原地解包覆盖，不 `rm -rf`，避开 bind-mount inode 陷阱）→
+      `up -d --force-recreate app`。上线后实测三件：
+      ① 老客户端形态（`x-device-id` 头 + query `deviceId`）返回 200 `{"saves":[]}`；
+      ② 容器日志出现 `[auth-compat] deviceId=legacy-p*** 走无凭据旧通道` 且自动打码；
+      ③ `/api/health` ok、`db: up`、api 内存 41MiB/512MiB。
+      回滚副本：`/root/jintian/deploy/dist/.output.bak-20261013`（发布前 cp -a 留的）。
+      另记一条：既无 token 又无 `deviceId` 的请求由 `resolveOwnerDeviceId` 拒为
+      400 `INVALID_PARAMS`（消息「缺少 x-device-token 请求头或 deviceId 参数」），
+      新老客户端都不会撞上，属预期。
+- [ ] 3. 再发前端（新客户端开始注册换凭据）——**本次未做**，所以线上仍无真实设备走凭据通道
 - [ ] 4. 观察 `[auth-compat]` 日志直至归零（`grep '\[auth-compat\]'`，容器 stdout）
 - [ ] 5. 置 `NUXT_DEVICE_AUTH_ENFORCED=true` 关掉无凭据旧通道
 - [ ] 6. 确认无新设备需要首绑后置 `NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND=false` 收窄抢注窗口
