@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   server:
-    name: server (lint / typecheck / unit / api)
+    name: server (lint / typecheck / unit / api / build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -57,8 +57,13 @@ jobs:
       - name: API tests
         run: pnpm test:api
 
+      # 构建产物也要过 CI：typecheck 通过不代表 vite/nitro 打包通过
+      # （依赖解析、SSR 水合期外的编译错误只有 build 才暴露）
+      - name: Build
+        run: pnpm build
+
   game-web:
-    name: game-web (lint / typecheck / unit / component)
+    name: game-web (lint / typecheck / unit / component / build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -94,6 +99,10 @@ jobs:
       - name: Component tests
         run: pnpm test:component
 
+      # H5 构建（game-web 没有裸 build 脚本，build:h5 是等价门禁项）
+      - name: Build
+        run: pnpm build:h5
+
   # 规格校验：openspec 不是任一子项目的依赖，本地是 npm 全局安装的 @fission-ai/openspec，
   # 所以这里用 npx --yes 拉同一版本（1.5.0，与本地一致）跑校验。
   # --all 覆盖 specs/ 全部 canonical spec 与 changes/ 全部在途提案；--strict 要求
@@ -118,8 +127,8 @@ jobs:
 #   Branch name pattern: main
 #   勾选 Require a pull request before merging
 #   勾选 Require status checks to pass before merging，搜索并添加：
-#     server (lint / typecheck / unit / api)
-#     game-web (lint / typecheck / unit / component)
+#     server (lint / typecheck / unit / api / build)
+#     game-web (lint / typecheck / unit / component / build)
 #     openspec (validate --all --strict)
 #   （job 的 name 就是 status check 名，改了 name 要同步改这里的勾选）
 # 命令行等价操作（需 gh 认证，且属于改动共享状态，请人工确认后再执行）：
