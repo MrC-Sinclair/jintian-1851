@@ -6,7 +6,10 @@ import { test, expect, type Page } from '@playwright/test'
  * 覆盖流程：首页 → 开局（身份+势力）→ 进入 game-main → 打开自由行动输入
  *   → 填入指向「关系最友好势力」的决策 → 提交 → 断言「势力动向」反馈区出现且含关系变化。
  *
- * 依赖真实 SiliconFlow LLM（server/.env 已配置），resolve-decision 会返回 factionEffects。
+ * 依赖真实 SiliconFlow LLM（server/.env 已配置）。注意 resolve-decision **不保证**返回
+ * factionEffects：实测出现过 `"factionEffects":[]` 的轮次（模型这次没做势力微调），
+ * 那时按契约就不该渲染反馈区。这种模型输出的不确定性用软跳过表达
+ * （同 faction-negotiation.spec.ts 的写法），不把它当成代码失败。
  *
  * 交互范式参考 full-journey-real.spec.ts：
  *   - uni-app H5 下 Playwright 用 locator.click() 可稳定触发 view 的 @click；
@@ -76,9 +79,21 @@ test('自由行动影响势力关系与实力（浏览器端到端）', async ({
   // 8. 提交自由行动（原生 click 触发 onSubmitFreeInput → makeDecision）
   await mouseClick(page, '.game-main__btn--primary')
 
-  // 9. 断言决策应用后，「势力动向」反馈区出现并包含关系变化（自由行动对势力的软性微调）
+  // 9. 决策应用后「势力动向」反馈区应出现并含关系变化（自由行动对势力的软性微调）。
+  //    但真实 LLM 可能这轮就返回 factionEffects: []（实测出现过），按契约此时不渲染反馈区，
+  //    属于模型输出的不确定性 → 软跳过，不判成代码失败。
   const feedback = page.locator('.game-main__faction-feedback')
-  await expect(feedback).toBeVisible({ timeout: 60000 })
+  const appeared = await feedback
+    .waitFor({ state: 'visible', timeout: 60_000 })
+    .then(() => true)
+    .catch(() => false)
+
+  if (!appeared) {
+    // 同一条契约的另一半：没有 factionEffects 就必须不渲染，而不是渲染个空壳
+    await expect(feedback).toHaveCount(0)
+  }
+  test.skip(!appeared, 'resolve-decision 本轮未返回 factionEffects（真实 LLM 行为），无势力微调可断言')
+
   await expect(page.locator('.game-main__faction-feedback-title')).toHaveText('势力动向')
   // 关系变化文本形如「关系 +15」
   await expect(page.locator('.game-main__faction-feedback-delta').first()).toContainText('关系')
