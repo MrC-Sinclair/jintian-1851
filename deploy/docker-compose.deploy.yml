@@ -18,6 +18,12 @@
 # 容器的 bind mount 仍指向已删除的旧 inode，结果是新产物完全不生效——
 # 表现为接口仍返回旧版本行为、静态站直接 404（两者都实测踩过）。
 # 更稳的做法是不删目录、原地 tar -xzf 覆盖，可避开 inode 问题。
+#
+# 版本台账（openspec 停用后，这里代替原先那份「线上对应哪个 commit」的记录）：
+#   2026-10-14  h5 = 4ea8fa5（决策失败文案不再一律报"网络连接失败"）
+#               .output = 4ebde06（advisor-briefing 用量日志带 saveId/turn），容器内 mtime 14:34
+#   回滚副本在服务器上（解包前 cp -a 留的）：
+#     dist/h5.bak-20261013 / dist/h5.bak-20261013-401fix / dist/h5.bak-20261014-toastfix
 
 name: jintian
 
