@@ -15,14 +15,14 @@
 import { useGameStore } from '@/stores/game'
 import { useGameState } from '@/composables/useGameState'
 import { useSSE } from '@/composables/useSSE'
-import { post, postWithMeta, ApiError } from '@/utils/api'
+import { post, postWithMeta, ApiError, TECHNICAL_ERROR_CODES } from '@/utils/api'
 import { calcOverallPower, checkEndConditions } from '@/utils/end-conditions'
 import { VICTORY_THRESHOLD } from '@/utils/constants'
 import { getCrisis, type Crisis } from '@/utils/goal-hint'
 import { calcAttributeShortfall } from '@/utils/attribute-shortfall'
 import { calcTurnYield } from '@/utils/turn-yield'
 import { calcBankruptcyPenalty, calcResourcePenalty } from '@/utils/resource-penalty'
-import { SYSTEM_EVENT } from '@/utils/copywriting'
+import { SYSTEM_EVENT, ERROR_TEXT } from '@/utils/copywriting'
 import type {
   Attributes,
   EventOption,
@@ -395,7 +395,12 @@ export function useTurn(options: UseTurnOptions = {}) {
       return null
     } catch (err) {
       // 自由输入解析失败（LLM/网络）→ 返回 null，UI 层据此反馈"决策未生效"
-      const msg = err instanceof ApiError ? err.message : '决策解析失败'
+      // 服务端裁决过的业务错误（如"这段行动描述无法判定后果"）message 已是玩家可读文案，直接透出；
+      // 客户端自造的技术码（NETWORK / INVALID_RESPONSE）message 是给开发者看的，归一成友好文案
+      const msg =
+        err instanceof ApiError && !TECHNICAL_ERROR_CODES.has(err.code)
+          ? err.message
+          : ERROR_TEXT.networkError
       options.onError?.('makeDecision', msg)
       return null
     } finally {

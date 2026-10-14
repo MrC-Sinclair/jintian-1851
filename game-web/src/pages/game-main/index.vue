@@ -433,7 +433,9 @@ const { startTurn, makeDecision, endTurn } = useTurn({
     if (stage === 'startTurn') {
       toast.error(ERROR_TEXT.startTurnFailed)
     } else if (stage === 'makeDecision') {
-      toast.error(ERROR_TEXT.networkError)
+      // useTurn 已把服务端裁决文案归一为玩家可读文本（技术码换成 networkError），
+      // 这里必须透出具体原因：固定成"网络连接失败"会误导玩家去查网络
+      toast.error(message || ERROR_TEXT.networkError)
     } else if (stage === 'endTurn') {
       toast.error(ERROR_TEXT.networkError)
     } else {

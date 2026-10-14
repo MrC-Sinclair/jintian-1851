@@ -39,6 +39,14 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 客户端自造的技术兜底码
+ *
+ * 这两个 code 的 message 是给开发者看的（'响应格式异常（HTTP 502）'），
+ * 不是服务端裁决过的玩家可读文案，UI 层展示前应替换成友好文案。
+ */
+export const TECHNICAL_ERROR_CODES: ReadonlySet<string> = new Set(['NETWORK', 'INVALID_RESPONSE'])
+
 /** 后端统一响应结构（成功） */
 interface SuccessResponse<T> {
   ok: true

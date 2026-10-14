@@ -20,6 +20,8 @@ import type { GameSave } from '../../src/types/game'
 vi.mock('@/utils/api', () => ({
   post: vi.fn(),
   postWithMeta: vi.fn(),
+  // 与 src/utils/api.ts 保持一致：这两类码的 message 是给开发者看的，UI 展示前要归一
+  TECHNICAL_ERROR_CODES: new Set(['NETWORK', 'INVALID_RESPONSE']),
   ApiError: class ApiError extends Error {
     code: string
     statusCode: number
@@ -44,7 +46,8 @@ vi.mock('@/utils/device-id', () => ({
   getDeviceId: () => 'test-device-id'
 }))
 
-import { post } from '@/utils/api'
+import { post, ApiError } from '@/utils/api'
+import { ERROR_TEXT } from '@/utils/copywriting'
 
 function createMockSave(): GameSave {
   return {
@@ -673,6 +676,36 @@ describe('makeDecision - 自由输入', () => {
     const effects = await makeDecision(undefined, '自由行动')
 
     expect(effects).toBeNull()
+  })
+
+  // 错误文案归一：UI 层会把 makeDecision 的 message 直接做成 toast，
+  // 服务端裁决过的业务码要透出原话，客户端自造的技术码不能把开发者措辞丢给玩家
+  it('自由输入失败文案：业务码透出服务端 message，技术码归一成友好文案', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    store.setEvent({
+      title: '事件',
+      description: '',
+      eventType: '随机',
+      options: [{ id: 'o1', label: '选项', effects: {} }]
+    })
+    const onError = vi.fn()
+
+    vi.mocked(post).mockRejectedValueOnce(
+      new ApiError('INVALID_DECISION', '这段行动描述无法判定后果', 400)
+    )
+    await useTurn({ onError }).makeDecision(undefined, '召集群臣密议')
+    expect(onError).toHaveBeenLastCalledWith('makeDecision', '这段行动描述无法判定后果')
+
+    vi.mocked(post).mockRejectedValueOnce(
+      new ApiError('INVALID_RESPONSE', '响应格式异常（HTTP 502）', 502)
+    )
+    await useTurn({ onError }).makeDecision(undefined, '召集群臣密议')
+    expect(onError).toHaveBeenLastCalledWith('makeDecision', ERROR_TEXT.networkError)
+
+    vi.mocked(post).mockRejectedValueOnce(new Error('非 ApiError 的意外异常'))
+    await useTurn({ onError }).makeDecision(undefined, '召集群臣密议')
+    expect(onError).toHaveBeenLastCalledWith('makeDecision', ERROR_TEXT.networkError)
   })
 
   it('自由输入超过 200 字自动截断', async () => {
