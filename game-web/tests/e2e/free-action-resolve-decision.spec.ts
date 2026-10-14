@@ -5,7 +5,7 @@ import { test, expect, type Page, Route } from '@playwright/test'
  *
  * 为什么补这个：现有 story-chain-flow / two-step-decision 都在**选项决策**路径上打桩，
  * 自由输入这条分支（点「自由行动」→ 描述想做的事 → resolve-decision 解析 effects +
- * factionEffects）在 CI 里没被端到端走过；而它有两个只靠单元测试盖不住的东西：
+ * factionEffects）在 CI 里没被端到端走过；而它有三个只靠单元测试盖不住的东西：
  *   1. 后端返回的 factionEffects 要经过 store 的 clamp（关系 ±20、实力 ±30）与
  *      面板/反馈区的渲染联动，属于跨层链路；
  *   2. 失败路径的错误体是 Nitro `createError` 的**嵌套信封**（业务错误在顶层 data 下），
@@ -13,6 +13,9 @@ import { test, expect, type Page, Route } from '@playwright/test'
  *      onError 要把这个 message 做成 toast —— 补这条测试时正是这里漏了一层：UI 把 makeDecision
  *      的文案固定覆盖成"网络连接失败"，玩家会去查自己断网，而实际是服务端告诉他"稍后再试"。
  *      这条在单测里是 mock，在 e2e 里才是真链路。
+ *   3. 后端 LLM 两次都失败时返回的是 `{ ok:true, fallback:true, effects:5 维各 -3 }`，
+ *      不是错误。前端要拿得到这个顶层标志（postWithMeta）并把它显示出来，且不能被随后的
+ *      「决策已应用」成功文案盖掉 —— 这层先后顺序只在真 UI 流程里才暴露得出来。
  *
  * 失败分支用 429 CONCURRENT_REQUEST 而不是随便编一个码：resolve-decision 路由里真实存在的
  * 4xx 只有 INVALID_PARAMS(400) 与并发锁(429)；LLM 两次都失败时它返回的是
@@ -346,5 +349,48 @@ test.describe('自由行动 resolve-decision（mock-backed，进 CI）', () => {
     const decision = (seen[0] as { playerDecision: string }).playerDecision
     expect(decision.length).toBe(200)
     expect(decision).toBe('银'.repeat(200))
+  })
+
+  // 后端 LLM 两次都失败时不报错，而是返回 { ok:true, fallback:true, effects:5 维各 -3 }
+  // （docs/API.md 降级表 + docs/ai-cost.md「模拟决策失误的惩罚」）。这条钉的是：
+  // 降级必须让玩家看见，且不能被随后那条「决策已应用」的成功文案盖掉。
+  test('5. 后端降级（fallback:true）：默认效果照常结算，但提示不能是"决策已应用"', async ({ page }) => {
+    const seen: Record<string, unknown>[] = []
+    await stubAmbientApis(page)
+    await page.route('**/api/game/resolve-decision', (route: Route) => {
+      seen.push(route.request().postDataJSON() as Record<string, unknown>)
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            effects: { military: -3, economy: -3, politics: -3, people: -3, diplomacy: -3 },
+            factionEffects: []
+          },
+          fallback: true
+        })
+      })
+    })
+    await seedSaveAndEnterGame(page)
+
+    const silverBefore = await readResource(page, 0)
+    await typeFreeAction(page, '亲赴前线督战')
+    await submitFreeAction(page)
+
+    // 提示是降级文案，而不是"决策已应用"
+    const toastEl = page.locator('.toast')
+    await expect(toastEl).toBeVisible({ timeout: 10_000 })
+    await expect(toastEl).toContainText('此议无人能定论', { timeout: 10_000 })
+    await expect(toastEl).not.toContainText('决策已应用')
+
+    // 降级仍照常结算并推进回合：5 维各 -3、银两不动、进入已决策态
+    await expect(page.locator('.game-main__footer-btn--next')).toBeVisible({ timeout: 10_000 })
+    expect(await readResource(page, 0)).toBe(silverBefore)
+    const saved = await readPersistedSave(page)
+    expect(saved.state.attributes.military).toBe(57) // 60-3
+    expect(saved.state.attributes.politics).toBe(47) // 50-3
+    // 降级不带势力微调（后端此时返回 factionEffects:[]）
+    await expect(page.locator('.game-main__faction-feedback')).toHaveCount(0)
   })
 })

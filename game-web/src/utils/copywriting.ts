@@ -312,6 +312,11 @@ export const PAGE_TEXT = {
     freeActionCancel: '取消',
     freeActionSubmit: '提交',
     decisionApplied: '决策已应用',
+    /**
+     * 自由行动降级提示：后端 LLM 两次都没判出这条行动，改用默认效果（5 维各 -3）结算。
+     * 措辞要点玩家能听懂的两件事——① 这次不是按你写的内容判的，② 折损来自"无人定论"。
+     */
+    freeActionFallback: '此议无人能定论，暂按稳妥处置（各维略有折损）',
     factionEffectTitle: '势力动向',
     /** 处理中 spinner 兜底文案（选项决策等未设置具体阶段时显示） */
     processingFallback: '推演中…'

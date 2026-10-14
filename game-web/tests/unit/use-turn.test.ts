@@ -46,8 +46,18 @@ vi.mock('@/utils/device-id', () => ({
   getDeviceId: () => 'test-device-id'
 }))
 
-import { post, ApiError } from '@/utils/api'
+import { post, postWithMeta, ApiError } from '@/utils/api'
 import { ERROR_TEXT } from '@/utils/copywriting'
+
+/**
+ * 打桩 resolve-decision
+ *
+ * 自由行动走的是 postWithMeta（要拿顶层 fallback 标志），不是 post，
+ * 所以每个用到自由行动的用例都得从这里造返回值。
+ */
+function mockResolveDecision(data: unknown, fallback = false): void {
+  vi.mocked(postWithMeta).mockResolvedValueOnce({ data, fallback } as never)
+}
 
 function createMockSave(): GameSave {
   return {
@@ -575,7 +585,7 @@ describe('makeDecision - 自由行动推进剧情链', () => {
         { id: 'o2', label: '观望', effects: {} }
       ]
     })
-    vi.mocked(post).mockResolvedValueOnce({ effects: { military: 3 } })
+    mockResolveDecision({ effects: { military: 3 } })
 
     const { makeDecision } = useTurn()
     const effects = await makeDecision(undefined, '自行募兵抗敌')
@@ -604,7 +614,7 @@ describe('makeDecision - 自由行动推进剧情链', () => {
       chainProgress: { current: 5, total: 5 },
       options: [{ id: 'o1', label: '论功', effects: {} }]
     })
-    vi.mocked(post).mockResolvedValueOnce({ effects: { reputation: 5 } })
+    mockResolveDecision({ effects: { reputation: 5 } })
 
     const { makeDecision } = useTurn()
     await makeDecision(undefined, '抚恤阵亡将士')
@@ -623,7 +633,7 @@ describe('makeDecision - 自由行动推进剧情链', () => {
       eventType: '随机',
       options: [{ id: 'o1', label: '选项', effects: {} }]
     })
-    vi.mocked(post).mockResolvedValueOnce({ effects: { economy: 5 } })
+    mockResolveDecision({ effects: { economy: 5 } })
 
     const { makeDecision } = useTurn()
     await makeDecision(undefined, '兴修水利')
@@ -644,12 +654,12 @@ describe('makeDecision - 自由输入', () => {
       eventType: '随机',
       options: [{ id: 'o1', label: '选项', effects: {} }]
     })
-    vi.mocked(post).mockResolvedValueOnce({ effects: { politics: 8, people: -3 } })
+    mockResolveDecision({ effects: { politics: 8, people: -3 } })
 
     const { makeDecision } = useTurn()
     const effects = await makeDecision(undefined, '我要上书朝廷')
 
-    expect(post).toHaveBeenCalledWith(
+    expect(postWithMeta).toHaveBeenCalledWith(
       '/api/game/resolve-decision',
       expect.objectContaining({
         playerDecision: '我要上书朝廷',
@@ -670,7 +680,7 @@ describe('makeDecision - 自由输入', () => {
       eventType: '随机',
       options: [{ id: 'o1', label: '选项', effects: {} }]
     })
-    vi.mocked(post).mockRejectedValueOnce(new Error('LLM 失败'))
+    vi.mocked(postWithMeta).mockRejectedValueOnce(new Error('LLM 失败'))
 
     const { makeDecision } = useTurn()
     const effects = await makeDecision(undefined, '自由行动')
@@ -692,21 +702,67 @@ describe('makeDecision - 自由输入', () => {
     const onError = vi.fn()
 
     // 服务端裁决过的 429 并发锁（resolve-decision 真实会返回的失败）：message 玩家可读且可操作
-    vi.mocked(post).mockRejectedValueOnce(
+    vi.mocked(postWithMeta).mockRejectedValueOnce(
       new ApiError('CONCURRENT_REQUEST', '该存档有进行中的请求，请稍后', 429)
     )
     await useTurn({ onError }).makeDecision(undefined, '召集群臣密议')
     expect(onError).toHaveBeenLastCalledWith('makeDecision', '该存档有进行中的请求，请稍后')
 
-    vi.mocked(post).mockRejectedValueOnce(
+    vi.mocked(postWithMeta).mockRejectedValueOnce(
       new ApiError('INVALID_RESPONSE', '响应格式异常（HTTP 502）', 502)
     )
     await useTurn({ onError }).makeDecision(undefined, '召集群臣密议')
     expect(onError).toHaveBeenLastCalledWith('makeDecision', ERROR_TEXT.networkError)
 
-    vi.mocked(post).mockRejectedValueOnce(new Error('非 ApiError 的意外异常'))
+    vi.mocked(postWithMeta).mockRejectedValueOnce(new Error('非 ApiError 的意外异常'))
     await useTurn({ onError }).makeDecision(undefined, '召集群臣密议')
     expect(onError).toHaveBeenLastCalledWith('makeDecision', ERROR_TEXT.networkError)
+  })
+
+  // 后端 LLM 两次都失败时返回 { ok:true, fallback:true, effects:5 维各 -3 }
+  // （docs/API.md 降级表 + docs/ai-cost.md「模拟决策失误的惩罚」）：效果照常结算，
+  // 但必须告知玩家这一笔不是按他写的行动判出来的，否则玩家以为自己的谋划真折了这些属性
+  it('后端降级（fallback:true）：默认效果照常结算并触发 onDecisionFallback', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    store.setEvent({
+      title: '事件',
+      description: '',
+      eventType: '随机',
+      options: [{ id: 'o1', label: '选项', effects: {} }]
+    })
+    const onDecisionFallback = vi.fn()
+    const onError = vi.fn()
+    mockResolveDecision(
+      { effects: { military: -3, economy: -3, politics: -3, people: -3, diplomacy: -3 } },
+      true
+    )
+
+    const { makeDecision } = useTurn({ onDecisionFallback, onError })
+    const effects = await makeDecision(undefined, '亲赴前线督战')
+
+    expect(effects).toEqual({ military: -3, economy: -3, politics: -3, people: -3, diplomacy: -3 })
+    expect(store.currentSave?.state.attributes.military).toBe(47) // 50-3
+    expect(onDecisionFallback).toHaveBeenCalledTimes(1)
+    // 降级不是错误：不该走 onError
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('正常判定（fallback:false）不触发 onDecisionFallback', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    store.setEvent({
+      title: '事件',
+      description: '',
+      eventType: '随机',
+      options: [{ id: 'o1', label: '选项', effects: {} }]
+    })
+    const onDecisionFallback = vi.fn()
+    mockResolveDecision({ effects: { military: 5 } })
+
+    await useTurn({ onDecisionFallback }).makeDecision(undefined, '整顿营务')
+
+    expect(onDecisionFallback).not.toHaveBeenCalled()
   })
 
   it('自由输入超过 200 字自动截断', async () => {
@@ -718,13 +774,13 @@ describe('makeDecision - 自由输入', () => {
       eventType: '随机',
       options: [{ id: 'o1', label: '选项', effects: {} }]
     })
-    vi.mocked(post).mockResolvedValueOnce({ effects: {} })
+    mockResolveDecision({ effects: {} })
 
     const { makeDecision } = useTurn()
     const longText = 'a'.repeat(300)
     await makeDecision(undefined, longText)
 
-    expect(post).toHaveBeenCalledWith(
+    expect(postWithMeta).toHaveBeenCalledWith(
       '/api/game/resolve-decision',
       expect.objectContaining({
         playerDecision: expect.stringMatching(/^a{200}$/)

@@ -104,6 +104,15 @@ export interface UseTurnOptions {
    */
   onBriefing?: (briefing: AdvisorBriefing | null) => void
   /**
+   * 自由行动被后端降级时的通知回调
+   *
+   * 触发时机：resolve-decision 返回 `fallback:true` —— LLM 两次都没判出这次行动，
+   * 后端改用默认效果（5 维各 -3，见 docs/ai-cost.md「模拟决策失误的惩罚」）照常结算。
+   * 效果仍然应用、回合照常推进，但必须告诉玩家这一笔不是 AI 判出来的结果，
+   * 否则他会以为"我这条谋划真的折了这些属性"。
+   */
+  onDecisionFallback?: () => void
+  /**
    * 事件生成进度回调（流式，T6 优化）
    *
    * 网关慢实例上生成 300+ tokens 的事件要 40-60s，玩家只能干等。
@@ -364,15 +373,19 @@ export function useTurn(options: UseTurnOptions = {}) {
       }
 
       // 自由输入：调用 resolve-decision 让 LLM 解析 effects
+      // 用 postWithMeta 而非 post：顶层 fallback 标志要拿到（见 UseTurnOptions.onDecisionFallback）
       if (freeInput && freeInput.trim()) {
-        const res = await post<ResolveDecisionResponse>('/api/game/resolve-decision', {
-          saveId: s.saveId,
-          turn: s.state.turn,
-          playerDecision: freeInput.trim().slice(0, 200),
-          stateSnapshot: s.state,
-          event: evt,
-          factions: s.factions
-        })
+        const { data: res, fallback } = await postWithMeta<ResolveDecisionResponse>(
+          '/api/game/resolve-decision',
+          {
+            saveId: s.saveId,
+            turn: s.state.turn,
+            playerDecision: freeInput.trim().slice(0, 200),
+            stateSnapshot: s.state,
+            event: evt,
+            factions: s.factions
+          }
+        )
         // 资源/属性代价经 applyEffects 应用（与势力微调叠加）
         store.applyEffects(res.effects)
         // 自由行动对势力的软性微调（后端已 sanitize factionId ∈ factions）
@@ -389,6 +402,8 @@ export function useTurn(options: UseTurnOptions = {}) {
           console.error('[useTurn] 自由行动后保存失败:', err)
           options.onError?.('makeDecision', '本地保存失败，请检查存储空间')
         }
+        // 必须在 return 之前触发：game-main 靠这个标志决定弹「决策已应用」还是降级文案
+        if (fallback) options.onDecisionFallback?.()
         return res.effects
       }
 

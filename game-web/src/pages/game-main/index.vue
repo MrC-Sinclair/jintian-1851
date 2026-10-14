@@ -426,6 +426,15 @@ const { setBriefing: setAdvisorBriefing } = useAdvisor()
 /** 事件流式生成过程中已收到的文本（空串表示尚未收到或走的非流式） */
 const eventStreamText = ref('')
 
+/**
+ * 本次提交是否被判降级（后端 LLM 没判出来、按默认效果结算）
+ *
+ * 由 useTurn 的 onDecisionFallback 置位、onConfirmDecision 开头重置。
+ * 不在回调里直接弹 toast：makeDecision 返回后 UI 还要弹「决策已应用」，
+ * 两条会互相盖掉，玩家最终只看到成功文案，降级照样被吞掉。
+ */
+let decisionDegraded = false
+
 const { startTurn, makeDecision, endTurn } = useTurn({
   // T3.4：错误文案白话化（技术错误码 console.error 保留，不展示给玩家）
   onError: (stage, message) => {
@@ -441,6 +450,11 @@ const { startTurn, makeDecision, endTurn } = useTurn({
     } else {
       toast.error(ERROR_TEXT.networkError)
     }
+  },
+  // 自由行动被判降级（LLM 没判出来，后端按默认效果结算）：只记标志，
+  // 文案由 onConfirmDecision 与「决策已应用」二选一 —— 在这里直接弹 toast 会被后弹的成功文案盖掉
+  onDecisionFallback: () => {
+    decisionDegraded = true
   },
   onTurnEnd: () => {
     // T7.3 自动同步：检查 auto_sync 开关
@@ -729,6 +743,7 @@ async function onConfirmDecision(): Promise<void> {
 
   // 清空上次自由行动的势力变化反馈（避免与上回合残留混淆）
   store.clearLastFreeFactionEffects()
+  decisionDegraded = false
 
   let effects
   if (store.selectedOptionId) {
@@ -752,7 +767,13 @@ async function onConfirmDecision(): Promise<void> {
     decided.value = true
     showFreeInput.value = false
     // T2.3：文案集中管理（PAGE_TEXT.gameMain.decisionApplied）
-    toast.success(PAGE_TEXT.gameMain.decisionApplied)
+    // 降级时不能说"决策已应用"：后端这次是按默认效果（5 维各 -3）结算的，
+    // 不是按玩家写的行动判的，说"已应用"等于把无端折损算在玩家的谋划头上
+    if (decisionDegraded) {
+      toast.warning(PAGE_TEXT.gameMain.freeActionFallback)
+    } else {
+      toast.success(PAGE_TEXT.gameMain.decisionApplied)
+    }
   }
 }
 
