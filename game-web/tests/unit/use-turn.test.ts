@@ -691,11 +691,12 @@ describe('makeDecision - 自由输入', () => {
     })
     const onError = vi.fn()
 
+    // 服务端裁决过的 429 并发锁（resolve-decision 真实会返回的失败）：message 玩家可读且可操作
     vi.mocked(post).mockRejectedValueOnce(
-      new ApiError('INVALID_DECISION', '这段行动描述无法判定后果', 400)
+      new ApiError('CONCURRENT_REQUEST', '该存档有进行中的请求，请稍后', 429)
     )
     await useTurn({ onError }).makeDecision(undefined, '召集群臣密议')
-    expect(onError).toHaveBeenLastCalledWith('makeDecision', '这段行动描述无法判定后果')
+    expect(onError).toHaveBeenLastCalledWith('makeDecision', '该存档有进行中的请求，请稍后')
 
     vi.mocked(post).mockRejectedValueOnce(
       new ApiError('INVALID_RESPONSE', '响应格式异常（HTTP 502）', 502)

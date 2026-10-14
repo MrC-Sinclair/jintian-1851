@@ -11,8 +11,13 @@ import { test, expect, type Page, Route } from '@playwright/test'
  *   2. 失败路径的错误体是 Nitro `createError` 的**嵌套信封**（业务错误在顶层 data 下），
  *      前端 api.ts 的 unwrapErrorEnvelope 要真的把它还原成 ApiError.message，且 game-main 的
  *      onError 要把这个 message 做成 toast —— 补这条测试时正是这里漏了一层：UI 把 makeDecision
- *      的文案固定覆盖成"网络连接失败"，玩家会误以为是自己断网而不是行动被判无果。
+ *      的文案固定覆盖成"网络连接失败"，玩家会去查自己断网，而实际是服务端告诉他"稍后再试"。
  *      这条在单测里是 mock，在 e2e 里才是真链路。
+ *
+ * 失败分支用 429 CONCURRENT_REQUEST 而不是随便编一个码：resolve-decision 路由里真实存在的
+ * 4xx 只有 INVALID_PARAMS(400) 与并发锁(429)；LLM 两次都失败时它返回的是
+ * `{ ok:true, fallback:true, effects:FALLBACK_EFFECTS }`，不是错误（那条"降级不告知"的口子
+ * 是另一件事，本文件不覆盖）。
  *
  * 数值都是确定化的（不依赖 LLM）：effects={silver:-80, military:5} → 银两 1000→920、
  * military 60→65；factionEffects={relationshipDelta:6, powerDelta:-12} → 目标势力
@@ -24,7 +29,7 @@ const TARGET_FACTION_ID = 'f2'
 const TARGET_FACTION_NAME = '太平天国'
 
 interface FreeActionPlan {
-  /** true 时按线上 createError 的嵌套信封返回 400 */
+  /** true 时按线上 createError 的嵌套信封返回 429 CONCURRENT_REQUEST（resolve-decision 真实存在的失败分支） */
   fail: boolean
 }
 
@@ -134,17 +139,19 @@ async function stubResolveDecision(
   await page.route('**/api/game/resolve-decision', (route: Route) => {
     seen.push(route.request().postDataJSON() as Record<string, unknown>)
     if (plan.fail) {
+      // 与 server/api/game/resolve-decision.ts 的并发锁分支逐字对齐：
+      // createError({ statusCode:429, statusMessage:'CONCURRENT_REQUEST', data:{ok:false,error:{…}} })
       route.fulfill({
-        status: 400,
+        status: 429,
         contentType: 'application/json',
         body: JSON.stringify({
           error: true,
-          statusCode: 400,
-          statusMessage: 'INVALID_DECISION',
-          message: 'INVALID_DECISION',
+          statusCode: 429,
+          statusMessage: 'CONCURRENT_REQUEST',
+          message: 'CONCURRENT_REQUEST',
           data: {
             ok: false,
-            error: { code: 'INVALID_DECISION', message: '这段行动描述无法判定后果' }
+            error: { code: 'CONCURRENT_REQUEST', message: '该存档有进行中的请求，请稍后' }
           }
         })
       })
@@ -296,7 +303,7 @@ test.describe('自由行动 resolve-decision（mock-backed，进 CI）', () => {
     expect(target.status).toBe('active')
   })
 
-  test('3. 失败分支：createError 嵌套信封被还原成服务端 code/message，决策不生效且可重试', async ({ page }) => {
+  test('3. 失败分支：429 并发锁的 createError 嵌套信封被还原成服务端 message，决策不生效且可重试', async ({ page }) => {
     const seen: Record<string, unknown>[] = []
     const plan: FreeActionPlan = { fail: true }
     await stubAmbientApis(page)
@@ -307,8 +314,9 @@ test.describe('自由行动 resolve-decision（mock-backed，进 CI）', () => {
     await typeFreeAction(page, '召集群臣密议')
     await submitFreeAction(page)
 
-    // toast 必须显示服务端 message —— 只有信封拆包成功且 UI 不再覆盖文案才会
-    await expect(page.locator('.toast')).toContainText('这段行动描述无法判定后果', { timeout: 10_000 })
+    // toast 必须显示服务端原话（信封拆包 + UI 透出两层都成立才会是这句）：
+    // "请稍后"是可操作提示，覆盖成"网络连接失败"只会让玩家去查自己断网
+    await expect(page.locator('.toast')).toContainText('该存档有进行中的请求，请稍后', { timeout: 10_000 })
 
     // 决策未生效：没有已决策态、没扣银两、输入区还在（可改后再交）
     await expect(page.locator('.game-main__footer-btn--next')).toHaveCount(0)
