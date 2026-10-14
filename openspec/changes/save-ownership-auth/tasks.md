@@ -306,3 +306,32 @@
 - [auth-compat] 的历史读数随旧容器日志一起没了，见第 8 节步骤 4 的告警式说明。
 - 本轮为造事件发了两次**不写库**的请求（坏凭据 401、缺标识 400），没有新增凭据行；
   线上 `device_credentials` 仍是第 8.6 节那 3 行演练残留。
+
+## 13. 占比指标拿到第一批真样本（2026-10-14 10:28）
+
+样本是造的，但要紧的是**整条链在真线上跑得通**：注册一台一次性设备 → 带凭据请求 → 不带凭据
+只声明 deviceId 请求，日志里依次出现
+
+```
+[auth-event] {"ts":"…","kind":"enrolled","device":"47cb9917"}
+[auth-event] {"ts":"…","kind":"owner_by_token","device":"47cb9917"}
+[auth-compat] deviceId=47cb9917*** 走无凭据旧通道
+[auth-event] {"ts":"…","kind":"owner_by_compat","device":"47cb9917"}
+```
+
+聚合结果 `owner_by_token 1 / owner_by_compat 1 → 兼容通道占比 50.00%`，
+`--fail-if-compat` 退 **2**；只喂 401/400 那几行时退 **2 且明说"没有成功裁决样本"**（`no_data`
+不当作归零）；不加闸门时退 0。三种退出码都在真日志上复核过，不再只有合成用例。
+
+⚠️ **抄命令时容易踩的坑**（我自己先踩了一次）：
+
+```bash
+# 错：${PIPESTATUS[0]} 拿到的是 ssh 的退出码，永远是 0，闸门等于没生效
+ssh root@… 'docker logs --since 24h jintian-api 2>&1' | tr -d '\r' | pnpm tsx server/scripts/auth-report.ts; echo $?
+# 对：先落文件再喂 stdin，退出码才是脚本的
+ssh root@… 'docker logs --since 24h jintian-api 2>&1' > /tmp/api.log
+pnpm tsx server/scripts/auth-report.ts --fail-if-compat < /tmp/api.log; echo "exit=$?"
+```
+
+本轮线上留下的痕迹（都记账）：`device_credentials` 从 3 行变 **4 行**（新增 `47cb9917…`，
+该设备没有任何存档行，留着不影响玩家）；新容器的 `[auth-compat]` 计数从 0 变 1，同样是造的。
