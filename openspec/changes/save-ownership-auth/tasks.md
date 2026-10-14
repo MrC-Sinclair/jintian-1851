@@ -147,8 +147,15 @@
       `ssh root@… 'docker logs --since 24h jintian-api 2>&1' | pnpm tsx server/scripts/auth-report.ts`
 - [ ] 5. 置 `NUXT_DEVICE_AUTH_ENFORCED=true` 关掉无凭据旧通道
       前置已满足（8.5/8.6：自愈 + 错误码可读，且线上演练真跑过一次）。
-      仍建议先等 `[auth-compat]` 归零，否则收紧当天老玩家会读不到云端档
-      （不至于丢本地档，但要重新注册才能同步）。
+      ⚠️ 但 2026-10-14 清理残留时查到一个必须先看的事实：线上现存唯一一行存档属于
+      `2b545cbc-2494-4907-a92f-5e279a334cfc`，而它在 `device_credentials` 里**没有对应凭据**
+      （`left join` 得 `has_credential = f`）。收紧后这个玩家的下一次存档读写会直接 401。
+      缓解在于：前端 10-13 已全量发过带 `POST /device-credential` 的版本，且 Caddy 对
+      `index.html` 是 `no-cache`，所以**他只要打开过一次设置页或点过一次同步**，
+      `ensureCredential()` 就会自动补注册、自然解除。真正会被挡住的情形比较窄：
+      收紧那一刻正好在用旧标签页/离线状态、且之后没再触发过任何存档操作。
+      结论不是"不能收紧"，而是"收紧前得知道线上有 1 个存档属主尚无凭据"，
+      并优先选在低峰、且当天盯 `INVALID_DEVICE_TOKEN` 的 401 计数。
 - [ ] 6. 确认无新设备需要首绑后置 `NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND=false` 收窄抢注窗口
 - [ ] 7. 两个开关都收紧后，删除前端 `ownerParam()` 回落与三处 query `deviceId` 兜底
 
@@ -200,11 +207,15 @@
       这一次同时证伪了两个此前的空白：401 自愈分支真跑通了；409 能被识别为
       `CREDENTIAL_EXISTS`（即信封拆包在真线上生效，不是只有单测）。
       演练全程只调线上接口，没有直接写数据库。
-- [ ] **演练残留待清**：三轮演练各首绑了一个一次性 deviceId，线上 `device_credentials`
-      现为 3 行（`84c51b2a…` / `f58e5cfe…` / `b5fc22f9…`，演练前为 0）。这些浏览器上下文
-      已不存在，留着不影响玩家，但会污染「存量设备都已注册」的统计口径。清理要写线上库
-      （`DELETE FROM device_credentials WHERE device_id IN (…)`），需单独授权；
-      日后做吊销入口时应改为运营侧处理。
+- [x] **演练残留已清（2026-10-14 14:49）**：4 行一次性凭据（`84c51b2a…` / `f58e5cfe…` /
+      `b5fc22f9…` / `47cb9917…`）已从线上 `device_credentials` 删除，表回到 0 行。
+      做法不是裸 DELETE，而是：① 先跑一次 `backup-db.sh` 留一份删除前的 dump
+      （`jintian-2026-10-14-144952.sql.gz`，顺带把 health 的 backup 刷成 fresh）；
+      ② 事务内用临时表列出待删 4 个 UUID，先回显每台在 `game_saves` 里的属主行数
+      （必须全是 0）；③ `DELETE … WHERE device_id IN (…) AND device_id NOT IN (select device_id from game_saves)`
+      —— 守卫条件写进 SQL 本身，避免"手滑删到一个真有存档的设备"；④ 同一事务里复核
+      `creds=0 / saves=1` 后才 COMMIT。
+      事后功能验证：真实玩家的档仍能列出与读全量（`0895e6a3…` 太平天国/武将 第2回合，两个请求都 200）。
 
 ## 9. 遗留（另议）
 
@@ -334,4 +345,5 @@ pnpm tsx server/scripts/auth-report.ts --fail-if-compat < /tmp/api.log; echo "ex
 ```
 
 本轮线上留下的痕迹（都记账）：`device_credentials` 从 3 行变 **4 行**（新增 `47cb9917…`，
-该设备没有任何存档行，留着不影响玩家）；新容器的 `[auth-compat]` 计数从 0 变 1，同样是造的。
+该设备没有任何存档行）；新容器的 `[auth-compat]` 计数从 0 变 1，同样是造的。
+—— 这 4 行已于 14:49 按第 8.6 节末的做法清掉，表回到 0 行。
