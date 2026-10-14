@@ -111,10 +111,19 @@
       `--list` 不改动状态文件，五个路径的退出码与 JSON 内容逐条核对
       （测出的两处真问题：`+0800` 时间戳 `Date.parse` 按本地时区猜 → 脚本改落 UTC `Z`、
       health 端点读到 `null` 会抛 TypeError → 加非对象守卫）
-- [ ] **未部署**：以上只进仓库。线上要生效需要 `pnpm build` + 上传 `.output` + 更新宿主机上的
-      `backup-db.sh` + `--force-recreate app`（挂载变了，必须重建容器才吃得到）
+- [x] **已部署并线上实测**（2026-10-14 10:13）：`pnpm build` → 宿主机 `dist/.output.bak-20261014`
+      → 原地解包 → `up -d --force-recreate app`（挂载变了必须重建）。caddy 未重建、静态站无中断；
+      宿主机 `backup-db.sh` 与 `docker-compose.deploy.yml` 各留 `.bak-20261014` 副本。三条关键实测：
+      ① 状态文件还不存在时 health 报 `backup=missing` 但**仍是 200 且容器 healthy**
+        —— 「备份坏了不牵连站点」这条设计在线上成立，不是纸面推理；
+      ② 真跑一次脚本后 `{"backup":"fresh","backupAgeHours":0}`，落的是 UTC `Z` 时间戳；
+      ③ 容器内 `/data/backups/health-status.json` 与宿主机那份一致（只读挂载生效）。
+      逐条记录见 `save-ownership-auth/tasks.md` 第 12 节
 - [ ] 推送通道仍未接。且要注意：宿主机没有 node/tsx，`cost-report` / `auth-report`
-      这类聚合脚本**当前无法在服务器上运行**，只能在本地或 CI 里跑
+      这类聚合脚本**当前无法在服务器上运行**，只能在本地或 CI 里跑。已验证可用的形态：
+      `ssh root@… 'docker logs --since 24h jintian-api 2>&1' | pnpm tsx server/scripts/auth-report.ts`
+      —— 真日志实测：带不带 `--timestamps` 都能解析；窗口内只有 401/400、没有成功裁决时
+      `--fail-if-compat` 退 2 而不是退 0，「没样本」不会被当成「已归零」
 - [ ] `advisor-briefing` 的 saveId 归因缺口
 - [ ] CI 未覆盖 Playwright e2e（需装浏览器 + 起 dev server；另有 `full-journey-real` /
       `faction-negotiation` / `free-action-faction-effects` 三条依赖真实后端与 AI key，

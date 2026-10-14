@@ -137,9 +137,14 @@
       复查 `device_credentials` 行数 = 0，`game_saves` 仍是 1 行 1 属主，线上无残留。
 - [x] 3c. 401 自愈已实现并顺带修掉一个静默失效（见第 8.5 节）
 - [ ] 4. 观察 `[auth-compat]` 日志直至归零（`grep '\[auth-compat\]'`，容器 stdout）
-      当前读数（2026-10-13，`--since 24h`）：6 条 —— 其中 4 条是本次 401 自愈演练
-      （兼容回落那一次 GET）打出来的，不是真实玩家。**看趋势前先扣掉这 4 条**，
-      演练前读数是 2 条。
+      ⚠️ **2026-10-14 10:13 计数被清零了，不是归零**：当天为了上备份可观测做了
+      `--force-recreate app`，容器重建后 `docker logs` 只剩新容器的 3 行，之前的读数
+      （含 10-13 演练造成的 4 条）随旧日志流一起消失。明天谁 grep 到 0 条就以为"老客户端
+      走完了"，会据此误收紧 —— 这条必须写在观察项旁边。
+      现在改用 `pnpm auth-report`（聚合 `[auth-event]`，见第 12 节），它至少能区分
+      "没有样本"（no_data，退 2）和"真的归零"（resolved，退 0）。
+      宿主机没有 node/tsx，聚合命令要在本地跑：
+      `ssh root@… 'docker logs --since 24h jintian-api 2>&1' | pnpm tsx server/scripts/auth-report.ts`
 - [ ] 5. 置 `NUXT_DEVICE_AUTH_ENFORCED=true` 关掉无凭据旧通道
       前置已满足（8.5/8.6：自愈 + 错误码可读，且线上演练真跑过一次）。
       仍建议先等 `[auth-compat]` 归零，否则收紧当天老玩家会读不到云端档
@@ -254,9 +259,9 @@
       `tests/unit/device-auth.test.ts` 增 7 例（每条分支的事件、掩码、权威值优先于声明值、ts 可排区间）
 - [x] 门禁：server 的 `lint` / `typecheck` / `test:unit`(23 文件 245 例) / `test:api`(12 文件 142 例) 全绿
 
-**未做的**：这批改动只在仓库里，**没有部署到线上**（线上 `.output` 仍是 2026-10-13 那版，不会打
-`[auth-event]`）。发后端后要做的第一件事是拿真日志跑一次 `auth-report` 验证口径，别直接信 `--fail-if-compat`
-的 0/2——没有事件行时它退 1，而 1 在 cron 里容易被当成「脚本坏了」而不是「还没数据」。
+**未做的**：~~这批改动只在仓库里，没有部署到线上~~ → **2026-10-14 已随备份可观测那批一起上线**，
+真日志验证见第 12 节。留一句给后来人：拿 `--fail-if-compat` 的退出码当闸门之前，
+先确认窗口里确有成功裁决样本——没有事件行时脚本退 1，而 1 在 cron 里容易被当成「脚本坏了」。
 
 ### 11.1 真库 dry-run（2026-10-14，只读，未写线上）
 
@@ -277,3 +282,27 @@
 
 **语义上要盯的一条**：吊销在兼容期只是「降级到 deviceId 自声明」，不是封禁。脚本输出与三份文档都写明了，
 但真有人按下去时会不会读到，取决于他是否看 stdout —— 若日后做面板，这个提醒要做成二次确认而不是脚本文案。
+
+## 12. 后端上线与真日志验证（2026-10-14 10:13）
+
+这批 `.output` 同时带了 `[auth-event]` 埋点与备份新鲜度两件事。发布方式与 10-13 一致：
+本机 `pnpm build` → 备份 `/root/jintian/deploy/dist/.output.bak-20261014` → 原地解包（不 `rm -rf`）→
+`up -d --force-recreate app`（挂载变了，必须重建才吃得到）。caddy 未被重建（`Up 16 hours`），
+静态站没有中断。宿主机上的 `backup-db.sh` 与 `docker-compose.deploy.yml` 也各自留了 `.bak-20261014` 副本。
+
+| 验证 | 结果 |
+|---|---|
+| 产物里含新字段 | `health.get.mjs` 内 `backupAgeHours` 出现 1 次 |
+| 容器内挂载与开关 | `/data/backups/` 可读；`NUXT_BACKUP_STATUS_FILE=/data/backups/health-status.json`、`MAX_AGE_HOURS=30` |
+| 上线瞬间的诚实状态 | `{"ok":true,…,"backup":"missing","backupDetail":"状态文件不存在或不可读，备份任务未按新脚本跑过"}` —— **200 且容器仍 healthy**，证明"备份坏了不牵连站点"这条设计在线上成立 |
+| 真跑一次备份脚本 | 产出 294172 字节 dump，状态文件 `lastSuccessAt":"2026-10-14T02:13:52Z"`（UTC `Z` 形式，判定侧只收这种） |
+| 之后 health | `{"backup":"fresh","backupAgeHours":0}` |
+| `[auth-event]` 真日志 | `[auth-event] {"ts":"2026-10-14T02:14:13.496Z","kind":"invalid_token","device":""}` 等两条，格式与解析器一致 |
+| 聚合脚本吃真日志 | `pnpm tsx server/scripts/auth-report.ts` 正常出报告；带 `--timestamps` 的形态也能解析（时间戳前缀不影响） |
+| 闸门语义 | 窗口内只有 401/400、没有成功裁决 → `--fail-if-compat` 退 **2** 并明说"无法判断（不当作已归零）" |
+
+代价与残留（都要记账）：
+
+- [auth-compat] 的历史读数随旧容器日志一起没了，见第 8 节步骤 4 的告警式说明。
+- 本轮为造事件发了两次**不写库**的请求（坏凭据 401、缺标识 400），没有新增凭据行；
+  线上 `device_credentials` 仍是第 8.6 节那 3 行演练残留。
