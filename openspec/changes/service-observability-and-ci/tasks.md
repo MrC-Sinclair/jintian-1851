@@ -130,6 +130,7 @@
 - [x] `advisor-briefing` 的 saveId 归因缺口已补（2026-10-14）：`parseResult.data` 里本来就有
       `saveId`，只是没解构进作用域 → 现在 `logLlmUsage('advisor-briefing', usage, { saveId, turn })`，
       并补了两条 API 测试钉住（正常路径必须带 saveId+turn+totalTokens；降级路径不得产日志）
+      —— 同日 14:34 已随 `4ebde06` 上线，见第 7 节
 - [x] **CI 已覆盖 Playwright e2e（mock-backed）**（2026-10-14，第 4 个 job `game-web e2e (mock-backed)`）：
       `pnpm exec playwright test --grep-invert "real-backend"`，浏览器用
       `playwright install --with-deps chromium` 装，dev server 由 config 的 webServer 起。
@@ -151,3 +152,18 @@
 - [x] CI 已覆盖 `build`：game-web 跑 `build:h5`、server 跑 `nuxi build`（`6250cb7`）。
       runner 实测：game-web job 85s、server job 39s 均 success，job 名已同步带上 / build
 - [ ] 长期成本趋势需要落库或接 Loki/Prometheus；当前设计只保证日志格式可被直接消费
+
+## 7. 线上 `.output` 与 commit 的对应台账
+
+立这节的理由只有一个：本仓库真的出现过"文档说做了、线上其实没跑"的错位，根因是没人记下
+**当前线上产物是从哪个 commit 构建的**。宿主机 `/root/jintian/deploy/dist/` 下的副本就是回滚链：
+
+| 副本 | 它保存的是**发布前**在跑的那一版 | 产生于 |
+|---|---|---|
+| `.output.bak-20261013` | 设备凭据鉴权上线之前（无 `device_credentials` 相关代码） | 10-13 16:37 发布前 |
+| `.output.bak-20261014` | 10-13 那一版：有凭据鉴权，但**没有** `[auth-event]`、也没有备份字段 | 10-14 10:13 发布前 |
+| `.output.bak-20261014b` | 10-14 10:13 那一版：`ce11f65` + `18efb6d`（`[auth-event]` + 备份可观测） | 10-14 14:34 发布前 |
+
+**当前线上 `.output` = `4ebde06`**（briefing 成本归因）。核对方式不是看文件时间戳，
+而是直接查产物内容：上传前 `advisor-briefing.post.mjs` 里 `saveId, turn` 出现 0 次，上传后 2 次。
+下次发后端请在这张表补一行，并改掉"当前线上 = ?"。
