@@ -127,7 +127,9 @@
       `ssh root@… 'docker logs --since 24h jintian-api 2>&1' | pnpm tsx server/scripts/auth-report.ts`
       —— 真日志实测：带不带 `--timestamps` 都能解析；窗口内只有 401/400、没有成功裁决时
       `--fail-if-compat` 退 2 而不是退 0，「没样本」不会被当成「已归零」
-- [ ] `advisor-briefing` 的 saveId 归因缺口
+- [x] `advisor-briefing` 的 saveId 归因缺口已补（2026-10-14）：`parseResult.data` 里本来就有
+      `saveId`，只是没解构进作用域 → 现在 `logLlmUsage('advisor-briefing', usage, { saveId, turn })`，
+      并补了两条 API 测试钉住（正常路径必须带 saveId+turn+totalTokens；降级路径不得产日志）
 - [x] **CI 已覆盖 Playwright e2e（mock-backed）**（2026-10-14，第 4 个 job `game-web e2e (mock-backed)`）：
       `pnpm exec playwright test --grep-invert "real-backend"`，浏览器用
       `playwright install --with-deps chromium` 装，dev server 由 config 的 webServer 起。

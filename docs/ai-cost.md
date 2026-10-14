@@ -196,7 +196,7 @@ advisor-chat（含~50% 工具轮，混合）   ≈ ¥0.0011   （原 ¥0.000875�
 | `resolve-decision` | `saveId` `turn` `attempt` |
 | `faction-negotiate` | `saveId` `turn` `phase` `factionId` |
 | `init-factions` | 无 —— 发生在**存档创建之前**（角色创建页），逻辑上没有 saveId 可归 |
-| `advisor-briefing` | 无 —— 该端点未把 saveId 解构进作用域，属已知归因缺口，成本仍计入总量 |
+| `advisor-briefing` | `saveId` `turn`（2026-10-14 补上，此前是已知归因缺口） |
 
 `npc-actions` 按**每个势力 Agent 各记一行**，所以它的行数会大于回合数，这是设计而非重复计数。
 

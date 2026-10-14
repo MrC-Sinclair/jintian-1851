@@ -126,7 +126,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { turn, stateSnapshot } = parseResult.data
+  const { saveId, turn, stateSnapshot } = parseResult.data
 
   // 2. 开关检查：enableBriefing 为 false 时直接返回空简报
   const config = useRuntimeConfig(event)
@@ -151,7 +151,7 @@ export default defineEventHandler(async (event) => {
       providerOptions: { openai: { structuredOutputs: true } },
       abortSignal: AbortSignal.timeout(BRIEFING_TIMEOUT_MS)
     })
-    logLlmUsage('advisor-briefing', usage)
+    logLlmUsage('advisor-briefing', usage, { saveId, turn })
 
     return { ok: true, data: object }
   } catch (err) {

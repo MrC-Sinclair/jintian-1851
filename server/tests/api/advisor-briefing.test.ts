@@ -9,6 +9,7 @@
  *   - 开关关闭：enableBriefing=false → 空简报 + disabled: true
  *   - 不占用 concurrency-lock（验证未调用 acquireLock/isLocked）
  *   - 10s 超时配置（abortSignal 传给 generateObject）
+ *   - [llm-usage] 归因：带 saveId + turn；降级路径不记用量
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -115,6 +116,39 @@ describe('POST /api/game/advisor-briefing', () => {
     expect(prompt).toContain('85')
     expect(prompt).toContain('加权')
     expect(prompt).toContain('1912')
+  })
+
+  it('用量日志带 saveId 与 turn（docs/ai-cost.md 归因表要求，此前是已知缺口）', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    generateObjectMock.mockResolvedValueOnce({
+      object: { summary: '局势平稳', suggestion: '宜固本' },
+      usage: { inputTokens: 900, outputTokens: 200, totalTokens: 1100 }
+    } as any)
+    readBodyMock.mockResolvedValueOnce(makeBody(7))
+
+    await handler(makeEvent())
+
+    const line = spy.mock.calls.map((c) => String(c[0])).find((l) => l.includes('[llm-usage]'))
+    expect(line).toBeDefined()
+    const parsed = JSON.parse((line || '').replace(/^\[llm-usage\] /, ''))
+    expect(parsed).toMatchObject({
+      endpoint: 'advisor-briefing',
+      saveId: SAVE_ID,
+      turn: 7,
+      totalTokens: 1100
+    })
+    spy.mockRestore()
+  })
+
+  it('降级路径不产生用量日志（抛错时没有 usage 可记）', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    generateObjectMock.mockRejectedValueOnce(new Error('boom'))
+    readBodyMock.mockResolvedValueOnce(makeBody(1))
+
+    await handler(makeEvent())
+
+    expect(spy.mock.calls.some((c) => String(c[0]).includes('[llm-usage]'))).toBe(false)
+    spy.mockRestore()
   })
 
   it('参数错误：saveId 非 UUID → 400', async () => {
