@@ -104,7 +104,10 @@ jobs:
         run: pnpm build:h5
 
   # 浏览器端到端：只跑「不依赖后端」的那批——用 page.route 打桩，或干脆只读 localStorage。
-  # 本机实测（不起 server、无 LLM key）：42 例 / 4 分 23 秒全绿，所以值得占一个 job。
+  # 本机实测（不起 server、无 LLM key）：42 例 / 29 秒全绿，所以值得占一个 job。
+  # CI 首跑（run #23）整 job 107s。另外证过一件事，免得这是个假门禁：
+  # --grep 匹配不到任何用例时 Playwright 报 "No tests found" 并退 1，
+  # 所以这里的"绿"不可能来自空跑。
   # 三条依赖真实后端与 LLM 的用例（full-journey-real / faction-negotiation /
   # free-action-faction-effects）标题统一带 [real-backend]，由 --grep-invert 排除：
   # 它们要 AI key、要真库，还要为 LLM 的非确定性做软跳过（test.skip），
@@ -183,7 +186,7 @@ jobs:
 #     game-web e2e (mock-backed)
 #     openspec (validate --all --strict)
 #   （job 的 name 就是 status check 名，改了 name 要同步改这里的勾选。
-#     e2e 是 2026-10-14 新增的第 4 个：本机实测 42 例 / 4 分 23 秒，加浏览器安装约 3 分钟）
+#     e2e 是 2026-10-14 新增的第 4 个：本机实测 42 例 / 29 秒，CI 整 job 107s）
 # 命令行等价操作（需 gh 认证，且属于改动共享状态，请人工确认后再执行）：
 #   gh api -X PUT /repos/MrC-Sinclair/jintian-1851/branches/main/protection   # 需要 --input 传完整 JSON
 # 注意：本文件首次真实执行就红了——两个 job 均止步于 pnpm/action-setup，
