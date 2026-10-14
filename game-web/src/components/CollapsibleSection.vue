@@ -49,7 +49,7 @@
  *   - max-height + opacity transition 实现平滑高度过渡（禁止 v-if 硬切）
  *   - 标题旁可通过 #title-extra slot 插入 InfoHint 等附加内容
  *
- * 设计依据：openspec/changes/improve-ux-playability/tasks.md T2.1
+ * 设计依据：原 openspec 提案 improve-ux-playability/tasks.md T2.1
  *   - Props：title / defaultExpanded / icon
  *   - emits：toggle(expanded)
  *   - 触摸目标 min-h: 88rpx

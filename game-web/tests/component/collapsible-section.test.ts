@@ -11,7 +11,7 @@
  *   - chevron 旋转类名随状态切换
  *   - icon prop 渲染 SVG
  *
- * 来源：openspec/changes/improve-ux-playability/tasks.md T2.1
+ * 来源：原 openspec 提案 improve-ux-playability/tasks.md T2.1
  */
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'

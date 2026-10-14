@@ -74,7 +74,7 @@
  * 用途：在专业术语旁显示小问号图标，点击弹出解释浮层。
  * 覆盖 StatusPanel / FactionCard / NpcActionList 等组件的术语解释需求。
  *
- * 设计依据：openspec/changes/improve-ux-playability/tasks.md T1.4 + specs/help-system/spec.md
+ * 设计依据：原 openspec 提案 improve-ux-playability/tasks.md T1.4（原 specs/help-system 规格，随 openspec 一并停用）
  *   - 问号图标直径 48rpx，bg #8B1A1A，白字"?"
  *   - 点击切换浮层显隐（移动端友好，非 hover）
  *   - 浮层 position:fixed 居中，半透明遮罩，点击遮罩或关闭按钮关闭

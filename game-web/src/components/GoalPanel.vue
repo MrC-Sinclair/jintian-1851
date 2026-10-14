@@ -45,7 +45,7 @@
  * P0-2：综合实力进度条已移除（FocusPanel 顶部常驻为唯一展示位），
  * 本面板专注「目标规则」说明，避免与顶部进度重复。
  *
- * 设计依据：openspec/changes/improve-ux-playability/tasks.md T1.5 + specs/goal-system/spec.md
+ * 设计依据：原 openspec 提案 improve-ux-playability/tasks.md T1.5（原 specs/goal-system 规格，随 openspec 一并停用）
  */
 
 import { ref } from 'vue'

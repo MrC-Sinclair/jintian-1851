@@ -4,7 +4,7 @@
  * 与后端 `server/server/runtime/story-chains.ts` 保持 chainId / title / description /
  * startYear / 节点顺序一致，但**只含元数据**（不含节点 event 的完整 effects）。
  *
- * 设计取舍（见 openspec/changes/expand-event-engine/design.md D3 + T3.2/T4）：
+ * 设计取舍（见原 openspec 提案 expand-event-engine/design.md D3 + T3.2/T4）：
  *   - 后端是剧情链的"真值来源"（含节点 event 与 effects），前端不可修改。
  *   - 前端只需：按 chainId 查标题、按节点顺序计算"第 X/Y 节"、判断是否为末节点、
  *     求下一节点 ID。这些都能从链的有序节点列表推导，无需复制 effects。

@@ -5,7 +5,6 @@
 - 前端：[`game-web/`](./game-web) —— uni-app（Vue 3 + TS），一套代码同时构建 **H5** 与 **微信小程序**
 - 后端：[`server/`](./server) —— Nuxt 3 纯 API 服务，基于 **Vercel AI SDK** + **Drizzle ORM** + **PostgreSQL（pgvector）**
 - 设计文档 / 接口文档 / 数据库 Schema / AI 成本约束：见 [`docs/`](./docs)
-- 需求与变更规格：见 [`openspec/`](./openspec)
 
 ---
 
@@ -62,7 +61,6 @@ jintian-1851/
 │   ├── db-schema.md       # 数据库表结构（唯一 Schema 来源）
 │   ├── API.md             # HTTP 接口定义（唯一接口来源）
 │   └── ai-cost.md         # AI 调用成本约束
-├── openspec/              # 需求 / 规格 / 变更 / 上线清单
 ├── docker/                # docker-compose 初始化脚本（pgvector 扩展）
 ├── docker-compose.yml     # Postgres 18（pgvector）开发 & 测试库
 └── AGENTS.md              # AI 编程助手纪律与执行规则（必读）
@@ -197,7 +195,7 @@ cd server && pnpm build && pnpm preview # 生产构建与预览
 - [`docs/db-schema.md`](./docs/db-schema.md) — 数据库表结构（**唯一 Schema 来源**）
 - [`docs/API.md`](./docs/API.md) — HTTP 接口定义（**唯一接口来源**）
 - [`docs/ai-cost.md`](./docs/ai-cost.md) — AI 调用成本约束
-- [`openspec/`](./openspec) — 各功能模块规格（`specs/`）、变更记录（`changes/`）、[上线前检查清单](./openspec/pre-launch-checklist.md)
+- 原 `openspec/` 需求与规格目录（含上线前检查清单）已于 2026-10-14 停用并删除，内容只在 git 历史里
 - [`AGENTS.md`](./AGENTS.md) — **AI 编程助手必读**：执行纪律、验证规则、文档查询约定、SSR 水合规则、数据安全规则
 
 > 项目纪律要求「代码与文档不可脱节」：修改逻辑 / Schema / 接口后，须同步更新对应 `docs/` 文档。
@@ -207,7 +205,7 @@ cd server && pnpm build && pnpm preview # 生产构建与预览
 ## 🤝 开发规范（要点）
 
 - **AI Agent 纪律**：每次改 `.vue` / `.ts` / `.js` 后必须跑 `pnpm lint`（类型变更加 `pnpm typecheck`，核心逻辑变更加 `pnpm test:unit`）；技术路径歧义时用 `AskUserQuestion` 多方案确认。
-- **文档先行**：修改业务模块前先查阅 `docs/` 与 `openspec/`。
+- **文档先行**：修改业务模块前先查阅 `docs/`。
 - **SSRF / 水合**：前端非 SSR；后端为纯 API 服务，`window`/`localStorage` 等浏览器 API 须守卫。
 - **数据安全**：异步写操作须防重复提交；服务端读写优先原子操作，避免 Read-Modify-Write 竞态。
 - **密钥**：仅放在 `server/.env` 或 Nuxt `runtimeConfig` 非 public 字段，禁止暴露到前端。

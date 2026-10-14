@@ -6,7 +6,7 @@
  * - getCrisis：遍历 5 维属性，取 <30 中最低者（用于危机预警 toast + FocusPanel 危机行）
  * - generateFocusHint：综合实力 + 危机 + 规则建议（AI 简报返回时由 FocusPanel 覆盖 suggestion）
  *
- * 来源：openspec/changes/improve-ux-playability/tasks.md T1.6 + design.md D5
+ * 来源：原 openspec 提案 improve-ux-playability/tasks.md T1.6 + design.md D5
  */
 
 import type { Attributes } from '@/types/game'

@@ -1,6 +1,6 @@
 # 金田：1851 — AI 成本与缓存策略
 
-> 本文档说明 GAME 项目 AI 调用的 token 成本预估、缓存策略、降级方案，与 [design.md D3-D5](file:///d:/code/codeWork/jintian-1851/openspec/changes/archive/add-qing-revival-mvp/design.md) 保持一致。
+> 本文档说明 GAME 项目 AI 调用的 token 成本预估、缓存策略、降级方案，与 原 design.md D3-D5 保持一致。
 
 ## 模型分配
 
@@ -33,7 +33,7 @@ MVP 阶段全部使用 `Qwen/Qwen3-8B`（硅基流动 SiliconFlow），单价约
 
 ## 单回合 AI 调用拆分
 
-参考 [design.md D3](file:///d:/code/codeWork/jintian-1851/openspec/changes/archive/add-qing-revival-mvp/design.md) 的「AI 全包四段拆分」。
+参考 原 design.md D3 的「AI 全包四段拆分」。
 
 ### 必发调用（每回合固定）
 
@@ -261,7 +261,7 @@ cd /root/jintian/server && docker logs --timestamps --since 24h jintian-api 2>&1
 sha256(saveId + turn + sha256(JSON.stringify(stateSnapshot)) + sha256(JSON.stringify({ pendingChainNodes, completedChainIds, activeChainIds })))
 ```
 
-**不含 `playerDecision`**：因为 `generate-event` 接口不接收玩家决策（事件生成与玩家决策解耦，详见 [design.md D6](file:///d:/code/codeWork/jintian-1851/openspec/changes/archive/add-qing-revival-mvp/design.md)）。
+**不含 `playerDecision`**：因为 `generate-event` 接口不接收玩家决策（事件生成与玩家决策解耦，详见 原 design.md D6）。
 
 ### 缓存存储
 
@@ -288,7 +288,7 @@ sha256(saveId + turn + sha256(JSON.stringify(stateSnapshot)) + sha256(JSON.strin
 
 ## 降级策略
 
-参考 [design.md D3](file:///d:/code/codeWork/jintian-1851/openspec/changes/archive/add-qing-revival-mvp/design.md) 「降级策略」。
+参考 原 design.md D3 「降级策略」。
 
 ### 统一原则
 

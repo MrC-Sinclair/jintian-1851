@@ -64,7 +64,7 @@
 - DB 列定义 `defaultNow()`，POST 端**不接收**客户端 `updatedAt` 字段
 - zod schema 用 `.strict()` 模式，传入 `updatedAt` 会返回 400 + `updatedAt is not allowed (server-authoritative)`
 - `ON CONFLICT DO UPDATE` 时强制 `set: { updatedAt: new Date() }`，覆盖客户端可能携带的值
-- **设计理由**：消除两设备同 saveId 间隔 < 100ms 同时 POST 的 Read-Modify-Write race（参见 [design.md D7](file:///d:/code/codeWork/jintian-1851/openspec/changes/add-qing-revival-mvp/design.md)）
+- **设计理由**：消除两设备同 saveId 间隔 < 100ms 同时 POST 的 Read-Modify-Write race（参见 原 design.md D7）
 
 #### `ended` 字段不入 DB
 
@@ -208,7 +208,7 @@ export type SelectDeviceCredential = typeof deviceCredentials.$inferSelect
 
 源码：[server/server/db/schema.ts](file:///d:/code/codeWork/jintian-1851/server/server/db/schema.ts)
 
-> 本表为「AI 长期记忆」提案（openspec/changes/2026-09-06-ai-long-term-memory）新增。存储本局每回合 `generate-event` 产出的事件向量化结果，供**事件语义去重**检索。详见 design.md D2/D3/D6。
+> 本表为「AI 长期记忆」提案（原 openspec 的 2026-09-06-ai-long-term-memory，已停用）新增。存储本局每回合 `generate-event` 产出的事件向量化结果，供**事件语义去重**检索。详见 design.md D2/D3/D6。
 
 ### 字段说明
 

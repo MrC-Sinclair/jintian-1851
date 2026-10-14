@@ -7,7 +7,7 @@
  * - 剧情文案（事件描述、结局、军师对话）保留古风营造氛围
  * - effects 标签用完整词（"军事+10"）而非单字缩写（"军+10"）
  *
- * 来源：openspec/changes/improve-ux-playability/tasks.md T1.1
+ * 来源：原 openspec 提案 improve-ux-playability/tasks.md T1.1
  */
 
 import { CHAIN_META } from '@/data/story-chains'

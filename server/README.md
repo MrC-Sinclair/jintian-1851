@@ -130,7 +130,7 @@ server/
 - [`../docs/game-design.md`](../docs/game-design.md) — 游戏设计文档（数值 / 势力 / 事件 / 结局）
 - [`../docs/ai-cost.md`](../docs/ai-cost.md) — AI 调用成本约束
 - [`../AGENTS.md`](../AGENTS.md) — AI 编程助手执行纪律（必读）
-- [`../openspec/`](../openspec) — 需求 / 规格 / 变更 / 上线清单
+- 原 `../openspec/` 需求与规格目录已于 2026-10-14 停用删除（内容见 git 历史）
 
 ---
 

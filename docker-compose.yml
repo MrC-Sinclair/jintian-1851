@@ -1,4 +1,4 @@
-# 金田：1851 — 本地开发 / 测试数据库（线上用同一份文件，见 openspec/pre-launch-checklist.md）
+# 金田：1851 — 本地开发 / 测试数据库（线上用同一份文件）
 # 启动：docker compose up -d
 # 开发库 sw_game 映射宿主机 5534，测试库 sw_game_test 映射宿主机 5533
 # 镜像：pgvector/pgvector:pg18（PostgreSQL 18 + pgvector 向量扩展，向量能力预留）

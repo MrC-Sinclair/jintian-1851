@@ -157,25 +157,6 @@ jobs:
             game-web/test-results
           retention-days: 5
 
-  # 规格校验：openspec 不是任一子项目的依赖，本地是 npm 全局安装的 @fission-ai/openspec，
-  # 所以这里用 npx --yes 拉同一版本（1.5.0，与本地一致）跑校验。
-  # --all 覆盖 specs/ 全部 canonical spec 与 changes/ 全部在途提案；--strict 要求
-  # 每条 Requirement 正文含 SHALL/MUST、spec 必须有 ## Purpose 与 ## Requirements。
-  # 独立成 job 而非 step：可与两个子项目的检查并行，且 status check 名能单独加进分支保护。
-  openspec:
-    name: openspec (validate --all --strict)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Validate specs and in-flight changes
-        run: npx --yes @fission-ai/openspec@1.5.0 validate --all --strict
-
 # ── 让 CI 成为 PR 门禁（一次性仓库设置，不在本文件里生效）────────────────
 # 路径：Settings → Branches → Add branch protection rule
 #   Branch name pattern: main
@@ -184,9 +165,12 @@ jobs:
 #     server (lint / typecheck / unit / api / build)
 #     game-web (lint / typecheck / unit / component / build)
 #     game-web e2e (mock-backed)
-#     openspec (validate --all --strict)
 #   （job 的 name 就是 status check 名，改了 name 要同步改这里的勾选。
-#     e2e 是 2026-10-14 新增的第 4 个：本机实测 42 例 / 29 秒，CI 整 job 107s）
+#     e2e 是 2026-10-14 新增的：本机实测 42 例 / 29 秒，CI 整 job 107s）
+#   （2026-10-14 移除了第 4 个 job `openspec (validate --all --strict)`：项目不再用
+#     openspec 管理需求，`openspec/` 目录已整体删除，规格内容不另存副本，需要时查 git 历史。
+#     ⚠️ 若你之前把 `openspec (validate --all --strict)` 勾进过 Required checks，
+#     它不会自动消失——要去仓库设置里删掉，否则 PR 会一直等一个永远不会再出现的 check）
 # 命令行等价操作（需 gh 认证，且属于改动共享状态，请人工确认后再执行）：
 #   gh api -X PUT /repos/MrC-Sinclair/jintian-1851/branches/main/protection   # 需要 --input 传完整 JSON
 # 注意：本文件首次真实执行就红了——两个 job 均止步于 pnpm/action-setup，

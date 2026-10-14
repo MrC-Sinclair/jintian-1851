@@ -11,7 +11,7 @@
  * - 小程序/App 端：el 通常无 addEventListener，降级设置 title 属性作为最低保障
  *   （主要 tooltip 场景由 InfoHint 组件覆盖，纯图标按钮在小程序端可接受降级）
  *
- * 来源：openspec/changes/improve-ux-playability/tasks.md T1.3 + specs/help-system/spec.md
+ * 来源：原 openspec 提案 improve-ux-playability/tasks.md T1.3（原 specs/help-system 规格，随 openspec 一并停用）
  */
 
 import type { Directive, DirectiveBinding } from 'vue'

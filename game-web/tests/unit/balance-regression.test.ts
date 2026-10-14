@@ -1,7 +1,7 @@
 /**
  * @file C1 跨提案联合平衡校验（通关模拟，LLM 由兜底事件池 mock）
  *
- * C1 约定（见 openspec/changes/archive/2026-08-07-* 下的 proposal.md / design.md）：
+ * C1 约定（见 git 历史里的 openspec 归档提案（2026-08-07-*））：
  *   三份平衡提案（event-weight-dynamic-adjust / resource-per-turn-yield /
  *   weighted-overall-power）全部落地后，跑标准通关路径，对比胜利回合数 / 崩溃率，
  *   避免单看合理、合看失序。此处把玩家主动外交（player-active-diplomacy）一并纳入。

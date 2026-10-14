@@ -1,8 +1,8 @@
 # AGENTS.md
 
-金田：1851（jintian-1851）— 多子项目仓库，包含 `game-web/`（uni-app 前端，H5 + 微信小程序）和 `server/`（Nuxt 3 + Vercel AI SDK 后端）两个独立子项目（各自用 pnpm 管理，根目录非 pnpm workspace）。**项目业务架构、设计文档、任务清单等详见 `docs/` 与 `openspec/`，修改任何业务模块前必须先查阅对应文档。**
+金田：1851（jintian-1851）— 多子项目仓库，包含 `game-web/`（uni-app 前端，H5 + 微信小程序）和 `server/`（Nuxt 3 + Vercel AI SDK 后端）两个独立子项目（各自用 pnpm 管理，根目录非 pnpm workspace）。**项目业务架构、设计依据、实施记录详见 `docs/`，修改任何业务模块前必须先查阅对应文档。**
 
-> 本文件只承载「跨工具通用的 AI 编程助手纪律」，与具体业务无关。项目特定的目录约定、命令、陷阱等由各子项目的 `package.json`、`docs/`、`openspec/` 提供，AI 助手在动手前应主动查阅。
+> 本文件只承载「跨工具通用的 AI 编程助手纪律」，与具体业务无关。项目特定的目录约定、命令、陷阱等由各子项目的 `package.json` 与 `docs/` 提供，AI 助手在动手前应主动查阅。
 
 ## AI Agent 执行纪律
 
@@ -118,6 +118,4 @@ Nuxt 3 使用 SSR，服务端和客户端必须渲染出相同的 HTML，否则�
 - `docs/db-schema.md` — 数据库表结构
 - `docs/API.md` — HTTP 接口定义
 - `docs/ai-cost.md` — AI 调用成本约束
-- `openspec/changes/` — 各功能模块的 spec / design / tasks
-- `openspec/pre-launch-checklist.md` — 上线前检查清单
 - 各子项目的 `package.json` — 实际可用命令与依赖版本

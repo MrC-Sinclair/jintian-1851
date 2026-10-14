@@ -3,7 +3,7 @@
  *
  * 每回合开始时调用，让 LLM 给出当前局势总结 + 本回合建议，供 FocusPanel 展示。
  *
- * 设计要点（详见 openspec/changes/improve-ux-playability/tasks.md T1.14）：
+ * 设计要点（详见原 openspec 提案 improve-ux-playability/tasks.md T1.14）：
  *   - 模型：Qwen/Qwen3-8B + generateObject + createSiliconFlowFetch(false)（关闭思考）
  *   - 超时：20s（AbortSignal.timeout，实测线上 10s 会 100% 命中超时）
  *   - 调用方（useTurn.startTurn）**不 await** 本接口，慢返回不会拖住回合开始

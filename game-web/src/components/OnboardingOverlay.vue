@@ -60,7 +60,7 @@
  *   5. 军师对话（随时咨询）
  *   6. 目标（胜利/失败条件）
  *
- * 设计依据：openspec/changes/improve-ux-playability/tasks.md T1.8 + specs/onboarding-tutorial/spec.md
+ * 设计依据：原 openspec 提案 improve-ux-playability/tasks.md T1.8（原 specs/onboarding-tutorial 规格，随 openspec 一并停用）
  *   - 全屏遮罩 box-shadow 外阴影实现高亮（兼容三端）
  *   - 卡片定位：有高亮时置于下方/上方，无高亮时居中
  *   - SSR 安全：mounted ref 在 onMounted 设 true，避免水合不匹配

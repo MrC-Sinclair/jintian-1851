@@ -200,7 +200,7 @@
  * @file 帮助页 — 如何游戏
  *
  * 集中展示游戏所有核心概念、规则与 FAQ，解决新玩家"看不懂"问题。
- * 内容来源：openspec/changes/improve-ux-playability/tasks.md T1.10
+ * 内容来源：原 openspec 提案 improve-ux-playability/tasks.md T1.10
  *
  * 设计要点：
  *   - 复用 TERM_EXPLANATIONS（copywriting.ts）保持术语解释一致

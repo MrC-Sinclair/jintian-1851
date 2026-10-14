@@ -7,7 +7,7 @@
  *   - game_events：情景记忆（本局发生了什么，AI 长期记忆提案新增）
  *   - faction_memories：关系记忆（某势力对玩家的印象，AI 长期记忆提案新增）
  *
- * 字段说明（与 specs/cloud-sync/spec.md 一致）：
+ * 字段说明（原 openspec 的 cloud-sync 规格已停用，字段语义以本文件与 docs/db-schema.md 为准）：
  *   - id: UUID PK，数据库自动生成（defaultRandom）
  *   - saveId: UUID UNIQUE NOT NULL，前端生成的存档唯一标识
  *   - deviceId: TEXT NOT NULL，存档属主设备标识。双轨期仍可能来自客户端声明；

@@ -13,7 +13,7 @@
 | 本项目只有裸 IP，站点按端口建 | `deploy/Caddyfile` 头注释「ACME 不给裸 IP 签发证书，而本项目只有公网 IP 没有域名」 |
 | 入口 `https://122.51.97.106:8443`，8081 仅做跳转 | `deploy/Caddyfile` + `deploy/docker-compose.deploy.yml:111-117` |
 | mychat 独占 80/443，**但它同样没有域名** | `my-chat/deploy/Caddyfile`（自签 + IP SAN，站点写作 `:443`）、`my-chat/deploy/docker-compose.deploy.yml:42-44` |
-| 域名+备案在原计划里就是未完成项 | `openspec/pre-launch-checklist.md` T8.0「~~购买 + 备案域名~~ → 未做」 |
+| 域名+备案在原计划里就是未完成项 | 原上线前检查清单 T8.0（openspec 已停用，内容见 git 历史）「~~购买 + 备案域名~~ → 未做」 |
 | 小程序 AppID 未配置 | `game-web/src/manifest.json:53` `"mp-weixin": { "appid": "" }` |
 | 两个项目是两个独立 compose 项目，网络不互通 | 各自的 `deploy/docker-compose.deploy.yml`（项目名 `jintian` / `my-chat`） |
 
@@ -87,7 +87,7 @@ jintian.example.com:8443 {
 
 ## 6. 与存档鉴权提案的关系（别漏掉）
 
-`openspec/changes/save-ownership-auth` 选的是「设备注册换发凭据」，它**解决不了**
+原 openspec 提案 save-ownership-auth 选的是「设备注册换发凭据」，它**解决不了**
 「清缓存 / 换浏览器 → 存档归属丢失」——那需要真实身份（微信 openid）作为 linking 层。
 openid 只能在小程序端拿到，所以**放弃小程序接入 = 同时放弃该残留问题的解**。
 玩家清缓存后找回存档这件事，在当前架构下无解，需在 `docs/game-design.md` 侧以「本地存档为主、

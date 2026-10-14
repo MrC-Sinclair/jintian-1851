@@ -108,7 +108,7 @@
  *   2. 危机提示行（属性 < 30 时显示，红色高亮）
  *   3. 建议行（AI 简报返回时覆盖规则建议）
  *
- * 设计依据：openspec/changes/improve-ux-playability/tasks.md T1.7 + specs/goal-system/spec.md
+ * 设计依据：原 openspec 提案 improve-ux-playability/tasks.md T1.7（原 specs/goal-system 规格，随 openspec 一并停用）
  *   - 始终展开，无折叠态
  *   - 数据流：goal-hint.ts 计算本地部分，briefing.suggestion 存在时覆盖 suggestion
  */

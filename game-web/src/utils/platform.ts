@@ -2,7 +2,7 @@
  * @file 平台能力封装
  *
  * 统一封装 H5/微信小程序/App 三端差异 API，避免组件内判断平台。
- * 来源：openspec/changes/improve-ux-playability/tasks.md T1.2 + design.md 多端兼容方案
+ * 来源：原 openspec 提案 improve-ux-playability/tasks.md T1.2 + design.md 多端兼容方案
  *
  * 封装内容：
  * - getElementRect(selector)：获取元素位置（H5 getBoundingClientRect / 小程序 createSelectorQuery）

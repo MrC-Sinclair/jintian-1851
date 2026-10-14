@@ -8,7 +8,7 @@
  *   - markDone/skip：标记完成（写入 storage，下次不再启动）
  *   - next/prev：步骤导航
  *
- * 设计依据：openspec/changes/improve-ux-playability/tasks.md T1.9 + specs/onboarding-tutorial/spec.md
+ * 设计依据：原 openspec 提案 improve-ux-playability/tasks.md T1.9（原 specs/onboarding-tutorial 规格，随 openspec 一并停用）
  *   - localStorage key: onboarding_done（布尔）
  *   - 模块级单例状态（跨组件共享，game-main 挂载时调 checkAndStart）
  *   - 跳过等同完成（不再显示引导）
