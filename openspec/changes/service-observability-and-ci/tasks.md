@@ -10,8 +10,11 @@
 - [x] Node 固定 `22`（对齐线上 `node:22-alpine`），缓存按各自 lockfile 路径
 - [x] `concurrency` 取消同引用旧运行；`timeout-minutes: 15`
 - [x] YAML 语法校验：用 js-yaml 解析核对 → jobs=[server,game-web,openspec]，triggers=[pull_request,push]
-- [ ] **未做：把三个 job 名勾进分支保护的 Required status checks** —— 这是仓库设置而非文件，
-      且属于改动共享状态。名称与路径写在 ci.yml 末尾注释
+- [ ] **未做：把四个 job 名勾进分支保护的 Required status checks**（2026-10-14 起是四个，
+      新增 `game-web e2e (mock-backed)`）—— 这是仓库设置而非文件，
+      且属于改动共享状态。名称与路径写在 ci.yml 末尾注释。
+      ⚠ job 改名会让旧的勾选项静默失效（本仓库已踩过一次：加 build 后改了 job 名），
+      所以改名后必须回仓库设置里重新搜、重新勾、并确认列表里没有灰色的失效项
 - [x] **推送验证 CI 真跑**：run #5（`37e7ef7`）、#6（`684fb9c`）、#7（`fe5403b`）三个 job 全 success，
       逐 step 结论已核（不是只看 run 级结论）。首跑（run #1，`cb5c9c0`）是红的，红在三个
       「本地全绿、CI 必红」的不对称上，均已定位并单独修复：
@@ -125,9 +128,17 @@
       —— 真日志实测：带不带 `--timestamps` 都能解析；窗口内只有 401/400、没有成功裁决时
       `--fail-if-compat` 退 2 而不是退 0，「没样本」不会被当成「已归零」
 - [ ] `advisor-briefing` 的 saveId 归因缺口
-- [ ] CI 未覆盖 Playwright e2e（需装浏览器 + 起 dev server；另有 `full-journey-real` /
-      `faction-negotiation` / `free-action-faction-effects` 三条依赖真实后端与 AI key，
-      接进 CI 前要先决定它们怎么跑或怎么标退）
+- [x] **CI 已覆盖 Playwright e2e（mock-backed）**（2026-10-14，第 4 个 job `game-web e2e (mock-backed)`）：
+      `pnpm exec playwright test --grep-invert "real-backend"`，浏览器用
+      `playwright install --with-deps chromium` 装，dev server 由 config 的 webServer 起。
+      决策依据是先测不是猜：本机**不起后端、无 LLM key** 跑一遍，42 例 / 4 分 23 秒全绿，
+      所以敢占一个 job；剩下 3 条依赖真后端 + AI key 的用例统一在标题打 `[real-backend]`
+      标记排除（`full-journey-real` / `faction-negotiation` / `free-action-faction-effects`），
+      它们带 LLM 非确定性的软跳过 `test.skip`，进 CI 只会产出随机红。
+      失败时上传 `playwright-report` + `test-results` 产物，否则那一红只能靠重跑碰运气
+- [ ] 那 3 条 `[real-backend]` 用例仍未被任何自动化覆盖：要么给 CI 配一套带 DB 与
+      （或 mock 掉）LLM 的后端服务，要么定一条"人工发版前跑一次"的固定动作并记录结果，
+      现在两头都没有 —— 别把上面那个 e2e job 当成端到端已经全覆盖了
 - [x] CI 已覆盖 `build`：game-web 跑 `build:h5`、server 跑 `nuxi build`（`6250cb7`）。
       runner 实测：game-web job 85s、server job 39s 均 success，job 名已同步带上 / build
 - [ ] 长期成本趋势需要落库或接 Loki/Prometheus；当前设计只保证日志格式可被直接消费

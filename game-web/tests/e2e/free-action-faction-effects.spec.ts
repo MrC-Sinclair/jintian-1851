@@ -33,7 +33,7 @@ async function dismissOnboarding(page: Page): Promise<void> {
   }
 }
 
-test('自由行动影响势力关系与实力（浏览器端到端）', async ({ page }) => {
+test('自由行动影响势力关系与实力（浏览器端到端）[real-backend]', async ({ page }) => {
   // 真实 LLM 多次调用（init-factions / generate-event / resolve-decision）整体耗时较长，放宽测试超时
   test.setTimeout(240_000)
 

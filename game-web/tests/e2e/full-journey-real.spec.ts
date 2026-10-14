@@ -130,7 +130,7 @@ async function isEnded(page: Page): Promise<boolean> {
   return (await page.locator('.end-game').count()) > 0
 }
 
-test.describe('全流程闭环（真实后端联调）', () => {
+test.describe('全流程闭环（真实后端联调）[real-backend]', () => {
   test.setTimeout(400_000) // E2E 模式后端 npc-actions 已加速（~8s），整轮 ~16s；含开局 init-factions 留足余量
   test('从开局走到结局页', async ({ page }) => {
     await startNewGame(page)

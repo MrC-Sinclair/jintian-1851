@@ -103,6 +103,57 @@ jobs:
       - name: Build
         run: pnpm build:h5
 
+  # 浏览器端到端：只跑「不依赖后端」的那批——用 page.route 打桩，或干脆只读 localStorage。
+  # 本机实测（不起 server、无 LLM key）：42 例 / 4 分 23 秒全绿，所以值得占一个 job。
+  # 三条依赖真实后端与 LLM 的用例（full-journey-real / faction-negotiation /
+  # free-action-faction-effects）标题统一带 [real-backend]，由 --grep-invert 排除：
+  # 它们要 AI key、要真库，还要为 LLM 的非确定性做软跳过（test.skip），
+  # 塞进 CI 只会产出随机红——那是比没有覆盖更糟的东西。
+  e2e:
+    name: game-web e2e (mock-backed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: game-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: game-web/package.json
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: game-web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # --with-deps 顺带装系统库：runner 上 chromium 缺这些会以「启动即崩」的形态
+      # 伪装成用例失败，排查方向完全被带偏
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # dev server 由 playwright.config.ts 的 webServer 负责起（PLAYWRIGHT_E2E=1 →
+      # 固定 5180 + strictPort，uni 命令不透传 --port 给 Vite，只能走环境变量条件配置）
+      - name: Run e2e
+        run: pnpm exec playwright test --grep-invert "real-backend"
+
+      # 失败时把 trace/报告留成产物，否则 CI 上那一红只能靠重跑碰运气
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            game-web/playwright-report
+            game-web/test-results
+          retention-days: 5
+
   # 规格校验：openspec 不是任一子项目的依赖，本地是 npm 全局安装的 @fission-ai/openspec，
   # 所以这里用 npx --yes 拉同一版本（1.5.0，与本地一致）跑校验。
   # --all 覆盖 specs/ 全部 canonical spec 与 changes/ 全部在途提案；--strict 要求
@@ -129,8 +180,10 @@ jobs:
 #   勾选 Require status checks to pass before merging，搜索并添加：
 #     server (lint / typecheck / unit / api / build)
 #     game-web (lint / typecheck / unit / component / build)
+#     game-web e2e (mock-backed)
 #     openspec (validate --all --strict)
-#   （job 的 name 就是 status check 名，改了 name 要同步改这里的勾选）
+#   （job 的 name 就是 status check 名，改了 name 要同步改这里的勾选。
+#     e2e 是 2026-10-14 新增的第 4 个：本机实测 42 例 / 4 分 23 秒，加浏览器安装约 3 分钟）
 # 命令行等价操作（需 gh 认证，且属于改动共享状态，请人工确认后再执行）：
 #   gh api -X PUT /repos/MrC-Sinclair/jintian-1851/branches/main/protection   # 需要 --input 传完整 JSON
 # 注意：本文件首次真实执行就红了——两个 job 均止步于 pnpm/action-setup，

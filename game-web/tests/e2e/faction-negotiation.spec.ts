@@ -39,7 +39,7 @@ async function readSilver(page: Page): Promise<number> {
   return Number.parseInt((text ?? '0').replace(/[^0-9-]/g, ''), 10)
 }
 
-test('写信谈判：还价 → 接受条件 → 资源扣减与配额用尽（浏览器端到端）', async ({ page }) => {
+test('写信谈判：还价 → 接受条件 → 资源扣减与配额用尽（浏览器端到端）[real-backend]', async ({ page }) => {
   // 真实 LLM 多次调用（init-factions / generate-event / faction-negotiate×2）整体耗时较长
   test.setTimeout(240_000)
 
