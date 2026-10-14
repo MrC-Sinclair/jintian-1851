@@ -25,6 +25,10 @@
 #               .output = 4ebde06（advisor-briefing 用量日志带 saveId/turn），容器内 mtime 14:34
 #   回滚副本在服务器上（解包前 cp -a 留的）：
 #     dist/h5.bak-20261013 / -20261013-401fix / -20261014-toastfix / -20261015-degraded-toast
+#
+# 鉴权开关（2026-10-15 收紧第一步）：deploy/.env 已显式写 NUXT_DEVICE_AUTH_ENFORCED=true，
+# 关闭了 deviceId 自声明的兼容通道；ALLOW_FIRST_BIND 仍为 true（默认），因为线上仍有存档属主
+# 没拿到凭据。改 .env 前留了 .env.bak-20261015-enforce；第二步的先决条件与检查 SQL 见 docs/API.md。
 
 name: jintian
 

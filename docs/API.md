@@ -61,10 +61,26 @@
 | `x-device-id` | 是（`/api/game/` 全部） | 设备标识，限流按它分桶；缺失返回 400 + `MISSING_DEVICE_ID`。**它不再是权限凭证** |
 | `x-device-token` | 存档读写必填（收紧后） | 设备凭据，`POST /api/game/device-credential` 下发。存档端点用它**反查权威属主 deviceId** |
 
-> 双轨兼容期（`DEVICE_AUTH_ENFORCED=false`，当前默认）：无凭据的存档请求仍回落到
+> 双轨兼容期（`DEVICE_AUTH_ENFORCED=false`，compose 里的默认值）：无凭据的存档请求仍回落到
 > query/body 自声明的 `deviceId`，服务端每条都打一行 `[auth-compat] deviceId=前8位***` 日志。
 > 日志归零即代表可收紧。收紧后缺凭据 → 401 `DEVICE_TOKEN_REQUIRED`；
 > 凭据反查不到 → 401 `INVALID_DEVICE_TOKEN`（**不降级**，否则冒领尝试会被兼容逻辑吞掉）。
+
+> **线上已于 2026-10-15 置 `DEVICE_AUTH_ENFORCED=true`**（`deploy/.env`，备份 `.env.bak-20261015-enforce`；
+> 生效证据：无凭据读 `/api/game/saves` 返回 401 `DEVICE_TOKEN_REQUIRED`，日志 `[auth-event] kind=token_required`）。
+> 但 `DEVICE_AUTH_ALLOW_FIRST_BIND` **仍是 true**，因为收紧当天盘点到 `game_saves` 有两行存档，
+> 其中属主 `2b545cbc…` 在 `device_credentials` 里仍无凭据（另一属主 `c323ec82…` 已自动补注册成功，
+> 说明自愈路径在线上成立）。**关注册窗口的先决条件**是前者的属主拿到凭据，否则该玩家会被永久挡在门外
+> —— 检查语句：
+>
+> ```sql
+> select s.device_id, bool_or(c.device_id is not null and c.revoked_at is null) as has_valid_cred
+> from game_saves s left join device_credentials c on c.device_id = s.device_id
+> group by s.device_id;   -- 全部为 t 才能置 ALLOW_FIRST_BIND=false
+> ```
+>
+> 三步顺序：① ENFORCED=true（已完成）→ ② 上式全为 `t` 且 `[auth-compat]` 归零后置 ALLOW_FIRST_BIND=false
+> → ③ 最后删前端 `device-credential.ts` 里的 `ownerParam()` 自声明兜底并发版。
 
 ### 频率限制
 
