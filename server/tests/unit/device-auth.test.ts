@@ -107,15 +107,18 @@ describe('registerDeviceCredential', () => {
     const res = await registerDeviceCredential('device-1')
     spy.mockRestore()
 
-    // 不拒绝：拒绝就是把"收紧前就在玩、只是没补注册"的属主永久挡在门外
+    // 不拒绝（观测期）：拒绝就是把"收紧前就在玩、只是没补注册"的属主永久挡在门外
     expect(res.ok).toBe(true)
     const events = logs.filter((l) => l.startsWith('[auth-event]'))
     expect(events.some((l) => l.includes('"kind":"enrolled"'))).toBe(true)
     expect(events.some((l) => l.includes('"kind":"enroll_over_existing_saves"'))).toBe(true)
-    // 存在性查排在插入之后：属主裁决完全由主键约束完成，不留读后写窗口
-    expect(dbMock.insertMock.mock.invocationCallOrder[0]).toBeLessThan(
-      dbMock.selectMock.mock.invocationCallOrder[0]
+    // 判定读在插入**之前**：拦截必须早于绑定，否则"先绑成功再拒绝"会把设备永久锁在 409
+    // （明文凭据只下发一次）。这是持有证明闸门引入的、有意的顺序变化。
+    expect(dbMock.selectMock.mock.invocationCallOrder[0]).toBeLessThan(
+      dbMock.insertMock.mock.invocationCallOrder[0]
     )
+    // 且属主信息复用判定结果，不再为同一条观测查第二次
+    expect(dbMock.selectMock).toHaveBeenCalledTimes(1)
   })
 
   it('首绑在没有存档的新设备上：只记 enrolled，不误报警', async () => {
@@ -131,6 +134,89 @@ describe('registerDeviceCredential', () => {
     expect(res.ok).toBe(true)
     expect(logs.some((l) => l.includes('enroll_over_existing_saves'))).toBe(false)
     expect(logs.some((l) => l.includes('"kind":"enrolled"'))).toBe(true)
+  })
+
+  // ===== 持有证明闸门（phase 1 观测，开关打开才拦） =====
+
+  function captureEvents(fn: () => Promise<unknown>): Promise<{ logs: string[] }> {
+    const logs: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logs.push(args.join(' '))
+    })
+    return fn()
+      .then(() => ({ logs }))
+      .finally(() => spy.mockRestore())
+  }
+
+  it('有存档 + proof 正确：记 enroll_proof_ok，观测期照常发凭据', async () => {
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }]).mockReturnValueOnce([{ one: 1 }])
+    const { logs } = await captureEvents(() =>
+      registerDeviceCredential('device-1', { saveId: 's-1', createdAt: 1700000000000 })
+    )
+    expect(logs.some((l) => l.includes('"kind":"enroll_proof_ok"'))).toBe(true)
+    expect(logs.some((l) => l.includes('"kind":"enroll_over_existing_saves"'))).toBe(true)
+  })
+
+  it('有存档 + proof 不符：记 enroll_proof_mismatch，观测期仍放行', async () => {
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }]).mockReturnValueOnce([])
+    const res = await registerDeviceCredential('device-1', { saveId: 's-1', createdAt: 1 })
+    expect(res.ok).toBe(true)
+  })
+
+  it('有存档但没带 proof：记 enroll_proof_absent（这正是抢绑者会卡住的地方）', async () => {
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }])
+    const { logs } = await captureEvents(() => registerDeviceCredential('device-1'))
+    expect(logs.some((l) => l.includes('"kind":"enroll_proof_absent"'))).toBe(true)
+  })
+
+  it('开关打开 + 缺 proof：403 PROOF_REQUIRED，且**不插入**（拒绝必须早于绑定）', async () => {
+    setConfig({ deviceAuthRequirePossession: true })
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }])
+
+    const res = await registerDeviceCredential('device-1')
+
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.statusCode).toBe(403)
+    expect(res.code).toBe('PROOF_REQUIRED')
+    expect(dbMock.insertMock).not.toHaveBeenCalled()
+  })
+
+  it('开关打开 + proof 正确：合法属主的自愈路径照样注册成功', async () => {
+    setConfig({ deviceAuthRequirePossession: true })
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }]).mockReturnValueOnce([{ one: 1 }])
+
+    const res = await registerDeviceCredential('device-1', {
+      saveId: '550e8400-e29b-41d4-a716-446655440000',
+      createdAt: 1700000000000
+    })
+
+    expect(res.ok).toBe(true)
+    expect(dbMock.insertMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('新设备（无存档）不受开关影响：不需要 proof 也能注册', async () => {
+    setConfig({ deviceAuthRequirePossession: true })
+    dbMock.limitMock.mockReturnValueOnce([])
+
+    const res = await registerDeviceCredential('device-new')
+
+    expect(res.ok).toBe(true)
+  })
+
+  // 判定查询失败时放行：误拦真人比误放更糟，而误放仍有 409 首绑即锁兜底
+  it('判定查询抛错：按不要求处理，仍发凭据', async () => {
+    setConfig({ deviceAuthRequirePossession: true })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    dbMock.selectMock.mockImplementationOnce(() => {
+      throw new Error('db down')
+    })
+
+    const res = await registerDeviceCredential('device-1')
+    warnSpy.mockRestore()
+
+    expect(res.ok).toBe(true)
+    expect(dbMock.insertMock).toHaveBeenCalledTimes(1)
   })
 
   it('注册关闭（allowFirstBind=false）→ 403 ENROLLMENT_CLOSED，且不碰数据库', async () => {

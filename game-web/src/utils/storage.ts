@@ -128,3 +128,30 @@ export function loadSaveSync(): GameSave | null {
   }
   return null
 }
+
+/**
+ * 只读「持有证明」需要的两个字段：saveId + createdAt
+ *
+ * 故意不复用 loadSaveSync：它在校验失败时会**隔离删除主存档**，而取证明只是注册重试
+ * 的一条鉴权旁路，不该有删档的副作用。这里只读值、不做结构判定、更不动存储。
+ *
+ * @returns 本地有档返回 { saveId, createdAt }，没有或字段异常返回 null
+ */
+export function readOwnershipProof(): { saveId: string; createdAt: number } | null {
+  try {
+    const s = uni.getStorageSync(STORAGE_KEY) as
+      | { saveId?: unknown; createdAt?: unknown }
+      | undefined
+    if (
+      s &&
+      typeof s.saveId === 'string' &&
+      s.saveId.length > 0 &&
+      typeof s.createdAt === 'number'
+    ) {
+      return { saveId: s.saveId, createdAt: s.createdAt }
+    }
+  } catch (err) {
+    console.warn('[storage] 读取持有证明字段失败:', err)
+  }
+  return null
+}

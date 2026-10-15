@@ -37,7 +37,11 @@ const readBodyMock = (globalThis as any).readBody as ReturnType<typeof vi.fn>
 const DEVICE_ID = '550e8400-e29b-41d4-a716-446655440000'
 
 // 双轨开关走可变对象：用例改字段即可，beforeEach 统一复位（避免覆盖 setup 的 mock 后回不去）
-const authConfig = { deviceAuthEnforced: false, deviceAuthAllowFirstBind: true }
+const authConfig = {
+  deviceAuthEnforced: false,
+  deviceAuthAllowFirstBind: true,
+  deviceAuthRequirePossession: false
+}
 ;(globalThis as any).useRuntimeConfig = () => authConfig
 
 function makeEvent(): any {
@@ -49,6 +53,7 @@ describe('POST /api/game/device-credential', () => {
     vi.clearAllMocks()
     authConfig.deviceAuthEnforced = false
     authConfig.deviceAuthAllowFirstBind = true
+    authConfig.deviceAuthRequirePossession = false
     ;(globalThis as any).getMethod = vi.fn(() => 'POST')
     dbMock.returningMock.mockReturnValue([{ deviceId: DEVICE_ID }])
   })
@@ -89,6 +94,56 @@ describe('POST /api/game/device-credential', () => {
     expect(res.data.token).toMatch(/^[0-9a-f]{64}$/)
     expect(dbMock.insertMock).toHaveBeenCalledTimes(1)
     expect(res.statusCode).toBeUndefined()
+  })
+
+  // ===== 持有证明闸门 =====
+
+  it('body 带 proof 不被 strict 模式拒绝（观测期照旧发凭据）', async () => {
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }]).mockReturnValueOnce([{ one: 1 }])
+    readBodyMock.mockResolvedValueOnce({
+      deviceId: DEVICE_ID,
+      proof: { saveId: DEVICE_ID, createdAt: 1700000000000 }
+    })
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(res.data.token).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('proof 字段形状不对（createdAt 非整数）→ 400 INVALID_PARAMS', async () => {
+    readBodyMock.mockResolvedValueOnce({
+      deviceId: DEVICE_ID,
+      proof: { saveId: DEVICE_ID, createdAt: 'abc' }
+    })
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.statusCode).toBe(400)
+    expect(res.data.error.code).toBe('INVALID_PARAMS')
+    expect(dbMock.insertMock).not.toHaveBeenCalled()
+  })
+
+  it('开关打开 + 有存档却缺 proof → 403 PROOF_REQUIRED，且不落绑定', async () => {
+    authConfig.deviceAuthRequirePossession = true
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }])
+    readBodyMock.mockResolvedValueOnce({ deviceId: DEVICE_ID })
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.statusCode).toBe(403)
+    expect(res.data.error.code).toBe('PROOF_REQUIRED')
+    expect(dbMock.insertMock).not.toHaveBeenCalled()
+  })
+
+  it('开关打开 + proof 正确 → 合法属主仍能注册回来', async () => {
+    authConfig.deviceAuthRequirePossession = true
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }]).mockReturnValueOnce([{ one: 1 }])
+    readBodyMock.mockResolvedValueOnce({
+      deviceId: DEVICE_ID,
+      proof: { saveId: DEVICE_ID, createdAt: 1700000000000 }
+    })
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(dbMock.insertMock).toHaveBeenCalledTimes(1)
   })
 
   it('重复注册 → 409 CREDENTIAL_EXISTS（首绑即锁，冒领方换不到凭据）', async () => {

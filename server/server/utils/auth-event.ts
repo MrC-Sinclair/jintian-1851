@@ -35,6 +35,17 @@ export const AUTH_EVENT_KINDS = [
    * 让运维能按设备前缀报警而不是事后翻存档。
    */
   'enroll_over_existing_saves',
+  /**
+   * 以下三条是「持有证明」闸门的观测口径（phase 1 只记不拦）：
+   * 只有"该 deviceId 已有云端存档却没有凭据"这类首绑才需要证明，
+   * 因为对已注册设备来说，首绑即锁（409）本身就是防线，抢绑只对未注册的设备成立。
+   */
+  /** 该设备有存档，但请求没带 saveId/createdAt 证明 */
+  'enroll_proof_absent',
+  /** 带了证明但与库里该 saveId 的 createdAt 不符（抢绑尝试会落在这里） */
+  'enroll_proof_mismatch',
+  /** 证明核对通过（合法属主的自愈路径） */
+  'enroll_proof_ok',
   /** 重复注册被拒 → 409（含冒领尝试与已吊销设备） */
   'enroll_exists',
   /** 注册已关闭（allowFirstBind=false）→ 403 */

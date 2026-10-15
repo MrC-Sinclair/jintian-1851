@@ -14,6 +14,7 @@
  */
 
 import { ApiError, post } from './api'
+import { readOwnershipProof } from './storage'
 import {
   clearDeviceCredential,
   getDeviceCredential,
@@ -99,11 +100,38 @@ async function register(): Promise<string> {
   }
   if (!deviceId) return ''
 
+  const send = (proof?: { saveId: string; createdAt: number }) =>
+    post<RegisterResponse>('/api/game/device-credential', proof ? { deviceId, proof } : { deviceId })
+
   try {
-    const res = await post<RegisterResponse>('/api/game/device-credential', { deviceId })
+    const res = await send()
     setDeviceCredential(res.token)
     return getDeviceCredential()
   } catch (err) {
+    // 服务端判定"这台设备已有云端存档、要求证明持有"：本地有档就带着证明重试一次。
+    // 只在服务端把 DEVICE_AUTH_REQUIRE_POSSESSION 打开后才会收到这个码，观测期不会。
+    if (err instanceof ApiError && err.code === 'PROOF_REQUIRED') {
+      const proof = readOwnershipProof()
+      if (proof) {
+        try {
+          const res = await send(proof)
+          setDeviceCredential(res.token)
+          return getDeviceCredential()
+        } catch (retryErr) {
+          if (
+            retryErr instanceof ApiError &&
+            (retryErr.code === 'CREDENTIAL_EXISTS' || retryErr.code === 'ENROLLMENT_CLOSED')
+          ) {
+            enrollmentBlocked = true
+          }
+          // 证明不符（仍 PROOF_REQUIRED）说明本地档与云端对不上，不再循环重试
+          return ''
+        }
+      }
+      // 本地无档可证明：这台设备的云端档不是本机能拿出来的，停止重试免得每次同步都撞
+      enrollmentBlocked = true
+      return ''
+    }
     if (
       err instanceof ApiError &&
       (err.code === 'CREDENTIAL_EXISTS' || err.code === 'ENROLLMENT_CLOSED')

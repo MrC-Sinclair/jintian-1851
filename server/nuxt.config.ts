@@ -50,8 +50,15 @@ export default defineNuxtConfig({
     //   - enforced=false：兼容期，无凭据的老客户端仍可凭 deviceId 访问（打 [auth-compat] 日志）
     //   - enforced=true ：收紧，所有存档读写必须带有效 x-device-token
     //   - allowFirstBind=false：关闭新设备注册，收窄「抢注未绑定 deviceId」的窗口
+    //     ⚠ 代价是**所有新装用户从此用不了云端同步**，而不只是挡住抢注者
+    //   - requirePossession=true：改做定向闸门——只有"该 deviceId 已有云端存档却还没凭据"
+    //     这类首绑才必须提交 saveId+createdAt 证明持有存档。已注册设备本来就被 409 保护，
+    //     抢绑只对未注册设备成立，而这两类里"合法但迟到的属主"能出示证明、"只拿到
+    //     deviceId 的冒领者"不能，于是既不锁死真人也不影响新设备注册。
     deviceAuthEnforced: process.env.DEVICE_AUTH_ENFORCED === 'true',
     deviceAuthAllowFirstBind: process.env.DEVICE_AUTH_ALLOW_FIRST_BIND !== 'false',
+    // phase 1 观测期默认 false：接受并校验 proof、把结论记进 [auth-event]，但不拦截
+    deviceAuthRequirePossession: process.env.DEVICE_AUTH_REQUIRE_POSSESSION === 'true',
 
     // 备份新鲜度（/api/health 的 backup 字段）：
     //   - 状态文件由 deploy/backup-db.sh 每次运行时落，容器只读挂载所在目录

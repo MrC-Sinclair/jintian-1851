@@ -68,19 +68,30 @@
 
 > **线上已于 2026-10-15 置 `DEVICE_AUTH_ENFORCED=true`**（`deploy/.env`，备份 `.env.bak-20261015-enforce`；
 > 生效证据：无凭据读 `/api/game/saves` 返回 401 `DEVICE_TOKEN_REQUIRED`，日志 `[auth-event] kind=token_required`）。
-> 但 `DEVICE_AUTH_ALLOW_FIRST_BIND` **仍是 true**，因为收紧当天盘点到 `game_saves` 有两行存档，
-> 其中属主 `2b545cbc…` 在 `device_credentials` 里仍无凭据（另一属主 `c323ec82…` 已自动补注册成功，
-> 说明自愈路径在线上成立）。**关注册窗口的先决条件**是前者的属主拿到凭据，否则该玩家会被永久挡在门外
-> —— 检查语句：
+>
+> **原计划的第二步（`ALLOW_FIRST_BIND=false` 关闭注册窗口）已作废**，理由写在
+> [POST /api/game/device-credential](#post-apigamedevice-credential) 的安全边界一节：
+> 它保护不到任何已注册设备（409 早就挡住了），代价却是所有新装用户从此用不了云端同步，
+> 而它唯一"保护到"的人群恰好是它要永久锁死的人群。审查当天的线上事实也印证了这点：
+> `game_saves` 两行存档，属主 `2b545cbc…` 无凭据、`c323ec82…` 已自动补注册。
+>
+> 替代做法是定向闸门 `DEVICE_AUTH_REQUIRE_POSSESSION`：已有存档却首次注册的设备必须出示
+> `saveId` + `createdAt` 证明持有。当前线上**默认 false（只观测）**，先积累
+> `enroll_proof_*` 的分布，再按下面的顺序推进：
+>
+> 1. 后端发观测版（已完成）→ 看 `[auth-event]` 里合法属主能否出示证明；
+> 2. 前端发"能响应 403 `PROOF_REQUIRED`"的版本（能取本地档重试）；
+> 3. 才把 `REQUIRE_POSSESSION` 置 true；
+> 4. 最后删前端 `device-credential.ts` 里的 `ownerParam()` 自声明兜底并发版。
+>
+> 顺序 2 与 3 反了会把合法玩家挡在门外（老客户端拿不出也不会重试证明）。
+> 随时可复核的门禁语句（只读）：
 >
 > ```sql
 > select s.device_id, bool_or(c.device_id is not null and c.revoked_at is null) as has_valid_cred
 > from game_saves s left join device_credentials c on c.device_id = s.device_id
-> group by s.device_id;   -- 全部为 t 才能置 ALLOW_FIRST_BIND=false
+> group by s.device_id;
 > ```
->
-> 三步顺序：① ENFORCED=true（已完成）→ ② 上式全为 `t` 且 `[auth-compat]` 归零后置 ALLOW_FIRST_BIND=false
-> → ③ 最后删前端 `device-credential.ts` 里的 `ownerParam()` 自声明兜底并发版。
 
 ### 频率限制
 
@@ -944,9 +955,24 @@ AI 调用异常或 JSON 不可解析时**不重试**，返回 HTTP 200 + 响应�
 > 服务端按 hash 反查出权威 `deviceId`。
 >
 > 它防的是「事后冒领」：攻击者获知他人 deviceId 后换不到凭据，也就无法列出/读取/删除其存档。
-> 它**防不住「首个声明者」**——兼容期任何人都能替未注册的 deviceId 抢下绑定，
-> 这是「不要求老玩家重装、存量存档无损归属」的对价，靠 `DEVICE_AUTH_ALLOW_FIRST_BIND=false` 收窄。
-> 清缓存/换浏览器会丢凭据且无法找回，需要真实身份（微信 openid）才能解决，不属本接口范围。
+> 它**防不住「首个声明者」**——任何人都能替尚未注册的 deviceId 抢下绑定。
+>
+> 收窄这条窗口用 `DEVICE_AUTH_REQUIRE_POSSESSION=true`，**不是** `ALLOW_FIRST_BIND=false`：
+> 后者把"所有新装用户"一起挡在云端同步门外，而不只是抢注者，而它保护不到的那批人恰好是
+> 它要锁死的那批人（已注册设备本来就有 409 保护）。前者是定向闸门：只对
+> 「该 deviceId 已有 `game_saves` 行、却还没有凭据」的首绑要求出示 `proof`
+> （`saveId` + `createdAt`）。这两个值只存在于云端 `save_data` 里，而读 `save_data`
+> 需要先有凭据——正是"只知 deviceId 的人拿不到、真属主一定拿得到"的东西。
+> 不用 `sha256(save_data)`：属主本地档会比云端**更新**，且 JS 键序不保证稳定，自己人会证明不了自己。
+>
+> **翻开拦截的先决条件**：客户端必须已经能响应 403 `PROOF_REQUIRED`（带证明重试一次）。
+> 顺序反了会把合法属主挡在门外——老版本拿不出证明也不会重试。所以当前默认 `false`，
+> 只把判定记进 `[auth-event]`（`enroll_proof_absent` / `_mismatch` / `_ok`）观察分布。
+>
+> 判定查询失败时按"不要求"放行：误拦真人比误放更糟，误放仍有首绑即锁（409）兜底。
+> 拒绝必须发生在插入**之前**——先绑再拒等于把设备永久锁在 409 上。
+>
+> 清缓存/换浏览器会丢凭据且无法找回，需要真实身份（微信 openid）才能彻底解决，不属本接口范围。
 >
 > **注册一旦落库就必须把明文发出去**：路由的 catch 把任何抛出都变成 500，而明文凭据只在这一次
 > 响应里下发，所以绑成功后的任何非关键查询（例如 `enroll_over_existing_saves` 那条观测）都必须
@@ -965,6 +991,7 @@ x-device-id: {设备指纹}
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `deviceId` | string (uuid) | 是 | 客户端自生成的设备标识（`utils/device-id.ts`）；zod `.strict()`，多余字段一律 400 |
+| `proof` | object | 否 | `{ saveId: string(uuid), createdAt: number(整数毫秒) }`。仅当该 deviceId 已有云端存档却还没凭据时用来证明持有；拦截与否取决于 `DEVICE_AUTH_REQUIRE_POSSESSION`（默认 false = 只观测） |
 
 ### 响应（成功）
 
@@ -987,6 +1014,7 @@ x-device-id: {设备指纹}
 |---|---|---|
 | 400 | `INVALID_PARAMS` | `deviceId` 缺失/非 UUID，或带多余字段，或请求体解析失败 |
 | 403 | `ENROLLMENT_CLOSED` | `DEVICE_AUTH_ALLOW_FIRST_BIND=false`，注册窗口已关闭 |
+| 403 | `PROOF_REQUIRED` | `DEVICE_AUTH_REQUIRE_POSSESSION=true` 且该 deviceId 已有云端存档却没凭据，而请求没带 `proof` 或证明与库里不符 |
 | 405 | `METHOD_NOT_ALLOWED` | 非 POST |
 | 409 | `CREDENTIAL_EXISTS` | 该 `deviceId` 已绑定（含被吊销的情形，吊销即封禁不再发凭据） |
 | 429 | `RATE_LIMITED` | 超 `auth` 桶 5 次/分钟 |
@@ -1015,6 +1043,7 @@ x-device-id: {设备指纹}
 | `missing_identity` | 既无凭据也无 `deviceId` | 400 |
 | `enrolled` / `enroll_exists` / `enroll_closed` | 首绑成功 / 重复注册被拒 / 注册已关闭 | 200 / 409 / 403 |
 | `enroll_over_existing_saves` | 首绑成功后发现该设备**已有云端存档却没有凭据**，随 `enrolled` 追加一条 | 仍是 200（不拒绝） |
+| `enroll_proof_absent` / `_mismatch` / `_ok` | 持有证明闸门的判定结果：该设备有存档但没带证明 / 带了却不符 / 核对通过。观测期（`REQUIRE_POSSESSION=false`）只记不拦，翻开前靠这三条确认"合法属主都拿得出证明" | 观测期 200；翻开后 absent/mismatch → 403 |
 
 > **为什么不拒绝这条首绑**：注册路径唯一能证明的是"你报的 deviceId 之前没人绑过"。
 > 这句话对"合法但没补注册的老玩家"和"已知他人 deviceId 的冒领者"**完全等价**——
@@ -1336,6 +1365,7 @@ x-device-token: {设备凭据，属主证明}
 | `INVALID_DEVICE_TOKEN` | 401 | 带了 `x-device-token` 但反查不到未吊销的凭据（伪造或已吊销）；**不降级**采信自声明的 deviceId | POST/GET sync-save / GET saves / DELETE saves |
 | `DEVICE_TOKEN_REQUIRED` | 401 | 服务端已收紧（`DEVICE_AUTH_ENFORCED=true`）却未带凭据 | 同上 |
 | `ENROLLMENT_CLOSED` | 403 | 注册窗口已关闭（`DEVICE_AUTH_ALLOW_FIRST_BIND=false`） | POST device-credential |
+| `PROOF_REQUIRED` | 403 | 已有云端存档却首次注册且未出示/错出示 `proof`（`DEVICE_AUTH_REQUIRE_POSSESSION=true` 时才拦） | POST device-credential |
 | `SAVE_NOT_FOUND` | 404 | 云端未找到此存档（或属主校验不通过，不区分） | GET sync-save / DELETE saves |
 | `SAVE_FORBIDDEN` | 403 | 存档归属于其他设备，禁止覆盖 | POST sync-save |
 | `CREDENTIAL_EXISTS` | 409 | 该 deviceId 已绑定凭据（首绑即锁；含已吊销设备） | POST device-credential |

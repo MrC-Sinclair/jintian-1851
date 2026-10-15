@@ -11,10 +11,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiMocks = vi.hoisted(() => ({ post: vi.fn() }))
 
+// 只 mock 拿证明要用到的那一个导出：device-credential 不碰 storage 的其它能力
+const storageMocks = vi.hoisted(() => ({ readOwnershipProof: vi.fn(() => null as unknown) }))
+
 vi.mock('../../src/utils/api', async () => {
   const actual = await vi.importActual<typeof import('../../src/utils/api')>('../../src/utils/api')
   return { ...actual, post: apiMocks.post }
 })
+
+vi.mock('../../src/utils/storage', () => ({ readOwnershipProof: storageMocks.readOwnershipProof }))
 
 import { ApiError } from '../../src/utils/api'
 
@@ -32,6 +37,8 @@ async function freshModules() {
 
 beforeEach(() => {
   apiMocks.post.mockReset()
+  storageMocks.readOwnershipProof.mockReset()
+  storageMocks.readOwnershipProof.mockReturnValue(null)
 })
 
 describe('ensureCredential', () => {
@@ -205,5 +212,49 @@ describe('ownerParam（双轨兼容参数）', () => {
   it('分隔符可换（作为首个查询参数时用 ? 之后的形态）', async () => {
     const { credential } = await freshModules()
     expect(credential.ownerParam('', 'dev-1', '')).toBe('deviceId=dev-1')
+  })
+})
+
+// 服务端开启 DEVICE_AUTH_REQUIRE_POSSESSION 后，"已有云端存档却首次注册"的设备
+// 必须证明持有该存档（saveId + createdAt）。观测期不会返回这个码，所以这三条
+// 覆盖的是重试路径本身，而不是线上默认行为。
+describe('PROOF_REQUIRED 的持有证明重试', () => {
+  it('本地有档：带 proof 重试一次并成功换取凭据', async () => {
+    const { credential, identity } = await freshModules()
+    storageMocks.readOwnershipProof.mockReturnValueOnce({ saveId: 'save-1', createdAt: 1700000000000 })
+    apiMocks.post
+      .mockRejectedValueOnce(new ApiError('PROOF_REQUIRED', '需提供 saveId 与 createdAt', 403))
+      .mockResolvedValueOnce({ deviceId: 'dev-1', token: TOKEN })
+
+    const token = await credential.ensureCredential()
+
+    expect(token).toBe(TOKEN)
+    expect(apiMocks.post).toHaveBeenCalledTimes(2)
+    expect(apiMocks.post).toHaveBeenLastCalledWith('/api/game/device-credential', {
+      deviceId: identity.getDeviceId(),
+      proof: { saveId: 'save-1', createdAt: 1700000000000 }
+    })
+  })
+
+  it('本地无档可证明：不空转重试，并停止后续注册', async () => {
+    const { credential } = await freshModules()
+    apiMocks.post.mockRejectedValueOnce(new ApiError('PROOF_REQUIRED', '需提供 saveId 与 createdAt', 403))
+
+    expect(await credential.ensureCredential()).toBe('')
+    expect(apiMocks.post).toHaveBeenCalledTimes(1)
+    // blocked 生效后连请求都不该再发（本地没有档，重试一万次也拿不出证明）
+    expect(await credential.ensureCredential()).toBe('')
+    expect(apiMocks.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('带了证明仍被拒（本地档与云端不符）：到此为止，不再第三次请求', async () => {
+    const { credential } = await freshModules()
+    storageMocks.readOwnershipProof.mockReturnValueOnce({ saveId: 'save-1', createdAt: 1 })
+    apiMocks.post
+      .mockRejectedValueOnce(new ApiError('PROOF_REQUIRED', '需提供', 403))
+      .mockRejectedValueOnce(new ApiError('PROOF_REQUIRED', '证明不符', 403))
+
+    expect(await credential.ensureCredential()).toBe('')
+    expect(apiMocks.post).toHaveBeenCalledTimes(2)
   })
 })

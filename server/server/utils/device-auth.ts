@@ -59,13 +59,70 @@ export function generateDeviceSecret(): string {
   return randomBytes(32).toString('hex')
 }
 
+/** 首绑需要出示的「持有证明」：只存在于云端 save_data 里、读取又要凭据的两个值 */
+export interface EnrollProof {
+  saveId: string
+  createdAt: number
+}
+
+/** 证明闸门对该次首绑的判定结果 */
+export type ProofVerdict = 'not_required' | 'ok' | 'absent' | 'mismatch'
+
+/**
+ * 判定这次首绑是否需要持有证明，以及证明是否成立
+ *
+ * 只对「该 deviceId 已有云端存档、却还没有凭据」的设备要求证明：
+ *   - 新设备（没有存档）照常注册，不受影响；
+ *   - 已注册的设备走不到这里（主键冲突 → 409），本来就防得住。
+ * 存档行本身带 saveId 与 createdAt，这两值随完整 save_data 入库，而读取 save_data
+ * 需要先有凭据 —— 所以它们正是"只有属主拿得到、只知 deviceId 的人拿不到"的东西。
+ *
+ * 不用 sha256(save_data)：属主的本地档会比云端**更新**（离线继续玩），且 JS 对象键序
+ * 不保证稳定，自己人会证明不了自己。saveId/createdAt 跨分歧恒定。
+ */
+export async function evaluateEnrollProof(
+  deviceId: string,
+  proof?: EnrollProof
+): Promise<ProofVerdict> {
+  const [ownsSave] = await db
+    .select({ one: sql`1` })
+    .from(gameSaves)
+    .where(eq(gameSaves.deviceId, deviceId))
+    .limit(1)
+  if (!ownsSave) return 'not_required'
+
+  if (!proof) return 'absent'
+
+  // save_id 是 unique 列，createdAt 从 jsonb 里取出来是文本，按整数比
+  const [matched] = await db
+    .select({ one: sql`1` })
+    .from(gameSaves)
+    .where(
+      and(
+        eq(gameSaves.deviceId, deviceId),
+        eq(gameSaves.saveId, proof.saveId),
+        sql`(${gameSaves.saveData} ->> 'createdAt')::bigint = ${proof.createdAt}`
+      )
+    )
+    .limit(1)
+  return matched ? 'ok' : 'mismatch'
+}
+
 /**
  * 注册设备凭据（首绑即锁）
  *
  * 并发安全：不读后写。直接 INSERT ... ON CONFLICT DO NOTHING + RETURNING，
  * 由 device_id 主键约束裁决——返回 0 行即「该 deviceId 已被绑定」，无竞态窗口。
+ *
+ * 持有证明的判定确实是 check-then-act（要读存档表才能决定拦不拦），这里如实标注它的
+ * 竞态边界：绑定的原子性仍由主键约束保证，竞态最多让"合法属主 vs 抢绑者"其一先赢，
+ * 而先赢者本来就是今天既成的事实。拒绝必须发生在插入**之前**——
+ * 先绑再拒等于把设备永久锁在 409 上（明文凭据只下发一次）。
  */
-export async function registerDeviceCredential(deviceId: string): Promise<RegisterResult> {
+export async function registerDeviceCredential(
+  deviceId: string,
+  proof?: EnrollProof
+): Promise<RegisterResult> {
   const config = useRuntimeConfig()
   if (config.deviceAuthAllowFirstBind === false) {
     logAuthEvent('enroll_closed', deviceId)
@@ -74,6 +131,28 @@ export async function registerDeviceCredential(deviceId: string): Promise<Regist
       statusCode: 403,
       code: 'ENROLLMENT_CLOSED',
       message: '设备注册已关闭，无法获取新凭据'
+    }
+  }
+
+  // 判定本身在观测期也要跑（phase 1 只记不拦），否则开关打开时没有任何历史数据可比
+  let verdict: ProofVerdict = 'not_required'
+  try {
+    verdict = await evaluateEnrollProof(deviceId, proof)
+  } catch (err) {
+    // 判定查询失败时**放行**而不是拒绝：拒绝会把合法属主挡在门外，
+    // 而查询失败多半是数据库抖动，此时误拦比误放的代价更高（误放仍受 409 首绑即锁保护）
+    console.warn('[device-auth] 持有证明判定失败，本次按不要求处理:', err)
+  }
+  if (verdict === 'absent') logAuthEvent('enroll_proof_absent', deviceId)
+  else if (verdict === 'mismatch') logAuthEvent('enroll_proof_mismatch', deviceId)
+  else if (verdict === 'ok') logAuthEvent('enroll_proof_ok', deviceId)
+
+  if (config.deviceAuthRequirePossession === true && (verdict === 'absent' || verdict === 'mismatch')) {
+    return {
+      ok: false,
+      statusCode: 403,
+      code: 'PROOF_REQUIRED',
+      message: '该设备已有云端存档，需提供 saveId 与 createdAt 以证明持有该存档'
     }
   }
 
@@ -96,21 +175,23 @@ export async function registerDeviceCredential(deviceId: string): Promise<Regist
   }
 
   logAuthEvent('enrolled', deviceId)
-  // 首绑的这台设备上已经有云端存档（说明它是"收紧前就在玩、但还没补注册"的那类）。
-  // 存在性查在插入**之后**而不是之前：既不给正常注册加一次前置查询，
-  // 也不引入读后写竞态（裁决完全由上面的主键约束完成）。
-  // 必须包起来：这条查询纯粹是观测，而凭据此刻已经落库。路由的 catch 会把任何抛出
-  // 都变成 500，而明文凭据只在成功响应里下发一次 —— 500 等于"设备已绑定却永远拿不到
-  // 凭据"，之后每次重试都是 409，把合法玩家永久锁死。观测不能换来锁死。
-  try {
-    const [alreadyHasSaves] = await db
-      .select({ one: sql`1` })
-      .from(gameSaves)
-      .where(eq(gameSaves.deviceId, deviceId))
-      .limit(1)
-    if (alreadyHasSaves) logAuthEvent('enroll_over_existing_saves', deviceId)
-  } catch (err) {
-    console.warn('[device-auth] 首绑存在性观测查询失败（不影响已下发的凭据）:', err)
+  // 「首绑落在已有存档的设备上」这条观测：判定阶段已经查过属主，除判定本身失败的情况
+  // 外不必再查一次（verdict 非 not_required 就说明这台设备有存档）。
+  // 兜底查询仍包在 try 里：观测不能换来锁死——凭据此刻已落库，而路由的 catch 会把任何
+  // 抛出变成 500，明文凭据只下发一次，500 等于"已绑定却永远拿不到凭据"。
+  if (verdict !== 'not_required') {
+    logAuthEvent('enroll_over_existing_saves', deviceId)
+  } else {
+    try {
+      const [alreadyHasSaves] = await db
+        .select({ one: sql`1` })
+        .from(gameSaves)
+        .where(eq(gameSaves.deviceId, deviceId))
+        .limit(1)
+      if (alreadyHasSaves) logAuthEvent('enroll_over_existing_saves', deviceId)
+    } catch (err) {
+      console.warn('[device-auth] 首绑存在性观测查询失败（不影响已下发的凭据）:', err)
+    }
   }
   return { ok: true, deviceId, secret }
 }

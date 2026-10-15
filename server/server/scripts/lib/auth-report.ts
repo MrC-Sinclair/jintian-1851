@@ -21,6 +21,9 @@ export const KNOWN_AUTH_KINDS = [
   'missing_identity',
   'enrolled',
   'enroll_over_existing_saves',
+  'enroll_proof_absent',
+  'enroll_proof_mismatch',
+  'enroll_proof_ok',
   'enroll_exists',
   'enroll_closed'
 ] as const

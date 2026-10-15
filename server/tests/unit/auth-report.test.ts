@@ -10,10 +10,12 @@ import { describe, expect, it } from 'vitest'
 import {
   compatVerdict,
   formatReport,
+  KNOWN_AUTH_KINDS,
   parseAuthLines,
   summarize,
   type AuthEvent
 } from '../../server/scripts/lib/auth-report'
+import { AUTH_EVENT_KINDS } from '../../server/utils/auth-event'
 
 function event(kind: string, device = 'aaaaaaaa', ts = '2026-10-14T00:00:00.000Z'): AuthEvent {
   return { kind, device, ts }
@@ -55,6 +57,22 @@ describe('parseAuthLines', () => {
     expect(out[0].kind).toBe('enroll_over_existing_saves')
     expect(out[0].device).toBe('2b545cbc')
   })
+
+  // 持有证明闸门的三个判定同理：翻开 REQUIRE_POSSESSION 之前，
+  // 全靠这三条的分布判断"合法属主能不能出示证明"，被静默丢掉就会误开开关
+  it('enroll_proof_absent / _mismatch / _ok 都在白名单内', () => {
+    const out = parseAuthLines([
+      '[auth-event] {"kind":"enroll_proof_absent","device":"aaaaaaaa"}',
+      '[auth-event] {"kind":"enroll_proof_mismatch","device":"bbbbbbbb"}',
+      '[auth-event] {"kind":"enroll_proof_ok","device":"cccccccc"}'
+    ])
+    expect(out).toHaveLength(3)
+    expect(out.map((e) => e.kind)).toEqual([
+      'enroll_proof_absent',
+      'enroll_proof_mismatch',
+      'enroll_proof_ok'
+    ])
+  })
 })
 
 describe('summarize', () => {
@@ -88,6 +106,15 @@ describe('summarize', () => {
     expect(s.distinctDevicePrefixes).toBe(2)
     expect(s.firstTs).toBe('2026-10-14T00:00:00.000Z')
     expect(s.lastTs).toBe('2026-10-14T00:00:00.000Z')
+  })
+})
+
+// 两份 kind 表（事件侧定义、聚合侧白名单）必须一致：
+// 漏一个的话那条日志会被 parseAuthLines 当脏行静默丢掉，报警永远不响，
+// 而且没有任何报错——所以用一致性断言兜住，而不是靠人记得补用例
+describe('kind 表一致性', () => {
+  it('AUTH_EVENT_KINDS 与 KNOWN_AUTH_KINDS 完全相同', () => {
+    expect([...AUTH_EVENT_KINDS].sort()).toEqual([...KNOWN_AUTH_KINDS].sort())
   })
 })
 

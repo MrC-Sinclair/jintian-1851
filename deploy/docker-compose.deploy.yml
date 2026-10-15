@@ -93,9 +93,14 @@ services:
       # 存档归属鉴权双轨开关（运行时覆盖，不用改代码重新构建）：
       #   ENFORCED=true 关闭「无凭据凭 deviceId 访问」的旧通道
       #   ALLOW_FIRST_BIND=false 关闭新设备注册窗口
+      #     ⚠ 代价是所有新装用户从此用不了云端同步，不只是挡住抢注者 —— 已改用
+      #        REQUIRE_POSSESSION 做定向闸门（见下），不要再动这个开关
+      #   REQUIRE_POSSESSION=true 已有云端存档却首次注册的设备，必须提交 saveId+createdAt
+      #     证明持有该存档；新设备不受影响。默认 false = 只观测不拦截（phase 1）
       # 默认值刻意与开发期一致：兼容期开、注册开。收紧时机看 [auth-compat] 日志。
       NUXT_DEVICE_AUTH_ENFORCED: ${NUXT_DEVICE_AUTH_ENFORCED:-false}
       NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND: ${NUXT_DEVICE_AUTH_ALLOW_FIRST_BIND:-true}
+      NUXT_DEVICE_AUTH_REQUIRE_POSSESSION: ${NUXT_DEVICE_AUTH_REQUIRE_POSSESSION:-false}
       # 备份新鲜度：health 读这个文件判定 backup=fresh|stale|missing|invalid|disabled。
       # 默认就开启（文件读不到时报 missing，仅是一个字段，不改状态码、不影响容器健康），
       # 所以「装没装新版备份脚本」都不会让现有探活变红。
