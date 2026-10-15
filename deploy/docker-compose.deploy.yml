@@ -26,8 +26,11 @@
 #               .output = 9d2e5ba（首绑观测事件 + 观测查询不得连带把注册打成 500）
 #   2026-10-14  h5 = 4ea8fa5（决策失败文案不再一律报"网络连接失败"）
 #               .output = 4ebde06（advisor-briefing 用量日志带 saveId/turn），容器内 mtime 14:34
-#   ⚠ 每次 --force-recreate app 都会清空 jintian-api 的日志，[auth-event] 的历史计数
-#     随之归零——"发布后 0 条"不等于"上线以来 0 条"，收紧判断只能看容器启动之后的窗口。
+#   ⚠ 日志取法（2026-10-16 更正，此前这条注释写错了）：本机容器日志驱动是 **journald**，
+#     `docker logs jintian-api` 只显示**当前容器**，所以 recreate 之后看起来像"清零"，
+#     但 journal 里历史一直在（实测可取到 10-10 起 446 行）。收紧判断请查 journal：
+#       journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago" | pnpm auth-report
+#     `-o short-iso` 保留行首时间戳，聚合侧据此做区间/按天统计；`-o cat` 会丢时间戳。
 #   ⚠ 本文件在服务器上是**独立副本**（/root/jintian/deploy/），改这里必须一并上传，否则新增的
 #     NUXT_ 环境变量根本不会传进容器。2026-10-16 就是这样发现 REQUIRE_POSSESSION 翻不动的：
 #     服务器那份停在 10-14，diff 确认没有服务器本地改动后才覆盖（覆盖前留

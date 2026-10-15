@@ -203,9 +203,17 @@ advisor-chat（含~50% 工具轮，混合）   ≈ ¥0.0011   （原 ¥0.000875�
 ### 核算命令
 
 ```bash
-# 在服务器上：日志是既有唯一数据源，脚本无状态、不连 docker daemon、不写库
-cd /root/jintian/server && docker logs --timestamps --since 24h jintian-api 2>&1 \
+# ⚠ 用 journalctl，不要用 docker logs：本机容器日志驱动是 journald，
+#   `docker logs` 只给**当前容器**的输出，每次 recreate 就截一段；journalctl 按容器名查
+#   能拿到跨重建的完整历史（实测 2026-10-16 取到 10-10 起 446 行 / 96 条用量记录）。
+#   这条搞错过：一度以为"每次发布都会把成本与鉴权观察清零"，实际上历史一直在。
+# ⚠ 输出格式要用 `-o short-iso`（行首带 RFC3339 时间戳，聚合模块据此**按天分桶**）；
+#   `-o cat` 没有前缀时间戳，按端点/单局照样算，但"按天"表会整块消失。
+cd /root/jintian/server && journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago" \
   | pnpm cost-report --daily-limit 30
+
+# 鉴权观察同理（auth-report 读同一种单行 JSON）
+journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago" | pnpm auth-report
 ```
 
 脚本：[server/scripts/llm-cost-report.ts](file:///d:/code/codeWork/jintian-1851/server/server/scripts/llm-cost-report.ts)（聚合逻辑在 `scripts/lib/llm-cost.ts`，有单测）。
@@ -214,8 +222,46 @@ cd /root/jintian/server && docker logs --timestamps --since 24h jintian-api 2>&1
 | 退出码 | 含义 | cron 侧用法 |
 |---|---|---|
 | 0 | 正常 | — |
-| 1 | stdin 为空 / 没解析到记录 / 用法错误 | **必须当故障报警**：多半是 `docker logs` 抓失败，不是「今天零成本」 |
+| 1 | stdin 为空 / 没解析到记录 / 用法错误 | **必须当故障报警**：多半是取日志那步失败，不是「今天零成本」 |
 | 2 | 有任一天成本超过 `--daily-limit` | 发通知 |
+
+### 生产实测（2026-10-16 首次核算，窗口 10-10 → 10-16）
+
+上面所有表都是纸面外推。用 `journalctl` 取回 6 天真实日志跑 `cost-report`，结果如下——
+它同时说明**为什么现在不能用实测校准外推**：
+
+| 指标 | 实测值 |
+|---|---|
+| 用量记录 | 96 条 / 106,137 tokens |
+| 总成本（¥0.35/1M） | **¥0.0371**（6 天累计） |
+| 端点分布 | `npc-actions` 77 次 96,322 tok（占 91%）· `advisor-briefing` 13 次 · `init-factions` 3 次 · `generate-event-stream` 3 次 |
+| 单局可归因成本 | ¥0.0043 / 4 个存档 = **¥0.0011 每局** |
+| 可归因占比 | 12.0%（`init-factions` 无 saveId；10-14 之前 `advisor-briefing` 也没带） |
+
+按天（`journalctl -o short-iso` 才能出这张表）：
+
+| 日期 | 调用次数 | 成本 ¥ |
+|---|---|---|
+| 2026-10-10 | 42 | 0.0159 |
+| 2026-10-11 | 43 | 0.0174 |
+| 2026-10-14 | 10 | 0.0037 |
+| 2026-10-15 | 1 | 0.0001 |
+
+量级一目了然：**日均成本不到两分钱**，且 10-12/10-13 两天完全没有调用记录（日志里有整段空白期）。
+拿这个去对照 `daily-limit ¥30` 的告警阈值，会得出"阈值高得离谱"的结论——但阈值本来就是为
+1000 DAU 准备的**预算上沿**，不是当前流量的描述值，不要因为现在花得少就调低它。
+真正该盯的是这两个结构性信号的比值变化，而不是绝对金额（见下一节）。
+
+三点结论：
+
+- **样本量不足以替代外推**：6 天只有 2 个真实玩家、局长十几回合，`resolve-decision` / `advisor-chat`
+  一次都没触发。1000 DAU 的月度表**仍然只能是外推**，这里的数据只能验证单价与端点结构，不能验证量。
+- **结构上 `npc-actions` 独大**（91%）与文档一致：它按 active 势力各记一行、每行还可能是多步 Agent，
+  所以成本随势力数线性上升，是最大的可控旋钮。
+- **`advisor-briefing` 归因补丁生效**：13 条里带 `saveId`/`turn` 的是 10-14 14:34 之后产生的，
+  此前那部分落在"不可归因"里，这正是 `4ebde06` 要修的缺口。
+- 附带一条口径提醒：`auth-report` 的 `compatShare` 会把收紧**之前**的兼容流量算进分母
+  （实测窗口里 3:3 = 50%），读它必须先看时间区间是否跨过 `ENFORCED=true` 那一刻，否则会误读成"兼容通道还在大量使用"。
 
 ### 阈值口径（怎么定 daily-limit）
 

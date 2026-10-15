@@ -3,7 +3,9 @@
  *
  * 数据源是 `server/utils/llm-usage.ts` 输出的单行 JSON 日志：
  *   [llm-usage] {"endpoint":"generate-event","inputTokens":1500,"outputTokens":600,"totalTokens":2100,"saveId":"…","turn":3,"attempt":1}
- * `docker logs --timestamps jintian-api` 会在行首加 RFC3339 时间戳，本模块能自动识别并按天分桶。
+ * 行首带 RFC3339 时间戳时本模块自动识别并按天分桶：`journalctl -o short-iso` 与
+ * `docker logs --timestamps` 都给这种前缀，但本机日志驱动是 journald，
+ * `docker logs` 只含当前容器（recreate 即截短），要跨重建的历史请用 journalctl。
  *
  * 成本口径与 docs/ai-cost.md 对齐：
  *   - 单价默认 ¥0.35 / 1M tokens（Qwen3-8B 输入输出统一价），可用 --price-per-mtok 覆盖

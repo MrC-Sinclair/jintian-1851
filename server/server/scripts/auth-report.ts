@@ -2,9 +2,9 @@
  * @file [auth-event] 鉴权聚合 CLI（收紧决策的数据源，cron 可直接用退出码报警）
  *
  * 用法（容器名见 deploy/docker-compose.deploy.yml）：
- *   docker logs --since 24h jintian-api 2>&1 \
+ *   journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" \
  *     | pnpm tsx server/scripts/auth-report.ts
- *   docker logs --since 24h jintian-api 2>&1 \
+ *   journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" \
  *     | pnpm tsx server/scripts/auth-report.ts --fail-if-compat   # 兼容通道未归零则退 2
  *
  * 与 llm-cost-report 同一取向：脚本无状态、不连库、不引常驻服务，日志是唯一数据源。
@@ -35,7 +35,7 @@ function parseArgs(argv: string[]): Args | null {
 
 function usage(): string {
   return [
-    '用法：docker logs --since 24h jintian-api 2>&1 | pnpm tsx server/scripts/auth-report.ts [选项]',
+    '用法：journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager | pnpm tsx server/scripts/auth-report.ts [选项]',
     '',
     '选项：',
     '  --json              输出机器可读的聚合结果',
@@ -61,7 +61,7 @@ async function main(): Promise<number> {
 
   const raw = await readStdin()
   if (!raw.trim()) {
-    console.error('stdin 为空：请确认 docker logs 有输出（未加管道时本脚本没有数据源）')
+    console.error('stdin 为空：请确认取日志那步有输出（未加管道时本脚本没有数据源）')
     return 1
   }
 

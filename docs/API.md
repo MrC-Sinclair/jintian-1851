@@ -1060,11 +1060,17 @@ x-device-id: {设备指纹}
 聚合与收紧闸门（兼容期观察、cron 可直接按退出码报警）：
 
 ```bash
-docker logs --since 24h jintian-api 2>&1 | pnpm auth-report
-docker logs --since 24h jintian-api 2>&1 | pnpm auth-report --fail-if-compat   # 未归零退 2
+# 用 journalctl 而不是 docker logs：本机驱动是 journald，docker logs 只给当前容器，
+# 每次 recreate 就截一段；journalctl 按容器名能取到跨重建的完整历史。
+# -o short-iso 保留行首时间戳，聚合侧据此做时间区间与按天分桶。
+journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" | pnpm auth-report
+journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" | pnpm auth-report --fail-if-compat   # 未归零退 2
 ```
 
 - `兼容通道占比 = owner_by_compat / (owner_by_token + owner_by_compat)`，**分母只算成功裁决**。
+- ⚠ 读这个占比前先看时间区间**有没有跨过 `ENFORCED=true` 那一刻**：收紧后兼容流量恒为 0 是"应该的"，
+  而把收紧前的历史一起算进来会得到一个虚高的占比（2026-10-16 实测整窗 3:3 = 50%，
+  而 flip 之后 0 条 —— 只有我的验证探针在打 `token_required`）。
 - 退出码：0 正常 / 1 用法或输入错误（含一行都没解析到，免得把"抓日志失败"读成"零流量"）/ 2 兼容通道未归零。
 - 三态判据：`resolved`（可收紧）/ `pending`（还有兼容流量）/ `no_data`（窗口内没有成功裁决样本）。
   **`no_data` 不等于归零**，`--fail-if-compat` 下同样退 2。

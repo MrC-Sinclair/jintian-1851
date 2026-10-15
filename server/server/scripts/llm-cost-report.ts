@@ -2,8 +2,13 @@
  * @file [llm-usage] 成本聚合 CLI（cron 可直接用退出码报警）
  *
  * 用法（在服务器上，容器名为 deploy/docker-compose.deploy.yml 里的 jintian-api）：
- *   docker logs --timestamps --since 24h jintian-api 2>&1 \
+ *   journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" \
  *     | pnpm tsx server/scripts/llm-cost-report.ts --daily-limit 30
+ *
+ * 为什么用 journalctl 而不是 docker logs：本机容器日志驱动是 journald，`docker logs` 只给
+ * 当前容器的输出，每次 recreate 就截一段；journalctl 按容器名查能拿到跨重建的完整历史。
+ * `-o short-iso` 保留行首时间戳，聚合侧据此按天分桶（用 `-o cat` 时按端点/单局照算，
+ * 但"按天"那张表会整块消失）。
  *
  * 为什么走 stdin 而不是自己连 docker daemon / 写库：
  *   与 deploy/backup-db.sh 同一个取向——2C2G 的机器上不新增常驻服务、不引外部依赖，
@@ -56,7 +61,7 @@ function parseArgs(argv: string[]): Args | null {
 
 function usage(): string {
   return [
-    '用法：docker logs --timestamps jintian-api | pnpm tsx server/scripts/llm-cost-report.ts [选项]',
+    '用法：journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager | pnpm tsx server/scripts/llm-cost-report.ts [选项]',
     '',
     '选项：',
     '  --price-per-mtok <数>   每百万 token 单价（人民币），默认 0.35（Qwen3-8B）',
@@ -83,8 +88,8 @@ async function main(): Promise<number> {
 
   const raw = await readStdin()
   if (!raw.trim()) {
-    // 空输入多半是 docker logs 失败，不是「今天没花钱」
-    console.error('stdin 为空：请确认 docker logs 有输出（未加管道时本脚本没有数据源）')
+    // 空输入多半是取日志那步失败，不是「今天没花钱」
+    console.error('stdin 为空：请确认取日志那步有输出（未加管道时本脚本没有数据源）')
     return 1
   }
 
