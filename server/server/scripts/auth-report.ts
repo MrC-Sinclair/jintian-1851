@@ -1,11 +1,12 @@
 /**
  * @file [auth-event] 鉴权聚合 CLI（收紧决策的数据源，cron 可直接用退出码报警）
  *
- * 用法（容器名见 deploy/docker-compose.deploy.yml）：
- *   journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" \
- *     | pnpm tsx server/scripts/auth-report.ts
- *   journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" \
- *     | pnpm tsx server/scripts/auth-report.ts --fail-if-compat   # 兼容通道未归零则退 2
+ * 用法（**在本机跑**：宿主机没有 node/pnpm，也没有仓库检出，所以用 ssh 把 journal 拉过来；
+ *   容器名见 deploy/docker-compose.deploy.yml）：
+ *   ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@122.51.97.106 \
+ *     'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago"' \
+ *     | (cd server && npx tsx server/scripts/auth-report.ts)
+ *   同上再加 --fail-if-compat：兼容通道未归零则退 2
  *
  * 与 llm-cost-report 同一取向：脚本无状态、不连库、不引常驻服务，日志是唯一数据源。
  *
@@ -35,7 +36,7 @@ function parseArgs(argv: string[]): Args | null {
 
 function usage(): string {
   return [
-    '用法：journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager | pnpm tsx server/scripts/auth-report.ts [选项]',
+    '用法：ssh … \'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager\' | npx tsx server/scripts/auth-report.ts [选项]（在本机跑，宿主机没有 node）',
     '',
     '选项：',
     '  --json              输出机器可读的聚合结果',

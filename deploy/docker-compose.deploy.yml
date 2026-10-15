@@ -28,8 +28,10 @@
 #               .output = 4ebde06（advisor-briefing 用量日志带 saveId/turn），容器内 mtime 14:34
 #   ⚠ 日志取法（2026-10-16 更正，此前这条注释写错了）：本机容器日志驱动是 **journald**，
 #     `docker logs jintian-api` 只显示**当前容器**，所以 recreate 之后看起来像"清零"，
-#     但 journal 里历史一直在（实测可取到 10-10 起 446 行）。收紧判断请查 journal：
-#       journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago" | pnpm auth-report
+#     但 journal 里历史一直在（实测可取到 10-10 起 446 行）。收紧判断请查 journal，
+#     且聚合要在**本机**跑（宿主机无 node/pnpm，也没有仓库检出）：
+#       ssh root@122.51.97.106 'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago"' \
+#         | (cd server && npx tsx server/scripts/auth-report.ts)
 #     `-o short-iso` 保留行首时间戳，聚合侧据此做区间/按天统计；`-o cat` 会丢时间戳。
 #   ⚠ 本文件在服务器上是**独立副本**（/root/jintian/deploy/），改这里必须一并上传，否则新增的
 #     NUXT_ 环境变量根本不会传进容器。2026-10-16 就是这样发现 REQUIRE_POSSESSION 翻不动的：

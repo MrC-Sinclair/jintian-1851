@@ -1063,8 +1063,12 @@ x-device-id: {设备指纹}
 # 用 journalctl 而不是 docker logs：本机驱动是 journald，docker logs 只给当前容器，
 # 每次 recreate 就截一段；journalctl 按容器名能取到跨重建的完整历史。
 # -o short-iso 保留行首时间戳，聚合侧据此做时间区间与按天分桶。
-journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" | pnpm auth-report
-journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" | pnpm auth-report --fail-if-compat   # 未归零退 2
+# ⚠ 聚合跑在本机：宿主机没有 node/pnpm，也没有 server 检出，所以把 journal 用 ssh 拉过来
+#   喂给本地脚本（挂在服务器 cron 上因此不可行，要定时只能放本机或 CI）
+ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@122.51.97.106 \
+  'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago"' \
+  | (cd server && npx tsx server/scripts/auth-report.ts)
+# 判定"兼容通道是否已归零、能否收紧"时加 --fail-if-compat（未归零退 2）
 ```
 
 - `兼容通道占比 = owner_by_compat / (owner_by_token + owner_by_compat)`，**分母只算成功裁决**。

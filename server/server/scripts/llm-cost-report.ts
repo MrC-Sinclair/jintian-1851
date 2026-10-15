@@ -1,7 +1,7 @@
 /**
  * @file [llm-usage] 成本聚合 CLI（cron 可直接用退出码报警）
  *
- * 用法（在服务器上，容器名为 deploy/docker-compose.deploy.yml 里的 jintian-api）：
+ * 用法（**在本机跑**：宿主机没有 node/pnpm，也没有仓库检出，所以用 ssh 把 journal 拉过来）：
  *   journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "24 hours ago" \
  *     | pnpm tsx server/scripts/llm-cost-report.ts --daily-limit 30
  *
@@ -61,7 +61,7 @@ function parseArgs(argv: string[]): Args | null {
 
 function usage(): string {
   return [
-    '用法：journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager | pnpm tsx server/scripts/llm-cost-report.ts [选项]',
+    '用法：ssh … \'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager\' | npx tsx server/scripts/llm-cost-report.ts [选项]（在本机跑，宿主机没有 node）',
     '',
     '选项：',
     '  --price-per-mtok <数>   每百万 token 单价（人民币），默认 0.35（Qwen3-8B）',
