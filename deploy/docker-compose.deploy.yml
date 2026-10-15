@@ -20,20 +20,29 @@
 # 更稳的做法是不删目录、原地 tar -xzf 覆盖，可避开 inode 问题。
 #
 # 版本台账（openspec 停用后，这里代替原先那份「线上对应哪个 commit」的记录）：
+#   2026-10-16  h5 = 0d6b5c9（客户端能响应 403 PROOF_REQUIRED）
+#               .output = 0d6b5c9（持有证明闸门；REQUIRE_POSSESSION=false，只观测不拦截）
 #   2026-10-15  h5 = 506e7c1（开局势力整包降级角标；上一条 b3cdf64 为备选事件角标）
 #               .output = 9d2e5ba（首绑观测事件 + 观测查询不得连带把注册打成 500）
 #   2026-10-14  h5 = 4ea8fa5（决策失败文案不再一律报"网络连接失败"）
 #               .output = 4ebde06（advisor-briefing 用量日志带 saveId/turn），容器内 mtime 14:34
 #   ⚠ 每次 --force-recreate app 都会清空 jintian-api 的日志，[auth-event] 的历史计数
 #     随之归零——"发布后 0 条"不等于"上线以来 0 条"，收紧判断只能看容器启动之后的窗口。
+#   ⚠ 本文件在服务器上是**独立副本**（/root/jintian/deploy/），改这里必须一并上传，否则新增的
+#     NUXT_ 环境变量根本不会传进容器。2026-10-16 就是这样发现 REQUIRE_POSSESSION 翻不动的：
+#     服务器那份停在 10-14，diff 确认没有服务器本地改动后才覆盖（覆盖前留
+#     docker-compose.deploy.yml.bak-20261016）。传完先 `config --quiet` 校验，
+#     再 `docker exec jintian-api env` 确认真进了容器，别只信"up -d 没报错"。
 #   回滚副本在服务器上（解包前 cp -a 留的）：
 #     dist/h5.bak-20261013 / -20261013-401fix / -20261014-toastfix / -20261015-degraded-toast
-#       / -20261015-event-badge / -20261015-faction-badge
-#     dist/.output.bak-20261013 / -20261014 / -20261014b / -20261015-auth-observe
+#       / -20261015-event-badge / -20261015-faction-badge / -20261016-proof
+#     dist/.output.bak-20261013 / -20261014 / -20261014b / -20261015-auth-observe / -20261016-proof
 #
-# 鉴权开关（2026-10-15 收紧第一步）：deploy/.env 已显式写 NUXT_DEVICE_AUTH_ENFORCED=true，
-# 关闭了 deviceId 自声明的兼容通道；ALLOW_FIRST_BIND 仍为 true（默认），因为线上仍有存档属主
-# 没拿到凭据。改 .env 前留了 .env.bak-20261015-enforce；第二步的先决条件与检查 SQL 见 docs/API.md。
+# 鉴权开关：deploy/.env 已显式写 NUXT_DEVICE_AUTH_ENFORCED=true（10-15 第一步，备份
+# .env.bak-20261015-enforce）。原计划第二步 ALLOW_FIRST_BIND=false 已作废——它保护不到
+# 已注册设备，代价却是新装用户全部失去云端同步；改用定向闸门
+# NUXT_DEVICE_AUTH_REQUIRE_POSSESSION（当前 false = 只观测）。
+# 翻开它的先决条件与判定分布口径见 docs/API.md 的 device-credential 一节。
 
 name: jintian
 
