@@ -99,12 +99,19 @@ export async function registerDeviceCredential(deviceId: string): Promise<Regist
   // 首绑的这台设备上已经有云端存档（说明它是"收紧前就在玩、但还没补注册"的那类）。
   // 存在性查在插入**之后**而不是之前：既不给正常注册加一次前置查询，
   // 也不引入读后写竞态（裁决完全由上面的主键约束完成）。
-  const [alreadyHasSaves] = await db
-    .select({ one: sql`1` })
-    .from(gameSaves)
-    .where(eq(gameSaves.deviceId, deviceId))
-    .limit(1)
-  if (alreadyHasSaves) logAuthEvent('enroll_over_existing_saves', deviceId)
+  // 必须包起来：这条查询纯粹是观测，而凭据此刻已经落库。路由的 catch 会把任何抛出
+  // 都变成 500，而明文凭据只在成功响应里下发一次 —— 500 等于"设备已绑定却永远拿不到
+  // 凭据"，之后每次重试都是 409，把合法玩家永久锁死。观测不能换来锁死。
+  try {
+    const [alreadyHasSaves] = await db
+      .select({ one: sql`1` })
+      .from(gameSaves)
+      .where(eq(gameSaves.deviceId, deviceId))
+      .limit(1)
+    if (alreadyHasSaves) logAuthEvent('enroll_over_existing_saves', deviceId)
+  } catch (err) {
+    console.warn('[device-auth] 首绑存在性观测查询失败（不影响已下发的凭据）:', err)
+  }
   return { ok: true, deviceId, secret }
 }
 

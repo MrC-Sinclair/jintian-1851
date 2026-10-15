@@ -6,17 +6,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const dbMock = vi.hoisted(() => {
+  // 首绑成功后的"该设备是否已有存档"观测查询走 select → from → where → limit
+  const limitMock = vi.fn((): any[] => [])
+  const whereMock = vi.fn(() => ({ limit: limitMock }))
+  const fromMock = vi.fn(() => ({ where: whereMock }))
+  const selectMock = vi.fn(() => ({ from: fromMock }))
+
   const returningMock = vi.fn((): any[] => [{ deviceId: 'device-1' }])
   const onConflictDoNothingMock = vi.fn(() => ({ returning: returningMock }))
   const valuesMock = vi.fn(() => ({ onConflictDoNothing: onConflictDoNothingMock }))
   const insertMock = vi.fn(() => ({ values: valuesMock }))
 
   return {
-    db: { insert: insertMock },
+    db: { insert: insertMock, select: selectMock },
     returningMock,
     onConflictDoNothingMock,
     valuesMock,
-    insertMock
+    insertMock,
+    selectMock,
+    limitMock
   }
 })
 
@@ -53,6 +61,34 @@ describe('POST /api/game/device-credential', () => {
     expect(res.data.deviceId).toBe(DEVICE_ID)
     expect(res.data.token).toMatch(/^[0-9a-f]{64}$/)
     expect(dbMock.insertMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('首绑落在"已有存档却没有凭据"的设备上：照常 200 下发凭据', async () => {
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }])
+    readBodyMock.mockResolvedValueOnce({ deviceId: DEVICE_ID })
+
+    const res = (await handler(makeEvent())) as any
+    expect(res.ok).toBe(true)
+    expect(res.data.token).toMatch(/^[0-9a-f]{64}$/)
+    expect(dbMock.selectMock).toHaveBeenCalledTimes(1)
+  })
+
+  // 凭据此刻已经落库，而路由把任何抛出都变成 500；明文只在这一次下发，
+  // 所以观测查询失败绝不能连带注册一起失败 —— 那等于把设备永久锁在 409 上
+  it('观测查询抛错不影响注册：凭据照常返回', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    dbMock.selectMock.mockImplementationOnce(() => {
+      throw new Error('db down')
+    })
+    readBodyMock.mockResolvedValueOnce({ deviceId: DEVICE_ID })
+
+    const res = (await handler(makeEvent())) as any
+    warnSpy.mockRestore()
+
+    expect(res.ok).toBe(true)
+    expect(res.data.token).toMatch(/^[0-9a-f]{64}$/)
+    expect(dbMock.insertMock).toHaveBeenCalledTimes(1)
+    expect(res.statusCode).toBeUndefined()
   })
 
   it('重复注册 → 409 CREDENTIAL_EXISTS（首绑即锁，冒领方换不到凭据）', async () => {
