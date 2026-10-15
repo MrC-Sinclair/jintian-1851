@@ -97,6 +97,42 @@ describe('registerDeviceCredential', () => {
     expect(res.code).toBe('CREDENTIAL_EXISTS')
   })
 
+  it('首绑落在已有存档的设备：仍然放行，但额外记一条可报警事件', async () => {
+    const logs: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logs.push(args.join(' '))
+    })
+    dbMock.limitMock.mockReturnValueOnce([{ one: 1 }])
+
+    const res = await registerDeviceCredential('device-1')
+    spy.mockRestore()
+
+    // 不拒绝：拒绝就是把"收紧前就在玩、只是没补注册"的属主永久挡在门外
+    expect(res.ok).toBe(true)
+    const events = logs.filter((l) => l.startsWith('[auth-event]'))
+    expect(events.some((l) => l.includes('"kind":"enrolled"'))).toBe(true)
+    expect(events.some((l) => l.includes('"kind":"enroll_over_existing_saves"'))).toBe(true)
+    // 存在性查排在插入之后：属主裁决完全由主键约束完成，不留读后写窗口
+    expect(dbMock.insertMock.mock.invocationCallOrder[0]).toBeLessThan(
+      dbMock.selectMock.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('首绑在没有存档的新设备上：只记 enrolled，不误报警', async () => {
+    const logs: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logs.push(args.join(' '))
+    })
+    dbMock.limitMock.mockReturnValueOnce([])
+
+    const res = await registerDeviceCredential('device-new')
+    spy.mockRestore()
+
+    expect(res.ok).toBe(true)
+    expect(logs.some((l) => l.includes('enroll_over_existing_saves'))).toBe(false)
+    expect(logs.some((l) => l.includes('"kind":"enrolled"'))).toBe(true)
+  })
+
   it('注册关闭（allowFirstBind=false）→ 403 ENROLLMENT_CLOSED，且不碰数据库', async () => {
     setConfig({ deviceAuthAllowFirstBind: false })
 

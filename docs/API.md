@@ -1004,6 +1004,16 @@ x-device-id: {设备指纹}
 | `token_required` | 收紧后无凭据 | 401 |
 | `missing_identity` | 既无凭据也无 `deviceId` | 400 |
 | `enrolled` / `enroll_exists` / `enroll_closed` | 首绑成功 / 重复注册被拒 / 注册已关闭 | 200 / 409 / 403 |
+| `enroll_over_existing_saves` | 首绑成功后发现该设备**已有云端存档却没有凭据**，随 `enrolled` 追加一条 | 仍是 200（不拒绝） |
+
+> **为什么不拒绝这条首绑**：注册路径唯一能证明的是"你报的 deviceId 之前没人绑过"。
+> 这句话对"合法但没补注册的老玩家"和"已知他人 deviceId 的冒领者"**完全等价**——
+> 存档行本身就带着属主 `deviceId`，客户端启动时也会带着它发请求，所以设备标识在本设计里
+> 从来不是秘密（[设计注释见 device-auth.ts](file:///d:/code/codeWork/jintian-1851/server/server/utils/device-auth.ts)）。
+> 加一条存在性检查去拒绝它，结果是合法玩家被永久挡在门外（他自己的档也读不到），
+> 冒领者则可以先注册一个空设备再走同步覆盖路径，防线并没有真的加上。
+> 所以这一步的产出是**可报警的观测**：出现即去查那台掩码设备，而不是静默放行、也不是误伤。
+> `auth-report` 的 `formatReport` 只在计数 >0 时列出它——出现就该看，不出现是正常状态。
 
 `device` 只记 **前 8 位掩码**（完整标识不落盘，与 `[auth-compat]` 同一条纪律）；
 `invalid_token`/`missing_identity` 手上没有可信标识，该字段为空串。

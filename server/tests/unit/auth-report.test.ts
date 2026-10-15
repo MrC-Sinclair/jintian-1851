@@ -44,6 +44,17 @@ describe('parseAuthLines', () => {
     expect(out).toHaveLength(1)
     expect(out[0]).toEqual({ ts: '', kind: 'invalid_token', device: '' })
   })
+
+  // 首绑落在已有存档的设备上 = 收紧期间唯一能区分「合法自愈」与「冒领」的信号，
+  // 一旦漏出白名单就会被当成脏行静默跳过，报警也就永远不响
+  it('enroll_over_existing_saves 在白名单内，不被当脏行丢掉', () => {
+    const out = parseAuthLines([
+      '[auth-event] {"ts":"2026-10-15T00:00:00.000Z","kind":"enroll_over_existing_saves","device":"2b545cbc"}'
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0].kind).toBe('enroll_over_existing_saves')
+    expect(out[0].device).toBe('2b545cbc')
+  })
 })
 
 describe('summarize', () => {

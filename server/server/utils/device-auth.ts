@@ -24,9 +24,9 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../db'
-import { deviceCredentials } from '../db/schema'
+import { deviceCredentials, gameSaves } from '../db/schema'
 import { logAuthEvent } from './auth-event'
 
 /** 凭据请求头名（与前端 utils/device-credential.ts 约定一致） */
@@ -96,6 +96,15 @@ export async function registerDeviceCredential(deviceId: string): Promise<Regist
   }
 
   logAuthEvent('enrolled', deviceId)
+  // 首绑的这台设备上已经有云端存档（说明它是"收紧前就在玩、但还没补注册"的那类）。
+  // 存在性查在插入**之后**而不是之前：既不给正常注册加一次前置查询，
+  // 也不引入读后写竞态（裁决完全由上面的主键约束完成）。
+  const [alreadyHasSaves] = await db
+    .select({ one: sql`1` })
+    .from(gameSaves)
+    .where(eq(gameSaves.deviceId, deviceId))
+    .limit(1)
+  if (alreadyHasSaves) logAuthEvent('enroll_over_existing_saves', deviceId)
   return { ok: true, deviceId, secret }
 }
 

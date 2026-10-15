@@ -26,6 +26,15 @@ export const AUTH_EVENT_KINDS = [
   'missing_identity',
   /** 首次绑定成功，下发凭据 */
   'enrolled',
+  /**
+   * 首绑落在「已经有云端存档、但此前没有凭据」的设备上
+   *
+   * 收紧第二步（ALLOW_FIRST_BIND=false）等的是这种设备的合法属主自己回来注册；
+   * 但在协议层，合法自愈与「已知他人 deviceId 的冒领者」完全不可区分，所以服务端
+   * **不因此拒绝**（拒绝等于把那个玩家永久挡在门外），只把它单独记一条，
+   * 让运维能按设备前缀报警而不是事后翻存档。
+   */
+  'enroll_over_existing_saves',
   /** 重复注册被拒 → 409（含冒领尝试与已吊销设备） */
   'enroll_exists',
   /** 注册已关闭（allowFirstBind=false）→ 403 */

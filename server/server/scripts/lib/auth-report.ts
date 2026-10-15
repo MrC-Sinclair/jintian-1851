@@ -6,6 +6,8 @@
  *     —— 即"属主裁决里有多少还靠客户端自声明"。这是收紧（DEVICE_AUTH_ENFORCED=true）
  *     的判断依据，**分母只算成功裁决**，401/400/409 不参与（它们不是"在读存档"）。
  *   - `byKind` 保留全部事件类型计数，401 分布看 invalid_token / token_required。
+ *   - `enroll_over_existing_saves` 只在计数 >0 时才列出来（formatReport 的既有规则）：
+ *     它是报警线而不是归零线——出现就该去翻那台掩码设备，不出现是正常状态。
  *   - 解析容错：非 `[auth-event]` 前缀、JSON 不合法、kind 不在白名单的行一律跳过
  *     （日志里混着 http 访问日志、其它模块日志是常态，不能因此报错）。
  */
@@ -18,6 +20,7 @@ export const KNOWN_AUTH_KINDS = [
   'token_required',
   'missing_identity',
   'enrolled',
+  'enroll_over_existing_saves',
   'enroll_exists',
   'enroll_closed'
 ] as const
