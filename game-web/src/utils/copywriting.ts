@@ -303,7 +303,9 @@ export const PAGE_TEXT = {
   /** 角色创建页文案 */
   characterCreate: {
     factionLoading: '正在生成可选势力…',
-    factionLoadingHint: 'AI 正在基于你的身份生成势力，约 3-8 秒'
+    factionLoadingHint: 'AI 正在基于你的身份生成势力，约 3-8 秒',
+    /** init-factions 整包降级：LLM 两次都失败，势力列表取自预置池（仍可选，只是不是按身份现推的） */
+    factionsDegradedHint: '备选势力：AI 未能按你的身份推演，以下名单取自既定格局'
   },
   /** game-main 文案 */
   gameMain: {

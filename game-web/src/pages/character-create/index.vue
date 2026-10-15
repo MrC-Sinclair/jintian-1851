@@ -71,6 +71,10 @@
       <text v-else class="cc__panel-hint">
         身份：{{ selectedBackground }} · 请选择你的势力
       </text>
+      <!-- 整包降级角标：LLM 两次都失败时名单取自预置池，仍可选，但不是按你的身份推出来的 -->
+      <text v-if="factionsDegraded" class="cc__panel-hint">
+        {{ PAGE_TEXT.characterCreate.factionsDegradedHint }}
+      </text>
 
       <view v-if="loadingFactions" class="cc__loading">
         <view class="cc__loading-spinner">
@@ -134,7 +138,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { post, ApiError } from '@/utils/api'
+import { postWithMeta, ApiError } from '@/utils/api'
 import { useGameState } from '@/composables/useGameState'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useToast } from '@/composables/useToast'
@@ -239,6 +243,11 @@ const factions = ref<InitFaction[]>([])
 const loadingFactions = ref(false)
 /** 加载势力错误信息 */
 const factionsError = ref<string | null>(null)
+/**
+ * 本次势力名单是否为整包降级（后端 LLM 两次都失败，改用 fallback-factions.ts 的预置池）。
+ * 响应顶层的 `fallback:true` 只有 postWithMeta 拿得到，用 post 会被剥掉。
+ */
+const factionsDegraded = ref(false)
 /** 选中的势力 */
 const selectedFaction = ref<InitFaction | null>(null)
 /** 开局初始化中 */
@@ -251,13 +260,16 @@ async function loadFactions(): Promise<void> {
   if (!selectedBackground.value) return
   loadingFactions.value = true
   factionsError.value = null
+  factionsDegraded.value = false
   factions.value = []
 
   try {
-    const res = await post<{ factions: InitFaction[] }>('/api/game/init-factions', {
-      background: selectedBackground.value
-    })
+    const { data: res, fallback } = await postWithMeta<{ factions: InitFaction[] }>(
+      '/api/game/init-factions',
+      { background: selectedBackground.value }
+    )
     factions.value = res.factions
+    factionsDegraded.value = fallback
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : '势力推演失败'
     factionsError.value = msg
@@ -282,6 +294,7 @@ function onBackToBackground(): void {
   factions.value = []
   selectedFaction.value = null
   factionsError.value = null
+  factionsDegraded.value = false
 }
 
 /**

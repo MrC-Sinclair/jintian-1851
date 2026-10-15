@@ -85,6 +85,20 @@ async function mockInitFactionsSuccess(page: Page, delayMs = 0): Promise<void> {
 }
 
 /**
+ * 拦截 init-factions，返回"整包降级"的成功响应：
+ * 名单来自后端预置池，响应顶层带 fallback:true（页面应据此显示备选角标）
+ */
+async function mockInitFactionsDegraded(page: Page): Promise<void> {
+  await page.route('**/api/game/init-factions', (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true, data: { factions: MOCK_FACTIONS }, fallback: true })
+    })
+  })
+}
+
+/**
  * 拦截 init-factions 请求，返回错误响应
  */
 async function mockInitFactionsError(
@@ -262,5 +276,37 @@ test.describe('character-create 开局流程', () => {
 
     // 4. 关键断言：「确认势力」对话框**未**弹出（冒泡已被拦截）
     await expect(page.locator('.confirm-dialog')).toHaveCount(0)
+  })
+
+  // 后端 LLM 两次都失败时名单取自预置池，响应顶层 fallback:true。
+  // 页面必须让玩家知道"这不是按你身份推出来的"，但名单本身照常可选
+  test('整包降级：显示备选势力角标，名单仍可选', async ({ page }) => {
+    await mockInitFactionsDegraded(page)
+    await page.goto(CHARACTER_CREATE_URL)
+
+    await page.locator('.cc__bg-card').filter({ hasText: '文官' }).click()
+    await page.locator('.cc__btn--primary').click()
+
+    await expect(page.locator('.faction-card')).toHaveCount(6)
+    await expect(
+      page.locator('.cc__panel-hint').filter({ hasText: '备选势力' })
+    ).toBeVisible()
+
+    // 降级不影响可选：点一张卡片仍会弹确认框
+    await page.locator('.faction-card').first().click()
+    await expect(page.locator('.confirm-dialog')).toBeVisible()
+  })
+
+  test('正常推演不显示备选角标', async ({ page }) => {
+    await mockInitFactionsSuccess(page)
+    await page.goto(CHARACTER_CREATE_URL)
+
+    await page.locator('.cc__bg-card').filter({ hasText: '文官' }).click()
+    await page.locator('.cc__btn--primary').click()
+
+    await expect(page.locator('.faction-card')).toHaveCount(6)
+    await expect(
+      page.locator('.cc__panel-hint').filter({ hasText: '备选势力' })
+    ).toHaveCount(0)
   })
 })

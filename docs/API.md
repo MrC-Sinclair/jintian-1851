@@ -223,6 +223,9 @@ x-device-id: {设备指纹}
 
 降级时（LLM 失败）：响应体多一个 `fallback: true` 字段，响应头 `X-Fallback: true`，势力来自 [fallback-factions.ts](file:///d:/code/codeWork/jintian-1851/server/server/runtime/fallback-factions.ts)。
 
+> 前端已消费该标志：`character-create` 走 `postWithMeta` 取顶层 `fallback`，在势力名单下方显示
+> 「备选势力」角标（`e2e/character-create.spec.ts` 两条用例覆盖：降级有角标且名单仍可选 / 正常无角标）。
+
 ### 错误
 
 | HTTP | code | 触发场景 |
