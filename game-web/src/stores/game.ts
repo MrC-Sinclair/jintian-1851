@@ -98,6 +98,14 @@ export const useGameStore = defineStore('game', () => {
    */
   const lastFreeFactionEffects = ref<{ name: string; relationshipDelta?: number; powerDelta?: number }[]>([])
 
+  /**
+   * 本回合事件是否为**备选事件**（后端 LLM 两次都失败，改用 runtime/fallback-events.ts 的预置事件）。
+   *
+   * 只用于展示，不进存档 blob：存档里存的是事件内容本身，"这条是兜底来的"属于本次会话的事实。
+   * 由 setEvent 统一复位，保证换事件后不会残留上一回合的角标。
+   */
+  const eventDegraded = ref(false)
+
   // ====================== 计算属性 ======================
   /** 当前回合数（无存档时为 0） */
   const currentTurn = computed(() => currentSave.value?.state.turn ?? 0)
@@ -592,9 +600,20 @@ export const useGameStore = defineStore('game', () => {
   // ====================== 回合临时态操作 ======================
   /**
    * 设置当前回合事件
+   *
+   * 同时复位 eventDegraded：换事件后上一回合的"备选事件"角标不该还在
+   * （调用方要在 setEvent **之后**再置位降级标志，否则会被这里冲掉）
    */
   function setEvent(event: GameEvent | null): void {
     currentEvent.value = event
+    eventDegraded.value = false
+  }
+
+  /**
+   * 标记本回合事件来自后端备选池（generate-event 的 fallback）
+   */
+  function setEventDegraded(degraded: boolean): void {
+    eventDegraded.value = degraded
   }
 
   /**
@@ -682,8 +701,10 @@ export const useGameStore = defineStore('game', () => {
     clearLastFreeFactionEffects,
     applyFactionSurvival,
     lastFreeFactionEffects,
+    eventDegraded,
     // 回合临时态操作
     setEvent,
+    setEventDegraded,
     setNpcActions,
     setNpcFailedFactionIds,
     setSelectedOptionId,

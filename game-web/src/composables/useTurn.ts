@@ -144,8 +144,12 @@ export function useTurn(options: UseTurnOptions = {}) {
    * 降级策略：
    *   - 非 H5 端（小程序 chunked 兼容性不稳定）直接走原非流式 post
    *   - 流式失败（连接错误 / 首帧超时）回退到非流式 post，保持原有可用性
+   *
+   * 返回带 `fallback`：后端 LLM 两次都失败时改用预置事件池（docs/API.md「缓存与降级」），
+   * 响应顶层 `fallback:true`（流式则在结束帧里带）。玩家看到的是一条看起来完全正常的
+   * 事件，所以必须让他知道这不是按当前局势生成的，否则兜底会伪装成剧情。
    */
-  async function fetchEventWithStream(body: unknown): Promise<GenerateEventResponse> {
+  async function fetchEventWithStream(body: unknown): Promise<{ event: GenerateEventResponse['event']; fallback: boolean }> {
     let isH5Env = false
     try {
       const p = uni.getSystemInfoSync().uniPlatform
@@ -154,14 +158,17 @@ export function useTurn(options: UseTurnOptions = {}) {
       isH5Env = false
     }
     if (!isH5Env) {
-      return post<GenerateEventResponse>('/api/game/generate-event', body)
+      const res = await postWithMeta<GenerateEventResponse>('/api/game/generate-event', body)
+      return { event: res.data.event, fallback: res.fallback }
     }
 
     const { connect } = useSSE()
     try {
-      return await new Promise<GenerateEventResponse>((resolve, reject) => {
+      return await new Promise<{ event: GenerateEventResponse['event']; fallback: boolean }>((resolve, reject) => {
         let settled = false
         let received: GenerateEventResponse['event'] | null = null
+        // 结束帧里的 fallback（useSSE 已把它随 meta 透出）
+        let streamFallback = false
         let partial = ''
         const finish = (fn: () => void): void => {
           if (settled) return
@@ -176,13 +183,14 @@ export function useTurn(options: UseTurnOptions = {}) {
               partial += delta
               options.onEventProgress?.(partial)
             },
-            onEvent: (ev) => {
+            onEvent: (ev, meta) => {
               received = ev as GenerateEventResponse['event']
+              streamFallback = meta?.fallback === true
             },
             onDone: () => {
               finish(() =>
                 received
-                  ? resolve({ event: received })
+                  ? resolve({ event: received, fallback: streamFallback })
                   : reject(new Error('流式结束但未收到事件对象'))
               )
             },
@@ -194,7 +202,8 @@ export function useTurn(options: UseTurnOptions = {}) {
       })
     } catch (err) {
       console.warn('[useTurn] 事件流式获取失败，降级为非流式:', err)
-      return post<GenerateEventResponse>('/api/game/generate-event', body)
+      const res = await postWithMeta<GenerateEventResponse>('/api/game/generate-event', body)
+      return { event: res.data.event, fallback: res.fallback }
     }
   }
 
@@ -258,6 +267,8 @@ export function useTurn(options: UseTurnOptions = {}) {
         eventDate: res.event.eventDate
       }
       store.setEvent(gameEvent)
+      // 必须在 setEvent 之后：setEvent 会把上一回合的降级标志复位
+      store.setEventDegraded(res.fallback)
 
       // 时光跳跃：链首锚点晚于当前日历时，把日历推到锚点年（只往前推，不回拨）。
       // 时钟改为 1 回合 = 1 年后，日历本身每回合自己走 1 年，61 回合即可走完 1851—1912；

@@ -16,10 +16,25 @@ import { useTurn } from '../../src/composables/useTurn'
 import { useGameStore } from '../../src/stores/game'
 import type { GameSave } from '../../src/types/game'
 
-// mock utils/api 的 post / postWithMeta（useTurn 谈判方法依赖 postWithMeta）
+// mock utils/api 的 post / postWithMeta（useTurn 谈判与 generate-event 依赖 postWithMeta）
+//
+// postWithMeta 默认**委托给 post 的队列值**：本文件十几处 generate-event / advisor-briefing /
+// npc-actions 的打桩都挂在 post 上，逐个改成双层信封没有收益；需要控制顶层 fallback 的用例
+// 直接 mockResolvedValueOnce 覆盖 postWithMeta 即可（once 队列优先于默认实现）。
+const apiMocks = vi.hoisted(() => {
+  const post = vi.fn()
+  return {
+    post,
+    postWithMeta: vi.fn(async (...args: unknown[]) => ({
+      data: await (post as unknown as (...a: unknown[]) => Promise<unknown>)(...args),
+      fallback: false
+    }))
+  }
+})
+
 vi.mock('@/utils/api', () => ({
-  post: vi.fn(),
-  postWithMeta: vi.fn(),
+  post: apiMocks.post,
+  postWithMeta: apiMocks.postWithMeta,
   // 与 src/utils/api.ts 保持一致：这两类码的 message 是给开发者看的，UI 展示前要归一
   TECHNICAL_ERROR_CODES: new Set(['NETWORK', 'INVALID_RESPONSE']),
   ApiError: class ApiError extends Error {
@@ -95,6 +110,16 @@ function createMockSave(): GameSave {
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.mocked(post).mockReset()
+  // postWithMeta 的默认委托实现也要重装：mockReset 会连实现一起清掉，
+  // 不重装的话下一个用例调 postWithMeta 会直接拿到 undefined
+  vi.mocked(postWithMeta).mockReset()
+  vi.mocked(postWithMeta).mockImplementation(
+    async (...args: unknown[]) =>
+      ({
+        data: await (post as unknown as (...a: unknown[]) => Promise<unknown>)(...args),
+        fallback: false
+      }) as never
+  )
   vi.mocked(uni.redirectTo).mockReset()
 })
 
@@ -138,6 +163,57 @@ describe('startTurn', () => {
     expect(event).not.toBeNull()
     expect(event?.title).toBe('事件1')
     expect(store.currentEvent?.title).toBe('事件1')
+  })
+
+  // 后端 LLM 两次都失败时改用预置事件池，响应顶层带 fallback:true。
+  // 事件与选项本身仍然有效，但玩家有权知道这条不是按当前局势现写的 → store.eventDegraded
+  it('备选事件：generate-event 返回 fallback:true 时置 eventDegraded', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    vi.mocked(postWithMeta).mockResolvedValueOnce({
+      data: {
+        event: {
+          title: '备选事件',
+          description: '',
+          eventType: '随机',
+          options: [{ id: 'o1', label: '选项', effects: {} }]
+        }
+      },
+      fallback: true
+    } as never)
+    vi.mocked(post).mockResolvedValueOnce({ summary: '', suggestion: '' })
+
+    const { startTurn } = useTurn()
+    const event = await startTurn()
+
+    expect(event?.title).toBe('备选事件')
+    expect(store.currentEvent?.title).toBe('备选事件')
+    expect(store.eventDegraded).toBe(true)
+  })
+
+  it('正常事件不置 eventDegraded，且换回合会被复位', async () => {
+    const store = useGameStore()
+    store.setSave(createMockSave())
+    vi.mocked(postWithMeta)
+      .mockResolvedValueOnce({
+        data: { event: { title: '兜底回合', description: '', eventType: '随机', options: [] } },
+        fallback: true
+      } as never)
+      .mockResolvedValueOnce({
+        data: { event: { title: '正常回合', description: '', eventType: '随机', options: [] } },
+        fallback: false
+      } as never)
+    vi.mocked(post).mockResolvedValue({ summary: '', suggestion: '' } as never)
+
+    const { startTurn } = useTurn()
+    await startTurn()
+    expect(store.eventDegraded).toBe(true)
+
+    // 下一回合由 LLM 正常生成：角标不该跟着上一回合的兜底留在屏上
+    if (store.currentSave) store.currentSave.state.turn = 2
+    await startTurn()
+    expect(store.currentEvent?.title).toBe('正常回合')
+    expect(store.eventDegraded).toBe(false)
   })
 
   it('时光跳跃：事件带 eventDate 且晚于当前日历时，把游戏年月推到锚点', async () => {

@@ -78,6 +78,10 @@
           :disabled="hasDecided || isProcessingTurn"
           @select="onSelectOption"
         />
+        <!-- 备选事件角标：本回合事件来自后端预置池（LLM 两次失败），事件与选项仍有效 -->
+        <text v-if="store.eventDegraded" class="game-main__event-degraded">
+          {{ PAGE_TEXT.gameMain.eventDegradedHint }}
+        </text>
       </view>
 
       <!-- 自由行动输入（事件区下方，作为决策的替代方式） -->
@@ -1089,6 +1093,15 @@ function onCloseNegotiation(): void {
     display: flex;
     gap: $jt-space-md;
     margin-top: $jt-space-md;
+  }
+
+  // ====================== 备选事件角标（后端预置事件池） ======================
+  &__event-degraded {
+    display: block;
+    margin-top: $jt-space-sm;
+    font-size: $jt-font-sm;
+    line-height: 1.5;
+    color: $jt-ink-secondary;
   }
 
   // ====================== 决策应用势力反馈（T4） ======================
