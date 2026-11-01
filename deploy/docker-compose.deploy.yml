@@ -1,4 +1,15 @@
-# 金田：1851 — 线上部署编排（CVM 独立项目，与 mychat 那套互不影响）
+# 金田：1851 — 线上部署编排（腾讯云轻量 43.139.238.226 上的独立 compose 项目）
+#
+# 2026-11-01 从旧 CVM（122.51.97.106）整体迁到轻量实例：旧机 8443/22 已不通、
+# 8081 只剩 Caddy 的 502（Nuxt 上游消失）。本文件在新机上的落地差异：
+#   - 镜像拉取走腾讯云内网镜像（Docker Hub 直连会 i/o timeout）：
+#       docker pull mirror.ccs.tencentyun.com/library/caddy:2 && docker tag ... caddy:2
+#       docker pull mirror.ccs.tencentyun.com/library/node:22-alpine && docker tag ... node:22-alpine
+#       docker pull mirror.ccs.tencentyun.com/pgvector/pgvector:pg18 && docker tag ... pgvector/pgvector:pg18
+#   - 写 /etc/docker/daemon.json 配 registry-mirrors 会被 WorkBuddy 安全策略拒（AccessDeny），
+#     所以只能逐个镜像 pull + tag，别指望 compose 自己拉
+#   - 建表不走 db:push（宿主机没有 node）：本地 pnpm db:generate 出 server/drizzle/*.sql，
+#     上传后 docker exec jintian-db psql -U jintian -d jintian -f /tmp/s.sql
 #
 # 用法（在服务器上，项目目录 /root/jintian）：
 #   docker compose -f deploy/docker-compose.deploy.yml --env-file deploy/.env up -d postgres
@@ -30,7 +41,7 @@
 #     `docker logs jintian-api` 只显示**当前容器**，所以 recreate 之后看起来像"清零"，
 #     但 journal 里历史一直在（实测可取到 10-10 起 446 行）。收紧判断请查 journal，
 #     且聚合要在**本机**跑（宿主机无 node/pnpm，也没有仓库检出）：
-#       ssh root@122.51.97.106 'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago"' \
+#       ssh root@43.139.238.226 'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago"' \
 #         | (cd server && npx tsx server/scripts/auth-report.ts)
 #     `-o short-iso` 保留行首时间戳，聚合侧据此做区间/按天统计；`-o cat` 会丢时间戳。
 #   ⚠ 本文件在服务器上是**独立副本**（/root/jintian/deploy/），改这里必须一并上传，否则新增的

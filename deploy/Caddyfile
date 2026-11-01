@@ -1,4 +1,8 @@
-# 金田：1851 — Caddy 站点配置（独立实例，监听 8443/8081）
+# 金田：1851 — Caddy 站点配置（腾讯云轻量应用服务器 43.139.238.226，监听 8443/8081）
+#
+# 迁移记录：2026-11-01 从旧 CVM（122.51.97.106）迁至轻量实例。旧机 8443/22 已不通、
+# 8081 只剩 Caddy 返回 502（Nuxt 上游没了），因此这里的跳转目标与证书 SAN 必须同步换新 IP，
+# 否则 8081 会把玩家 301 到一台已经宕掉的机器上。
 #
 # 为什么用自签证书：ACME 不给裸 IP 签发证书，而本项目只有公网 IP 没有域名。
 # 目的不是「证书可信」，而是把站点放进 HTTPS：crypto.randomUUID / navigator.clipboard
@@ -6,8 +10,8 @@
 # 存档 ID 生成和复制按钮会整片失效。浏览器证书告警点「继续访问」即可。
 # 生成命令（在服务器 deploy/ 目录执行，certs/ 不入库）：
 #   openssl req -x509 -newkey rsa:2048 -sha256 -days 825 -nodes \
-#     -keyout certs/site.key -out certs/site.crt -subj "/CN=jintian-1851-cvm" \
-#     -addext "subjectAltName=IP:122.51.97.106,DNS:localhost"
+#     -keyout certs/site.key -out certs/site.crt -subj "/CN=jintian-1851-lighthouse" \
+#     -addext "subjectAltName=IP:43.139.238.226,DNS:localhost"
 
 {
 	admin off
@@ -54,5 +58,5 @@
 # 明文入口：只做跳转，省得有人停在非安全上下文里用不了 UUID/剪贴板。
 # 目标端口写死 8443 —— {host} 在这种按端口建站点的写法里会带上 :8081，跳过去就死了。
 :8081 {
-	redir https://122.51.97.106:8443{uri} permanent
+	redir https://43.139.238.226:8443{uri} permanent
 }

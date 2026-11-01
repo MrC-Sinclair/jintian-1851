@@ -212,12 +212,14 @@ advisor-chat（含~50% 工具轮，混合）   ≈ ¥0.0011   （原 ¥0.000875�
 # ⚠ 聚合跑在**本机**，不在服务器上：宿主机没有 node/pnpm，也没有 /root/jintian/server
 #   检出（2026-10-16 实测 NO_NODE / NO_PNPM / NO_SERVER_CHECKOUT）。正确姿势是把 journal
 #   通过 ssh 拉过来喂给本地脚本 —— 这也解释了"把这两个报表挂到服务器 cron"为什么一直落不了地。
-ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@122.51.97.106 \
+# ⚠ 2026-11-01 服务器已迁到轻量 43.139.238.226；新机 root 还没装 cvm_deploy_rsa 公钥，
+#   首次要先 ssh-copy-id 或改用云助手 TAT，否则下面两条都会 Permission denied。
+ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@43.139.238.226 \
   'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago"' \
   | (cd server && npx tsx server/scripts/llm-cost-report.ts --daily-limit 30)
 
 # 鉴权观察同理（两个脚本读的都是同一种单行 JSON）
-ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@122.51.97.106 \
+ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@43.139.238.226 \
   'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago"' \
   | (cd server && npx tsx server/scripts/auth-report.ts)
 ```

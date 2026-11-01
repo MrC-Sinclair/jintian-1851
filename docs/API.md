@@ -1065,7 +1065,9 @@ x-device-id: {设备指纹}
 # -o short-iso 保留行首时间戳，聚合侧据此做时间区间与按天分桶。
 # ⚠ 聚合跑在本机：宿主机没有 node/pnpm，也没有 server 检出，所以把 journal 用 ssh 拉过来
 #   喂给本地脚本（挂在服务器 cron 上因此不可行，要定时只能放本机或 CI）
-ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@122.51.97.106 \
+# ⚠ 2026-11-01 起服务器换成轻量 43.139.238.226，新机 root 尚未装 cvm_deploy_rsa 公钥，
+#   首次需要先 ssh-copy-id 或直接用云助手 TAT 执行，否则下面这条会 Permission denied。
+ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@43.139.238.226 \
   'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago"' \
   | (cd server && npx tsx server/scripts/auth-report.ts)
 # 判定"兼容通道是否已归零、能否收紧"时加 --fail-if-compat（未归零退 2）
