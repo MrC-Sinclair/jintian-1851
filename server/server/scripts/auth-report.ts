@@ -3,10 +3,12 @@
  *
  * 用法（**在本机跑**：宿主机没有 node/pnpm，也没有仓库检出，所以用 ssh 把 journal 拉过来；
  *   容器名见 deploy/docker-compose.deploy.yml）：
- *   ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@122.51.97.106 \
+ *   ssh -o BatchMode=yes -i ~/.ssh/cvm_deploy_rsa root@43.139.238.226 \
  *     'journalctl CONTAINER_NAME=jintian-api -o short-iso --no-pager --since "7 days ago"' \
  *     | (cd server && npx tsx server/scripts/auth-report.ts)
  *   同上再加 --fail-if-compat：兼容通道未归零则退 2
+ *   ⚠ 2026-11-01 起服务器换成轻量 43.139.238.226，新机 root 尚未装 cvm_deploy_rsa 公钥，
+ *     首次要先 ssh-copy-id 或改用云助手 TAT，否则这条命令会 Permission denied。
  *
  * 与 llm-cost-report 同一取向：脚本无状态、不连库、不引常驻服务，日志是唯一数据源。
  *
