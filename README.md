@@ -61,6 +61,7 @@ jintian-1851/
 │   ├── db-schema.md       # 数据库表结构（唯一 Schema 来源）
 │   ├── API.md             # HTTP 接口定义（唯一接口来源）
 │   └── ai-cost.md         # AI 调用成本约束
+├── deploy/                # 线上部署：docker-compose.deploy.yml / Caddyfile / backup-db.sh（见「部署」一节）
 ├── docker/                # docker-compose 初始化脚本（pgvector 扩展）
 ├── docker-compose.yml     # Postgres 18（pgvector）开发 & 测试库
 └── AGENTS.md              # AI 编程助手纪律与执行规则（必读）
@@ -137,6 +138,79 @@ cd game-web && pnpm build:mp-weixin     # 产出微信小程序包
 # 后端
 cd server && pnpm build && pnpm preview # 生产构建与预览
 ```
+
+---
+
+## ☁️ 部署（腾讯云轻量应用服务器）
+
+线上入口：**https://43.139.238.226:8443**（自签证书，浏览器首次需点「继续访问」）。`8081` 只做 301 跳转到 HTTPS，不提供明文页面。
+
+> **为什么用自签证书**：实例只有公网 IP 没有域名，ACME 不给 IP 签发证书。目的不是「证书可信」，而是让站点进入安全上下文——`crypto.randomUUID` / `navigator.clipboard` 在 `http://` 下是 undefined，会让存档 ID 生成与复制按钮整片失效。
+
+### 线上形态
+
+| 项 | 值 |
+|---|---|
+| 实例 | 腾讯云轻量 · 广州 · 2C2G / 50G · Ubuntu 24.04 |
+| 项目目录 | `/root/jintian` |
+| 容器 | `jintian-db`（pgvector/pgvector:pg18，仅绑 `127.0.0.1:5544`）/ `jintian-api`（node:22-alpine，3000 仅内网）/ `jintian-web`（caddy:2，8443 + 8081） |
+| 编排 | [`deploy/docker-compose.deploy.yml`](./deploy/docker-compose.deploy.yml)，项目名 `jintian`，卷前缀 `jintian_` |
+| 反代 | [`deploy/Caddyfile`](./deploy/Caddyfile)：`/api/*` → `app:3000`（SSE 需 `flush_interval -1`），其余 `file_server` 读 `/srv/h5` |
+
+### 首次部署
+
+```bash
+# 1. 本地构建。服务器 2C2G 跑不动构建（会 OOM），产物一律本机出再传
+cd game-web && pnpm build:h5     # → game-web/dist/build/h5
+cd server  && pnpm build         # → server/.output
+
+# 2. 按 compose 约定落到服务器 /root/jintian 下
+#    deploy/dist/.output、deploy/dist/h5、deploy/docker-compose.deploy.yml、
+#    deploy/Caddyfile、deploy/.env、docker/initdb/01-vector.sql
+
+# 3. 自签证书（certs/ 不入库；SAN 必须写当前公网 IP）
+cd /root/jintian/deploy && mkdir -p certs && openssl req -x509 -newkey rsa:2048 -sha256 \
+  -days 825 -nodes -keyout certs/site.key -out certs/site.crt \
+  -subj "/CN=jintian-1851-lighthouse" -addext "subjectAltName=IP:43.139.238.226,DNS:localhost"
+
+# 4. 拉镜像。Docker Hub 直连会 i/o timeout，必须走腾讯云内网镜像再打回原名，
+#    compose 才能按 image: caddy:2 这类短名命中
+docker pull mirror.ccs.tencentyun.com/library/caddy:2
+docker tag  mirror.ccs.tencentyun.com/library/caddy:2 caddy:2
+docker pull mirror.ccs.tencentyun.com/library/node:22-alpine
+docker tag  mirror.ccs.tencentyun.com/library/node:22-alpine node:22-alpine
+docker pull mirror.ccs.tencentyun.com/pgvector/pgvector:pg18
+docker tag  mirror.ccs.tencentyun.com/pgvector/pgvector:pg18 pgvector/pgvector:pg18
+
+# 5. 启动（postgres 健康后才起 app，app 健康后才起 caddy）
+cd /root/jintian/deploy && docker compose -f docker-compose.deploy.yml --env-file .env up -d
+
+# 6. 建表。宿主机没有 node，不能用 pnpm db:push —— 本地 pnpm db:generate 出
+#    server/drizzle/*.sql，上传后在容器里执行
+docker cp schema.sql jintian-db:/tmp/s.sql
+docker exec jintian-db psql -U jintian -d jintian -f /tmp/s.sql
+```
+
+### 更新发版
+
+```bash
+# 覆盖 dist/.output 与 dist/h5 之后必须重建容器：
+# 单纯 up -d 不算配置变更、不会重建；而删过目录的 bind mount 仍指向旧 inode，
+# 表现是「新产物完全不生效」——接口还是旧行为、静态站直接 404
+docker compose -f docker-compose.deploy.yml --env-file .env up -d --force-recreate app caddy
+```
+
+### 线上排障
+
+| 现象 | 先看什么 |
+|---|---|
+| 页面 502 | `docker ps` 看 `jintian-api` 是否 healthy；`docker logs jintian-api --tail 50` |
+| 接口 200 但数据不对 | `/api/health` 的 `db` 字段；`docker logs jintian-db` |
+| 改版后前端不更新 | `Caddyfile` 里 `/index.html` 的 `no-cache` 是否还在 |
+| 深链刷新 404 | H5 走 history 路由，靠 `try_files {path} {path}/ /index.html` 回落 |
+| 容器 exit 1 报 `old databases` | PG18 挂载点必须是 `/var/lib/postgresql`（不能带 `/data`，原理见根 `docker-compose.yml` 注释） |
+
+> 运维侧两个已知缺口：① `deploy/backup-db.sh` **尚未在线上启用**，`/api/health` 的 `backup` 字段一直是 `missing`；② 新机 root 还没装 `cvm_deploy_rsa` 公钥，`docs/API.md` 里那些取 journal 的 ssh 命令需先 `ssh-copy-id` 或改走云助手。
 
 ---
 
